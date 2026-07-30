@@ -361,3 +361,14 @@
   color: #ffffff;
   background: rgba(255, 255, 255, 0.1);
 }
+
+/* ---- mobile (spec §14, ≤768px): hide search + pagination ------------------- */
+/* The dashboard is already display:none below 1300px (rule above). Award mode
+ * renders no header at all, so this only affects the spectator chrome. */
+
+@media (max-width: 768px) {
+  .kr-header__search,
+  .kr-header__pages {
+    display: none;
+  }
+}

@@ -133,6 +133,13 @@ export interface TeamRowProps {
   spineLast?: boolean;
   /** "teamId problemId" → flip batch id for just-applied live runs. */
   flipCells?: ReadonlyMap<string, number> | null;
+  /**
+   * Mobile compact row (spec §14): hides balloons, cells and badges (they
+   * move into the detail modal) and appends a solved/penalty summary.
+   */
+  mobile?: boolean;
+  /** Tap handler for the compact row — opens the team detail modal. */
+  onOpenDetail?: (teamId: string) => void;
 }
 
 export function TeamRow({
@@ -146,11 +153,14 @@ export function TeamRow({
   spineFirst = false,
   spineLast = false,
   flipCells = null,
+  mobile = false,
+  onOpenDetail,
 }: TeamRowProps) {
   const { team } = standing;
   const org = orgs[team.group];
   const logo = config.showSchoolLogos ? org?.logo : undefined;
   const animate = config.animation;
+  const tappable = mobile && onOpenDetail !== undefined;
 
   return (
     <motion.div
@@ -158,12 +168,27 @@ export function TeamRow({
       transition={animate ? ROW_SPRING : undefined}
       className={cls(
         'team-row',
+        mobile && 'team-row--compact',
         team.foreign && 'foreign',
         followed && 'followed',
         followed && config.useFollowedTeamSticky && 'sticky',
       )}
       data-team-id={team.id}
       data-solved={standing.solved}
+      role={tappable ? 'button' : undefined}
+      tabIndex={tappable ? 0 : undefined}
+      aria-haspopup={tappable ? 'dialog' : undefined}
+      onClick={tappable ? () => onOpenDetail(team.id) : undefined}
+      onKeyDown={
+        tappable
+          ? (event) => {
+              if (event.key === 'Enter' || event.key === ' ') {
+                event.preventDefault();
+                onOpenDetail(team.id);
+              }
+            }
+          : undefined
+      }
     >
       <div
         className={cls('solved-count', spineFirst && 'spine-first', spineLast && 'spine-last')}
@@ -197,40 +222,57 @@ export function TeamRow({
       ) : null}
 
       <FlagIcon country={team.countryCode} size={22} className="team-flag" />
-      {logo !== undefined && logo !== '' ? (
+      {/* The §14 compact row has no logo slot (rank|star|flag|name|score). */}
+      {!mobile && logo !== undefined && logo !== '' ? (
         <SchoolLogo key={logo} logo={logo} group={team.group} />
       ) : null}
 
       <div className="team-title">
         <div className="team-name-line">
           <span className="team-name">{team.name}</span>
-          <Badges autoLabels={standing.autoLabels} manualLabels={manualLabels} />
+          {/* Badges move into the detail modal on mobile (spec §14). */}
+          {!mobile ? (
+            <Badges autoLabels={standing.autoLabels} manualLabels={manualLabels} />
+          ) : null}
         </div>
         {config.showTeamGroup ? <div className="team-group">{team.group}</div> : null}
       </div>
 
-      {config.showBalloons ? <Balloons standing={standing} problems={problems} /> : null}
+      {/* Balloons are fully hidden on mobile (spec §14). */}
+      {!mobile && config.showBalloons ? (
+        <Balloons standing={standing} problems={problems} />
+      ) : null}
 
-      <div className="results">
-        {problems.map((problem) => {
-          const cell = standing.cells.get(problem.id);
-          return cell !== undefined ? (
-            <LiveCell
-              key={problem.id}
-              problem={problem}
-              cell={cell}
-              showFirstSolve={config.showFirstSolve}
-              animate={animate}
-              flipId={flipCells?.get(`${team.id} ${problem.id}`) ?? null}
-            />
-          ) : null;
-        })}
-      </div>
+      {!mobile ? (
+        <div className="results">
+          {problems.map((problem) => {
+            const cell = standing.cells.get(problem.id);
+            return cell !== undefined ? (
+              <LiveCell
+                key={problem.id}
+                problem={problem}
+                cell={cell}
+                showFirstSolve={config.showFirstSolve}
+                animate={animate}
+                flipId={flipCells?.get(`${team.id} ${problem.id}`) ?? null}
+              />
+            ) : null;
+          })}
+        </div>
+      ) : null}
 
-      <div className="team-penalty">
-        {standing.penalty}
-        <span className="penalty-unit"> min.</span>
-      </div>
+      {mobile ? (
+        <div className="team-score-compact" aria-label="solved / penalty">
+          <span className="compact-solved">{standing.solved}</span>
+          <span className="compact-separator">/</span>
+          <span className="compact-penalty">{standing.penalty}</span>
+        </div>
+      ) : (
+        <div className="team-penalty">
+          {standing.penalty}
+          <span className="penalty-unit"> min.</span>
+        </div>
+      )}
     </motion.div>
   );
 }

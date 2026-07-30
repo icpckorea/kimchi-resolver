@@ -8,13 +8,15 @@
  * (snapshot, contest problems, config, orgs, `q=` / `t=` URL params). Tests
  * and the award/publish screens can drive it fully via props.
  */
-import { useMemo } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 
 import type { OrgsIndex, Problem, Snapshot, TeamStanding } from '@core/types';
 import type { ResolvedConfig } from '@core/config';
 import { useAppStore } from '@store/appStore';
 
 import { TeamRow, type ApacStarInfo } from './TeamRow';
+import { TeamDetailModal } from './TeamDetailModal';
+import { MOBILE_MEDIA_QUERY, useMediaQuery } from './useMediaQuery';
 import { cls } from './util';
 import './scoreboard.css';
 
@@ -66,6 +68,18 @@ export function Scoreboard(props: ScoreboardProps) {
     props.followTeamId !== undefined ? props.followTeamId : config.followTeamId;
   const page = props.page ?? 0;
 
+  // Mobile compact layout (spec §14). Only spectator/publish render this
+  // component — award mode draws its own rows and never goes compact.
+  const isMobile = useMediaQuery(MOBILE_MEDIA_QUERY);
+  const [detailTeamId, setDetailTeamId] = useState<string | null>(null);
+
+  // Leaving the mobile breakpoint closes the modal for real (not just hides
+  // it) — otherwise a stale detailTeamId would silently re-open the modal the
+  // next time the viewport crosses back under 768px (e.g. tablet rotation).
+  useEffect(() => {
+    if (!isMobile) setDetailTeamId(null);
+  }, [isMobile]);
+
   const standings = snapshot?.standings;
   const filtered = useMemo(
     () => (standings === undefined ? [] : filterStandings(standings, searchQuery)),
@@ -83,10 +97,13 @@ export function Scoreboard(props: ScoreboardProps) {
     return map;
   }, [config.animation, lastAppliedFlips]);
 
-  const pageSize = config.pagination ? config.paginationSize : Number.POSITIVE_INFINITY;
+  // Pagination is hidden on mobile (spec §14): the compact board lists all
+  // filtered teams in one scroll.
+  const paginate = config.pagination && !isMobile;
+  const pageSize = paginate ? config.paginationSize : Number.POSITIVE_INFINITY;
   const pageCount = Math.max(1, Math.ceil(filtered.length / pageSize) || 1);
   const currentPage = Math.min(Math.max(page, 0), pageCount - 1);
-  const visible = config.pagination
+  const visible = paginate
     ? filtered.slice(currentPage * pageSize, (currentPage + 1) * pageSize)
     : filtered;
 
@@ -94,9 +111,12 @@ export function Scoreboard(props: ScoreboardProps) {
     return <div className={cls('scoreboard', 'scoreboard--empty', props.className)} />;
   }
 
+  const detailStanding =
+    isMobile && detailTeamId !== null ? (snapshot.byTeam.get(detailTeamId) ?? null) : null;
+
   return (
     <div
-      className={cls('scoreboard', props.className)}
+      className={cls('scoreboard', isMobile && 'scoreboard--mobile', props.className)}
       data-page={currentPage}
       data-page-count={pageCount}
     >
@@ -115,8 +135,20 @@ export function Scoreboard(props: ScoreboardProps) {
           spineLast={
             index === visible.length - 1 || visible[index + 1].solved !== standing.solved
           }
+          mobile={isMobile}
+          onOpenDetail={isMobile ? setDetailTeamId : undefined}
         />
       ))}
+
+      {detailStanding !== null ? (
+        <TeamDetailModal
+          standing={detailStanding}
+          problems={problems}
+          config={config}
+          manualLabels={props.manualLabels?.get(detailStanding.team.id) ?? []}
+          onClose={() => setDetailTeamId(null)}
+        />
+      ) : null}
     </div>
   );
 }

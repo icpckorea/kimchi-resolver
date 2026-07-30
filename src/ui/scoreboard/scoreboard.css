@@ -411,3 +411,192 @@
     width: 2em;
   }
 }
+
+/* ---- mobile compact layout (spec §14, ≤768px) ------------------------------ */
+
+/* Everything below is scoped to `.scoreboard--mobile` (added by Scoreboard
+ * only when the ≤768px media query matches) or to modal-only classes that are
+ * rendered exclusively on mobile. Desktop and award mode (which draws its own
+ * rows and never renders Scoreboard) are untouched. */
+
+.scoreboard--mobile .team-row--compact {
+  cursor: pointer;
+  font-size: 2.2em;
+}
+
+.scoreboard--mobile .team-row--compact .team-title {
+  padding-right: 0.3em;
+}
+
+.team-score-compact {
+  flex: none;
+  display: flex;
+  align-items: center;
+  gap: 0.12em;
+  padding-right: 0.35em;
+  white-space: nowrap;
+}
+
+.team-score-compact .compact-solved {
+  font-weight: 600;
+}
+
+.team-score-compact .compact-separator {
+  color: #aaa;
+  font-size: 0.7em;
+}
+
+.team-score-compact .compact-penalty {
+  color: #666;
+  font-size: 0.75em;
+}
+
+/* ---- team detail modal (mobile only, spec §14) ----------------------------- */
+
+.team-detail-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 100;
+  background: rgba(0, 0, 0, 0.45);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 1rem;
+  font-size: 1rem; /* reset from the board's 0.625rem base */
+  line-height: 1.4;
+}
+
+.team-detail-modal {
+  width: 100%;
+  max-width: 26rem;
+  max-height: 85vh;
+  overflow-y: auto;
+  background: #fff;
+  color: #1c1c1c;
+  border-radius: 8px;
+  box-shadow: 0 6px 24px rgba(0, 0, 0, 0.3);
+  padding: 0.9rem 1rem 1rem;
+}
+
+.team-detail-header {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  min-width: 0;
+}
+
+.team-detail-rank {
+  flex: none;
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+.team-detail-rank--domestic {
+  color: #666;
+  font-size: 0.8rem;
+  font-weight: 400;
+}
+
+.team-detail-flag {
+  flex: none;
+}
+
+.team-detail-names {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+.team-detail-name {
+  font-weight: 600;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.team-detail-group {
+  color: #777;
+  font-size: 0.75rem;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.team-detail-close {
+  flex: none;
+  width: 2rem;
+  height: 2rem;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border: none;
+  border-radius: 50%;
+  background: #f1f1f1;
+  color: #555;
+  font-size: 1.25rem;
+  line-height: 1;
+  cursor: pointer;
+}
+
+.team-detail-close:hover {
+  background: #e4e4e4;
+}
+
+/* Badges wrap freely at a readable size inside the modal. */
+.team-detail-modal .team-badges {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.35rem;
+  margin: 0.6rem 0 0;
+  overflow: visible;
+}
+
+.team-detail-modal .team-badge {
+  font-size: 0.72rem;
+}
+
+/* Full problem cell grid — same ProblemCell color rules as the board. */
+.team-detail-grid {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 2px;
+  margin-top: 0.75rem;
+}
+
+.team-detail-grid .problem-result {
+  width: 3.2em;
+  min-height: 2.6em;
+  font-size: 0.8rem;
+}
+
+/* Per-problem penalty breakdown ("20 + 20 × 2 = 60") plus the total. */
+.team-detail-penalty {
+  margin-top: 0.75rem;
+  border-top: 1px solid #eee;
+  padding-top: 0.5rem;
+  font-size: 0.85rem;
+}
+
+.penalty-line {
+  display: flex;
+  justify-content: space-between;
+  gap: 1rem;
+  padding: 0.1rem 0;
+}
+
+.penalty-line .penalty-problem {
+  color: #555;
+  font-weight: 600;
+}
+
+.penalty-line .penalty-formula {
+  font-variant-numeric: tabular-nums;
+}
+
+.penalty-line--total {
+  border-top: 1px solid #eee;
+  margin-top: 0.25rem;
+  padding-top: 0.35rem;
+  font-weight: 600;
+}

@@ -9,6 +9,12 @@ export {
 export { Balloons, solvedCellsInOrder, type BalloonsProps } from './Balloons';
 export { Badges, autoLabelText, type BadgesProps } from './Badges';
 export {
+  TeamDetailModal,
+  penaltyFormula,
+  type TeamDetailModalProps,
+} from './TeamDetailModal';
+export { useMediaQuery, MOBILE_MEDIA_QUERY } from './useMediaQuery';
+export {
   useCellFlip,
   type CellFlip,
   type CellFlipPhase,
