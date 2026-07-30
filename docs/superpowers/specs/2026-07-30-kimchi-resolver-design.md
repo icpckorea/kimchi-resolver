@@ -115,8 +115,10 @@ FeedSource(어댑터) → parse → diff → 표시 대기 큐 → tick 소비 �
 - **frozen 투영**: `r=` 컷오프 이후의 run이 하나라도 있는 셀은 **그 셀의 pre-freeze net run까지 포함해 통째로 마스킹**한다 — 보드에는 pending + 전체 시도 수로 표시되고, 공개 시 그 셀의 전체 net 이력을 처음부터 순서대로 flip 재생한다 (예: 컷오프 전 5회 실패 + 이후 3회 → 공개 때 8회 연속 재생). 컷오프 이후 run이 없는 셀은 그대로 노출. 원본의 monkey-patch 대신 "같은 run 목록의 두 projection"으로 구현.
 - **상태**: 팀별 단계(`hidden → focused → revealing → finalized`), 셀별 공개 대기 결과, 현재 슬라이드, blink 단계.
 - **진행 순서**: ICPC 랭킹 통합 최하위부터 (국내/외국 구분 없음). 다음 셀은 `award.revealOrder` 우선순위(문제 label 또는 id, 미지정 문제는 보드 순서), 같은 셀의 실패 시도들은 `advance()` 1회에 연속 재생 후 최종 결과.
+- **긴 셀 이력의 재생 페이싱**: 한 셀의 시도가 많을수록 총 재생 시간은 늘어나되, **초반은 느리게 시작 → 중반 가속 → 마지막 몇 개는 다시 감속**하는 ease-in-out 곡선으로 각 flip 시간을 배분한다 (2025 데이터 최악 사례: CAPS/G 50회). 마지막 판정 flip은 기존 slowFlip 규칙을 그대로 적용. 상수 속도로 50회를 재생하면 15초가 끊김 없이 흐르므로 금지.
+- **빈 시상식 경고**: 컷오프가 마지막 제출 이후라 `remainingReveals === 0`이면 공개할 것이 없는 시상식이 된다. 이 경우 부팅 시 system message로 경고한다.
 - **blink**: `award.focusBlinking = { minSolved, maxRank }` 충족 팀의 셀은 공개 전 blink 단계 1회 추가 (키 1회 소모).
-- **finalize**: 팀의 pending 셀 소진 시 finalized + `awards.json` 데이터가 있으면 전체 화면 슬라이드(순위 문자열/아이콘/칭호 라벨/공동 수상 `others`). finalized 시점에 그 팀의 칭호 배지가 팀 행에 나타난다. finalized 팀 이름 클릭 시 슬라이드 재표시.
+- **finalize**: 팀의 pending 셀 소진 시 finalized. **awards.json 항목이 없는 팀은 슬라이드를 아예 띄우지 않는다** — 현재는 슬라이드를 띄운 뒤 `useEffect`로 자동 닫는 구조라, 그 사이에 들어온 키 입력이 조용히 소비되는 경쟁 조건이 84팀 중 81곳에서 발생한다(리모컨 키 반복·연타 시). 데이터가 있는 팀만 전체 화면 슬라이드(순위 문자열/아이콘/칭호 라벨/공동 수상 `others`)를 띄운다. finalized 시점에 그 팀의 칭호 배지가 팀 행에 나타난다. finalized 팀 이름 클릭 시 슬라이드 재표시.
 - **awards.json v2 스키마** (구 `award_slide.json` 대체):
 
   ```jsonc
@@ -216,7 +218,12 @@ FeedSource(어댑터) → parse → diff → 표시 대기 큐 → tick 소비 �
   "excludeTeams": [],
   "foreign": { "ids": [], "groups": [] },
   "apac": { "enabled": false },
-  "publish": { "enabled": false, "siteScore": null, "invitedScoreCutoff": null },
+  "publish": {
+    "enabled": false,
+    "siteScore": null,
+    "invitedScoreCutoff": null,
+    "alreadyInvited": { "teamIds": [], "groups": [] }
+  },
   "award": {
     "mode": false,
     "hideName": true,
@@ -296,7 +303,12 @@ config 추가:
 
 ```jsonc
 "apac": { "enabled": false },
-"publish": { "enabled": false, "siteScore": null, "invitedScoreCutoff": null }
+"publish": {
+  "enabled": false,
+  "siteScore": null,
+  "invitedScoreCutoff": null,
+  "alreadyInvited": { "teamIds": [], "groups": [] }
+}
 ```
 
 URL 파라미터 추가: `publish`, `site_score`, `invited_cutoff` (config보다 우선).
