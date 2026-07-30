@@ -30,6 +30,7 @@
 | 피날레 연출 | 대회 첫 Yes 셀 sparkle, 시상식 최종 공개 셀 스포트라이트+확대(5초 후 복원) |
 | APAC 표시 | `apac` 플래그: 교내 3위까지 별 아이콘(동→은→금 단계 변경, 회전 애니메이션). 14장 참조 |
 | publish 모드 | 공지용 static scoreboard 모드 신설. site score 입력 필수, invited cutoff 입력으로 금색 별 판정 |
+| 모바일 | spectator·publish 한정 768px 이하 압축 행(순위·별·국기·팀명·솔브/페널티) + 행 탭 시 격자·칭호 모달. award 제외 |
 | 셀 색 확장 | 문제별 마지막 solve = 파랑, 대회 전체 마지막 Yes = 보라 (accepted run 기준) |
 | 애셋 현대화 | 원본 PNG 아이콘 전면 SVG 교체. 풍선은 SVG 1장 + 문제 color 동적 틴팅 |
 
@@ -275,9 +276,18 @@ config 추가:
 
 URL 파라미터 추가: `publish`, `site_score`, `invited_cutoff` (config보다 우선).
 
-## 14. 범위 외 (명시)
+## 14. 모바일 레이아웃 (spectator·publish 모드)
+
+768px 이하에서 압축 레이아웃으로 전환한다. award 모드는 프로젝터 전용이므로 제외.
+
+- **압축 행**: ICPC 순위 · 국내 순위 | APAC 별 | 국기 | 팀명 + 소속 | 솔브 수 / 페널티. 풍선은 완전 숨김.
+- **행 탭 → 모달**: 해당 팀의 문제 격자 전체(셀 색상 규칙 동일), 칭호 배지 전부(자동+수동), 페널티 상세. 모달에도 풍선은 없음. 바깥 탭/닫기 버튼으로 닫힘.
+- 색 스파인·셀 색상 규칙·별 회전 등 시각 규칙은 데스크톱과 동일하게 유지.
+- 대시보드·검색·pagination은 모바일에서 숨김(기존 1300px 대시보드 규칙 유지).
+
+## 15. 범위 외 (명시)
 
 - Contest API event-feed(NDJSON) 스트리밍 — 폴링으로 충분, 후순위.
 - PageUp 등 시상식 되돌리기(undo).
-- e2e 테스트, CI 파이프라인, 모바일 전용 레이아웃(원본 수준의 media query만).
+- e2e 테스트, CI 파이프라인.
 - feedserver 구현 (DOMjudge/CDS가 대체).
