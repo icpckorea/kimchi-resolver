@@ -131,6 +131,10 @@ FeedSource(어댑터) → parse → diff → 표시 대기 큐 → tick 소비 �
 - **`award.hideName`**: 미공개 팀은 "Team {id}" / "Unknown" 표시.
 - **키 매핑**: Enter(13)/ArrowRight/Semicolon/**PageDown** → `advance()`, Escape → `dismissSlide()`, PageUp → 무동작. `KeyboardEvent.key` 기준.
 - **animationSpeeds**: `[{ minSolved, fastFlip, slowFlip, moveUpMsPerRow }]` — solved 수가 `minSolved` 이상인 첫 항목 매칭 (원본의 "내림차순 정렬 필수" 함정 제거, 스키마 검증으로 정렬 무관).
+- **가차 이펙트**: 셀 공개 시 그 셀의 시도 횟수(net runs)가 `gachaEffectRequirement`(기본 8) 이상이거나 시상식 최종 공개(`remainingReveals === 1`)인 경우 —
+  - 최종 결과가 **Yes**면 마지막 flip 직전에 무조건 가차 이펙트 발동.
+  - 최종 결과가 **No**면 `gachaEffectForNoRatio`%(기본 30) 확률로 발동 (페이크 연출).
+  - 발동 여부는 state machine이 결정해 reveal 상태에 플래그로 포함. 확률 판정의 RNG는 주입 가능하게 하여 테스트에서 결정적으로 재현.
 - 시상식 중에도 두 랭킹 동시 노출.
 
 ## 7. UI
@@ -155,6 +159,7 @@ FeedSource(어댑터) → parse → diff → 표시 대기 큐 → tick 소비 �
   우선순위(중복 시): 보라 > 파랑 > 연두 > 초록. 판정은 accepted run만 대상(4장 파생값).
 - **대회 첫 Yes 반짝임**: contest-first solve 셀은 연두 위에 추가 sparkle/shimmer 애니메이션(CSS keyframe, 은은한 반복 광택)을 얹는다.
 - **시상식 피날레 스포트라이트**: award 모드에서 전체 공개 대기 큐의 마지막 셀(대회의 최종 오픈)을 공개할 때 — 화면을 어둡게(오버레이) 하고 해당 셀을 스포트라이트 + 확대(scale)한 상태에서 flip을 재생하며, 최종 공개 5초 후 오버레이·확대를 원래대로 되돌린다. state machine이 남은 공개 수를 알고 있으므로 `remainingReveals === 1`일 때 트리거되는 파생 상태로 구현.
+- **가차 이펙트 연출** (발동 조건은 6장): 마지막 flip 직전, 셀이 상하좌우로 약간씩 진동하며 미세한 각도로 회전 진동하고 반짝이는 sparkle을 재생. 공개(flip) 후에는 셀이 정확히 제자리로 복귀하고 진동·반짝임이 멈춘다. **시상식 최종 공개 셀인 경우 sparkle을 무지개색(hue 순환)으로 재생** — 피날레 스포트라이트와 중첩 적용.
 - **애셋 현대화**: 원본 PNG 아이콘(헤더 버튼, 메달/왕관/수상 아이콘, 국기)을 전부 SVG로 교체 — 헤더·왕관은 MIT 아이콘 세트(예: Lucide), 국기는 MIT SVG 국기 세트(예: flag-icons/circle-flags)에서 필요한 국가만 번들, 메달류는 SVG로 제작/선별. 이모지 사용 금지.
 - **풍선 SVG 틴팅**: 풍선은 PNG 19장 대신 SVG 1장. 본체 fill을 CSS 변수(`--balloon-color`)로 받아 문제의 `color` 값(named color, hex 모두)을 그대로 주입. 외곽선·하이라이트는 고정이라 white/ivory 같은 밝은 색도 식별 가능. 임의 색상 코드 지원으로 "풍선 색상표에 없는 색" 문제가 사라진다.
 - **검색**(100ms debounce, 팀명+소속), **follow**(`t=`, sticky 고정 — 모던 브라우저 전제로 분기 제거), **pagination**(`paginationSize`).
@@ -205,6 +210,8 @@ FeedSource(어댑터) → parse → diff → 표시 대기 큐 → tick 소비 �
     "awardsUrl": "./sample/awards.json",
     "revealOrder": [],
     "focusBlinking": { "minSolved": 7, "maxRank": 10 },
+    "gachaEffectRequirement": 8,
+    "gachaEffectForNoRatio": 30,
     "animationSpeeds": [
       { "minSolved": 10, "fastFlip": 200, "slowFlip": 800, "moveUpMsPerRow": 200 },
       { "minSolved": 0,  "fastFlip": 300, "slowFlip": 700, "moveUpMsPerRow": 100 }
@@ -221,7 +228,7 @@ URL 파라미터 (`URLSearchParams`로 파싱, config보다 우선): `r`, `time`
 
 ## 10. 테스트
 
-1. **core 유닛 테스트** (vitest): penalty 공식, net runs 절단, 4단계 tie-break, rank gap(1,2,2,2,5), 이중 랭킹(foreign 제외), 왕관, first solve, **문제별 last solve·대회 전체 첫/마지막 Yes(동분 tie-break 포함, award 공개 중 이동)**, **자동 칭호 5종(조건 경계: 10회 시도, 복수 문제 묶음)**, verdict 정규화(빈 문자열/Pending/무벌점 판정), diff 규칙 전체, feeder 큐, award 전이 전체(focus→blink→reveal→finalize→slide, revealOrder, rankBegin, **finalize 시 칭호 공개**, **피날레 스포트라이트 트리거(remainingReveals === 1)**, **APAC 별 규칙(동→은/금 전이, 교내 3위 경계, invited cutoff 판정)**, 마지막 팀 종료 — 원본의 도달 불가 'end' 버그 미이식 확인).
+1. **core 유닛 테스트** (vitest): penalty 공식, net runs 절단, 4단계 tie-break, rank gap(1,2,2,2,5), 이중 랭킹(foreign 제외), 왕관, first solve, **문제별 last solve·대회 전체 첫/마지막 Yes(동분 tie-break 포함, award 공개 중 이동)**, **자동 칭호 5종(조건 경계: 10회 시도, 복수 문제 묶음)**, verdict 정규화(빈 문자열/Pending/무벌점 판정), diff 규칙 전체, feeder 큐, award 전이 전체(focus→blink→reveal→finalize→slide, revealOrder, rankBegin, **finalize 시 칭호 공개**, **피날레 스포트라이트 트리거(remainingReveals === 1)**, **APAC 별 규칙(동→은/금 전이, 교내 3위 경계, invited cutoff 판정)**, **가차 이펙트 발동 판정(시도 횟수 경계, Yes 무조건/No 확률 — 주입 RNG로 결정적 테스트, 피날레 무지개 플래그)**, 마지막 팀 종료 — 원본의 도달 불가 'end' 버그 미이식 확인).
 2. **골든 테스트**: 2025 runs.json 1,227건 전체 반영 → 최종 standings 스냅샷 고정.
 3. **어댑터 테스트**: 같은 대회를 spotboard/Contest API 두 포맷으로 넣어 동일 standings 산출 확인. Contest API 픽스처는 스펙 예제 기반으로 제작.
 4. **UI**: 핵심 컴포넌트 렌더 테스트(Testing Library). e2e(Playwright)는 범위 외.
