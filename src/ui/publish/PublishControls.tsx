@@ -163,8 +163,8 @@ export function PublishControls() {
       {invitedEmpty ? (
         <p className="publish-controls-hint" role="note">
           다른 리저널에서 이미 초청된 팀 정보가 없습니다. 대회 데이터만으로는 알 수 없는
-          정보이므로, 초청된 학교가 리스트에 남아 순위가 실제보다 낙관적으로 나올 수
-          있습니다.
+          정보이므로, 초청된 학교가 리스트에 남아 그 아래 팀들의 순위가 실제보다 밀립니다.
+          즉 진출 가능한 팀이 실제보다 적게 표시될 수 있습니다.
         </p>
       ) : null}
     </form>

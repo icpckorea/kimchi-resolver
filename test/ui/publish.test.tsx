@@ -398,11 +398,14 @@ describe('PublishControls', () => {
     expect(appStore.getState().alreadyInvited.teamIds).toEqual([]);
   });
 
-  it('warns that ranks may be optimistic while both already-invited lists are empty', () => {
+  // Extra teams occupying slots can only push everyone below them DOWN, so an
+  // empty alreadyInvited list under-reports qualifiers — never over-reports.
+  it('warns that ranks are pushed down while both already-invited lists are empty', () => {
     seedStore();
     render(<PublishControls />);
     const hint = document.querySelector('.publish-controls-hint');
-    expect(hint?.textContent).toContain('낙관적');
+    expect(hint?.textContent).toContain('밀립니다');
+    expect(hint?.textContent).toContain('적게 표시');
 
     // Naming one invited school removes the warning.
     const groups = document.getElementById('publish-already-invited-groups') as HTMLInputElement;
