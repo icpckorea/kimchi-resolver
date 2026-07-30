@@ -23,8 +23,9 @@
 | award 진행 순서 | 국내/외국 구분 없이 ICPC 랭킹 통합 최하위부터 |
 | award 키 입력 | Enter / → / 세미콜론 / **PageDown** = 진행, Esc = 슬라이드 닫기, PageUp = 무동작 |
 | 설정 | 런타임 `config.json` (전부 선언적, 함수 predicate 없음) + URL 파라미터 override |
-| 학교 메타데이터 | 국기 표시, 학교 내 1등 왕관(모든 학교), 학교 로고 토글, 애셋 누락 경고 |
-| 아이콘 | 국기·왕관은 이모지 금지, SVG 애셋 사용 (Windows 국기 이모지 미지원) |
+| 학교 메타데이터 | 국기 표시, 학교 로고 토글, 애셋 누락 경고 |
+| 아이콘 | 국기·별 등은 이모지 금지, SVG 애셋 사용 (Windows 국기 이모지 미지원) |
+| 교내 순위 표시 | ~~학교 내 1등 왕관~~ 취소 — APAC 별 스펙(13장)으로 완전 대체 |
 | 칭호 라벨 | awards.json v2의 `labels`(수동) + 스냅샷 파생 자동 칭호 5종을 팀 행 배지로 표시. 시상식에서 수동 칭호는 finalize 시점에 공개 |
 | 피날레 연출 | 대회 첫 Yes 셀 sparkle, 시상식 최종 공개 셀 스포트라이트+확대(5초 후 복원) |
 | APAC 표시 | `apac` 플래그: 교내 3위까지 별 아이콘(동→은→금 단계 변경, 회전 애니메이션). 14장 참조 |
@@ -46,7 +47,7 @@ kimchi-resolver/
     core/                  # 프레임워크 무관. React import 금지
       types.ts             # Contest, Team, Problem, Run, Verdict, Snapshot
       verdict.ts           # verdict 정규화
-      standings.ts         # 채점·이중 랭킹·왕관 (순수 함수)
+      standings.ts         # 채점·이중 랭킹·교내 순위 (순수 함수)
       feeder.ts            # diff + 표시 대기 큐
       award.ts             # 시상식 state machine (순수)
       config.ts            # config.json 스키마 + URL override
@@ -75,7 +76,7 @@ kimchi-resolver/
 - **Penalty**: solved 문제만 `20 × failedAttempts + solveMinute`. pending은 기여 0. 20분 상수는 config가 아닌 상수로 유지(원본 동일).
 - **랭킹 comparator**: solved 내림차순 → penalty 오름차순 → 마지막 solve 시각 오름차순 → team id 오름차순(명시적 최종 tie-break). 완전 동점은 rank 공유, 다음 rank는 인원수만큼 건너뜀 (competition ranking: 1,2,2,2,5).
 - **이중 랭킹**: 같은 comparator를 두 모집단에 적용 — `icpcRank`(전체), `domesticRank`(foreign 제외, foreign 팀은 null).
-- **왕관**: 각 group에서 icpcRank 최상위 팀에 `schoolFirst: true`. 모든 학교 대상.
+- **교내 순위**: 각 group 내 icpcRank 순서로 `schoolRank`(1부터) 파생. APAC 별 판정(13장)의 입력. 별도 왕관 표시는 없음(취소됨).
 - **first solve**: 문제별 accepted run의 최소 시각. 동시각 복수 팀 모두 first solve (원본 동일).
 - **last solve**: 문제별 accepted run 중 가장 늦은 것 (분 → run id 순 비교, 단일 셀). **contest-last solve**: 대회 전체 accepted run 중 가장 늦은 것 (단일 셀). **contest-first solve**: 대회 전체 accepted run 중 가장 빠른 것 (분 → run id 순, 단일 셀). 모두 스냅샷 파생값 — 라이브 중에는 "현재까지" 기준으로 동작하고, award 모드에서 pending이 공개될 때마다 이동하며, 종료 후 확정된다.
 - **자동 칭호** (awards.json과 무관, 스냅샷에서 파생되어 팀 행 배지로 표시):
@@ -141,7 +142,7 @@ FeedSource(어댑터) → parse → diff → 표시 대기 큐 → tick 소비 �
 
 컴포넌트: `Header`(시계 HH:MM, notify/update/autoplay/feed-one/feed-all/events 버튼, 검색, 페이지 내비), `Scoreboard` > `TeamRow`, `ProblemCell`, `Dashboard`, `AwardSlide`, `SystemMessage`.
 
-`TeamRow`: ICPC rank + 국내 rank(2칸, foreign은 국내 칸 비움), 국기 아이콘, [로고], 팀명, 소속(+왕관 아이콘), penalty, 문제 셀 × N, balloon 행.
+`TeamRow`: ICPC rank + 국내 rank(2칸, foreign은 국내 칸 비움), [APAC 별], 국기 아이콘, [로고], 팀명, 소속, 칭호 배지, penalty, 문제 셀 × N, balloon 행.
 
 - **순위 이동**: framer-motion layout animation(FLIP). 원본의 수동 top 계산·행 밀어내기와 동일한 시각 효과.
 - **셀 flip**: CSS 3D keyframe(표준 문법) + `onAnimationEnd`, 판정 결과 교체는 flip 중간 시점 (원본 동일). 애니메이션 대상 소멸 시 타임아웃 fallback으로 진행 보장 (원본의 영구 대기 → 보드 정지 버그 차단).
@@ -160,7 +161,7 @@ FeedSource(어댑터) → parse → diff → 표시 대기 큐 → tick 소비 �
 - **대회 첫 Yes 반짝임**: contest-first solve 셀은 연두 위에 추가 sparkle/shimmer 애니메이션(CSS keyframe, 은은한 반복 광택)을 얹는다.
 - **시상식 피날레 스포트라이트**: award 모드에서 전체 공개 대기 큐의 마지막 셀(대회의 최종 오픈)을 공개할 때 — 화면을 어둡게(오버레이) 하고 해당 셀을 스포트라이트 + 확대(scale)한 상태에서 flip을 재생하며, 최종 공개 5초 후 오버레이·확대를 원래대로 되돌린다. state machine이 남은 공개 수를 알고 있으므로 `remainingReveals === 1`일 때 트리거되는 파생 상태로 구현.
 - **가차 이펙트 연출** (발동 조건은 6장): 마지막 flip 직전, 셀이 상하좌우로 약간씩 진동하며 미세한 각도로 회전 진동하고 반짝이는 sparkle을 재생. 공개(flip) 후에는 셀이 정확히 제자리로 복귀하고 진동·반짝임이 멈춘다. **시상식 최종 공개 셀인 경우 sparkle을 무지개색(hue 순환)으로 재생** — 피날레 스포트라이트와 중첩 적용.
-- **애셋 현대화**: 원본 PNG 아이콘(헤더 버튼, 메달/왕관/수상 아이콘, 국기)을 전부 SVG로 교체 — 헤더·왕관은 MIT 아이콘 세트(예: Lucide), 국기는 MIT SVG 국기 세트(예: flag-icons/circle-flags)에서 필요한 국가만 번들, 메달류는 SVG로 제작/선별. 이모지 사용 금지.
+- **애셋 현대화**: 원본 PNG 아이콘(헤더 버튼, 메달/수상 아이콘, 국기)을 전부 SVG로 교체 — 헤더·별은 MIT 아이콘 세트(예: Lucide), 국기는 MIT SVG 국기 세트(예: flag-icons/circle-flags)에서 필요한 국가만 번들, 메달류는 SVG로 제작/선별. 이모지 사용 금지.
 - **풍선 SVG 틴팅**: 풍선은 PNG 19장 대신 SVG 1장. 본체 fill을 CSS 변수(`--balloon-color`)로 받아 문제의 `color` 값(named color, hex 모두)을 그대로 주입. 외곽선·하이라이트는 고정이라 white/ivory 같은 밝은 색도 식별 가능. 임의 색상 코드 지원으로 "풍선 색상표에 없는 색" 문제가 사라진다.
 - **검색**(100ms debounce, 팀명+소속), **follow**(`t=`, sticky 고정 — 모던 브라우저 전제로 분기 제거), **pagination**(`paginationSize`).
 - **Dashboard**: 최근 judge 이벤트 피드, accepted 필터, `maxNotifications` 캡(정확히 N개, sentinel 중복 버그 미이식), 표시 상태 localStorage 유지.
@@ -169,7 +170,7 @@ FeedSource(어댑터) → parse → diff → 표시 대기 큐 → tick 소비 �
 ## 8. 학교 메타데이터
 
 - `public/orgs/orgs.json`: `{ "<group명>": { "country": "KR", "logo": "kaist.png" } }`. 2025 데이터의 51개 학교로 초기 생성. Contest API 소스는 `/organizations`의 country로 자동 보완(orgs.json이 우선).
-- **국기**: countryCode → SVG 아이콘. **왕관**: `schoolFirst` 팀에 표시 (4장 참조).
+- **국기**: countryCode → SVG 아이콘.
 - **foreign 판정**: Contest API는 `country ≠ KR` 기본. spotboard 소스는 orgs.json의 country 사용. `config.foreign.ids` / `config.foreign.groups`로 override.
 - **로고**: `config.showSchoolLogos` 토글. `public/orgs/logos/`에 저장, 2025 데이터 기반 51개 수집은 구현 단계 작업.
 - **애셋 검증**: 대회 데이터 로드 직후 전체 팀의 group을 orgs.json과 대조. 항목 없음/로고 파일 없음(로고 토글 on일 때) → SystemMessage 경고 + console 상세. 개발용 `npm run check-assets` 스크립트 별도 제공.
@@ -228,7 +229,7 @@ URL 파라미터 (`URLSearchParams`로 파싱, config보다 우선): `r`, `time`
 
 ## 10. 테스트
 
-1. **core 유닛 테스트** (vitest): penalty 공식, net runs 절단, 4단계 tie-break, rank gap(1,2,2,2,5), 이중 랭킹(foreign 제외), 왕관, first solve, **문제별 last solve·대회 전체 첫/마지막 Yes(동분 tie-break 포함, award 공개 중 이동)**, **자동 칭호 5종(조건 경계: 10회 시도, 복수 문제 묶음)**, verdict 정규화(빈 문자열/Pending/무벌점 판정), diff 규칙 전체, feeder 큐, award 전이 전체(focus→blink→reveal→finalize→slide, revealOrder, rankBegin, **finalize 시 칭호 공개**, **피날레 스포트라이트 트리거(remainingReveals === 1)**, **APAC 별 규칙(동→은/금 전이, 교내 3위 경계, invited cutoff 판정)**, **가차 이펙트 발동 판정(시도 횟수 경계, Yes 무조건/No 확률 — 주입 RNG로 결정적 테스트, 피날레 무지개 플래그)**, 마지막 팀 종료 — 원본의 도달 불가 'end' 버그 미이식 확인).
+1. **core 유닛 테스트** (vitest): penalty 공식, net runs 절단, 4단계 tie-break, rank gap(1,2,2,2,5), 이중 랭킹(foreign 제외), 교내 순위(schoolRank), first solve, **문제별 last solve·대회 전체 첫/마지막 Yes(동분 tie-break 포함, award 공개 중 이동)**, **자동 칭호 5종(조건 경계: 10회 시도, 복수 문제 묶음)**, verdict 정규화(빈 문자열/Pending/무벌점 판정), diff 규칙 전체, feeder 큐, award 전이 전체(focus→blink→reveal→finalize→slide, revealOrder, rankBegin, **finalize 시 칭호 공개**, **피날레 스포트라이트 트리거(remainingReveals === 1)**, **APAC 별 규칙(동→은/금 전이, 교내 3위 경계, invited cutoff 판정)**, **가차 이펙트 발동 판정(시도 횟수 경계, Yes 무조건/No 확률 — 주입 RNG로 결정적 테스트, 피날레 무지개 플래그)**, 마지막 팀 종료 — 원본의 도달 불가 'end' 버그 미이식 확인).
 2. **골든 테스트**: 2025 runs.json 1,227건 전체 반영 → 최종 standings 스냅샷 고정.
 3. **어댑터 테스트**: 같은 대회를 spotboard/Contest API 두 포맷으로 넣어 동일 standings 산출 확인. Contest API 픽스처는 스펙 예제 기반으로 제작.
 4. **UI**: 핵심 컴포넌트 렌더 테스트(Testing Library). e2e(Playwright)는 범위 외.
