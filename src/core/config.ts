@@ -117,6 +117,18 @@ const configSchema = z.object({
       enabled: z.boolean().default(false),
       siteScore: z.number().positive().nullable().default(null),
       invitedScoreCutoff: z.number().nonnegative().nullable().default(null),
+      /**
+       * Cross-site invitations (spec §13 rule 3.1): teams already invited to
+       * the APAC championship at another regional. Their schools drop out of
+       * this site's scored list entirely. The champion is handled
+       * automatically and needs no entry here.
+       */
+      alreadyInvited: z
+        .object({
+          teamIds: z.array(idSchema).default([]),
+          groups: z.array(z.string()).default([]),
+        })
+        .default({}),
     })
     .default({}),
   award: awardSchema,

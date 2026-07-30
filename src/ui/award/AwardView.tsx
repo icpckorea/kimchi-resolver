@@ -33,7 +33,13 @@ import { ProblemCell } from '@ui/scoreboard/ProblemCell';
 import { useCellFlip } from '@ui/scoreboard/useCellFlip';
 import { Badges } from '@ui/scoreboard/Badges';
 import { Balloons } from '@ui/scoreboard/Balloons';
-import { cls, ordinalSuffix, solvedSpineColor } from '@ui/scoreboard/util';
+import {
+  cls,
+  groupFitStyle,
+  nameFitStyle,
+  ordinalSuffix,
+  solvedSpineColor,
+} from '@ui/scoreboard/util';
 import '@ui/scoreboard/scoreboard.css';
 
 import { AwardSlide, type AwardSlideOther } from './AwardSlide';
@@ -489,12 +495,17 @@ function AwardRow({
           ) : null}
           <span
             className={cls('team-name', medalist && 'award-medalist-name')}
+            style={nameFitStyle(identity.name)}
             onClick={medalist ? () => onMedalistClick(team.id) : undefined}
           >
             {identity.name}
           </span>
         </div>
-        {showTeamGroup ? <div className="team-group">{identity.group}</div> : null}
+        {showTeamGroup ? (
+          <div className="team-group" style={groupFitStyle(identity.group)}>
+            {identity.group}
+          </div>
+        ) : null}
       </div>
 
       {/* Dedicated badge column (spec §7): never covers the name. In award

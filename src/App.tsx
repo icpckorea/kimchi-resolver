@@ -88,6 +88,9 @@ function useAwardApacStars(): ReadonlyMap<string, ApacStarInfo> | null {
   const enabled = useAppStore((s) => s.config.apac.enabled);
   const snapshot = useAppStore((s) => s.snapshot);
   const machine = useAppStore((s) => s.awardMachine);
+  // Cross-site invitations also decide silver-vs-bronze here (spec §13.3.1),
+  // even though the cutoff promotion itself is publish-only.
+  const alreadyInvited = useAppStore((s) => s.alreadyInvited);
   // The machine mutates in place; awardTick invalidates the memo below.
   const tick = useAppStore((s) => s.awardTick);
   const finished = machine?.finished ?? false;
@@ -100,8 +103,9 @@ function useAwardApacStars(): ReadonlyMap<string, ApacStarInfo> | null {
       championTeamId: finished ? (snapshot.standings[0]?.team.id ?? null) : null,
       siteScore: null, // invited-cutoff promotion is publish-only (spec §13.3)
       invitedScoreCutoff: null,
+      alreadyInvited,
     });
-  }, [mode, enabled, snapshot, finished, tick]);
+  }, [mode, enabled, snapshot, finished, tick, alreadyInvited]);
 
   // A star spins once when granted or when its tier changes (previous tiers
   // tracked across renders; the star remounts via key={tier} down the tree).

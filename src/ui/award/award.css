@@ -47,6 +47,13 @@
   background-color: #f7ecca;
 }
 
+/* The medal shares the name line, so it eats into the width the name may use
+ * (scoreboard.css `--kr-name-budget`): 1.2em icon + 0.25em margin. Without
+ * this the name would keep the full budget and push past the column. */
+.award-view .team-name-line:has(.award-medal-slot) {
+  --kr-name-budget: calc(var(--kr-title-budget, 12em) - 1.45em);
+}
+
 .award-medal-slot {
   display: inline-flex;
   align-items: center;

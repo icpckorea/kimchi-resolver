@@ -85,6 +85,21 @@
   color: inherit;
 }
 
+/* Comma-separated lists need more room than the numeric boxes. */
+.publish-field--wide .publish-field-input {
+  width: 18em;
+  font-variant-numeric: normal;
+}
+
+/* Cross-site invitations unknown → ranks may be optimistic (spec §13). */
+.publish-controls-hint {
+  flex-basis: 100%;
+  margin: 0;
+  font-size: 0.8em;
+  line-height: 1.5;
+  opacity: 0.75;
+}
+
 .publish-field-input:focus {
   outline: none;
   border-color: #7db4ff;

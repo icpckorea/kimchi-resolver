@@ -37,7 +37,12 @@ describe('parseConfig — defaults', () => {
       excludeTeams: [],
       foreign: { ids: [], groups: [] },
       apac: { enabled: false },
-      publish: { enabled: false, siteScore: null, invitedScoreCutoff: null },
+      publish: {
+        enabled: false,
+        siteScore: null,
+        invitedScoreCutoff: null,
+        alreadyInvited: { teamIds: [], groups: [] },
+      },
       award: {
         mode: false,
         hideName: true,
@@ -119,7 +124,12 @@ describe('parseConfig — defaults', () => {
       excludeTeams: [],
       foreign: { ids: [], groups: [] },
       apac: { enabled: false },
-      publish: { enabled: false, siteScore: null, invitedScoreCutoff: null },
+      publish: {
+        enabled: false,
+        siteScore: null,
+        invitedScoreCutoff: null,
+        alreadyInvited: { teamIds: [], groups: [] },
+      },
       award: {
         mode: false,
         hideName: true,
@@ -151,6 +161,28 @@ describe('parseConfig — defaults', () => {
     expect(config.excludeTeams).toEqual(['3', '17']);
     expect(config.foreign.ids).toEqual(['2229881430', 'x9']);
     expect(config.award.revealOrder).toEqual(['2229881430', 'A']);
+  });
+
+  it('parses publish.alreadyInvited, stringifying numeric team ids (spec §13)', () => {
+    const { config, errors } = parseConfig({
+      publish: {
+        enabled: true,
+        alreadyInvited: { teamIds: [1024, 'x9'], groups: ['National Taiwan University'] },
+      },
+    });
+    expect(errors).toEqual([]);
+    expect(config.publish.alreadyInvited).toEqual({
+      teamIds: ['1024', 'x9'],
+      groups: ['National Taiwan University'],
+    });
+  });
+
+  it('falls back to empty alreadyInvited lists when the value is malformed', () => {
+    const { config, errors } = parseConfig({
+      publish: { alreadyInvited: { teamIds: 'nope', groups: [7] } },
+    });
+    expect(errors.length).toBeGreaterThan(0);
+    expect(config.publish.alreadyInvited).toEqual({ teamIds: [], groups: [] });
   });
 
   it('accepts contest-api auth and eventsWs', () => {

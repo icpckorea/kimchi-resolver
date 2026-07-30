@@ -106,6 +106,17 @@ export interface StoreDeps {
 
 export type BootStatus = 'idle' | 'booting' | 'ready' | 'error';
 
+/**
+ * Cross-site APAC invitations held in the store (spec §13 rule 3.1) — both
+ * lists are always present, unlike the optional core `AlreadyInvited` input.
+ */
+export interface AlreadyInvitedState {
+  /** Team ids of teams invited at another regional. */
+  teamIds: readonly string[];
+  /** School (group) names that already have an invited team. */
+  groups: readonly string[];
+}
+
 export interface AppState {
   status: BootStatus;
   mode: AppMode;
@@ -133,6 +144,11 @@ export interface AppState {
   /** Publish mode (spec §13). */
   siteScore: number | null;
   invitedCutoff: number | null;
+  /**
+   * Teams already invited to APAC elsewhere (spec §13 rule 3.1). Seeded from
+   * `config.publish.alreadyInvited`; editable in the publish controls.
+   */
+  alreadyInvited: AlreadyInvitedState;
 
   // -- actions --------------------------------------------------------------
   /** Full boot sequence. `search` is window.location.search (injected for tests). */
@@ -159,6 +175,8 @@ export interface AppState {
   dismissSystemMessage(id: number): void;
   setSiteScore(value: number | null): void;
   setInvitedCutoff(value: number | null): void;
+  /** Publish mode: cross-site APAC invitations (spec §13 rule 3.1). */
+  setAlreadyInvited(value: AlreadyInvitedState): void;
   /** Desktop-notification stream; returns the unsubscribe function. */
   subscribeTeamUpdated(listener: TeamUpdatedListener): () => void;
   /** Stop timers, close the WebSocket. Safe to call repeatedly. */
@@ -472,6 +490,7 @@ export function createAppStore(deps: StoreDeps = {}): AppStore {
       lastAppliedFlips: null,
       siteScore: null,
       invitedCutoff: null,
+      alreadyInvited: { teamIds: [], groups: [] },
 
       async boot(search: string): Promise<void> {
         if (get().status !== 'idle') return;
@@ -494,6 +513,10 @@ export function createAppStore(deps: StoreDeps = {}): AppStore {
           mode,
           siteScore: config.publish.siteScore,
           invitedCutoff: config.publish.invitedScoreCutoff,
+          alreadyInvited: {
+            teamIds: [...config.publish.alreadyInvited.teamIds],
+            groups: [...config.publish.alreadyInvited.groups],
+          },
         });
 
         // 4. Contest (fatal on failure).
@@ -644,6 +667,10 @@ export function createAppStore(deps: StoreDeps = {}): AppStore {
 
       setInvitedCutoff(value: number | null): void {
         set({ invitedCutoff: value });
+      },
+
+      setAlreadyInvited(value: AlreadyInvitedState): void {
+        set({ alreadyInvited: { teamIds: [...value.teamIds], groups: [...value.groups] } });
       },
 
       subscribeTeamUpdated(listener: TeamUpdatedListener): () => void {

@@ -188,12 +188,12 @@
   min-width: 0;
 }
 
+/* Never clipped, never ellipsized (spec §7: "팀명은 항상 완전히 표시").
+ * The desktop block below sizes the name down when it would not fit. */
 .team-name {
   font-size: 0.9em;
   font-weight: 400;
   white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
 }
 
 .team-group {
@@ -202,6 +202,53 @@
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
+}
+
+/* ---- text fit: the name is always shown in full (spec §7) -----------------
+ *
+ * Two mechanisms, in order:
+ *
+ * 1. The name column claims `--kr-title-budget` of the row and REFUSES to
+ *    shrink (`flex-shrink: 0`); the badge column is the flexible one and
+ *    gives its width back instead. Spare width on wide screens still lands
+ *    on the name column (it is the only item that grows).
+ * 2. A name wider than that budget scales its font down to fit rather than
+ *    truncating. `--kr-name-em` is the estimated text width in units of the
+ *    name's own font size, set inline by TeamRow / AwardView (util.ts
+ *    `nameFitStyle`); dividing the budget by it gives the font size that
+ *    makes the text exactly as wide as the budget. The 0.9em cap keeps
+ *    normal names at their designed size, the 0.5em floor keeps an absurd
+ *    name legible (0.5em still fits ~24em of text = ~45 latin characters).
+ *
+ * Row height is untouched: the name line is capped at its old 0.9em and can
+ * only get shorter, so the ~20-rows-per-screen scale above still holds.
+ * ≥769px only — the ≤768px compact layout (§14) wraps instead, see below. */
+@media (min-width: 769px) {
+  .team-title {
+    --kr-title-budget: 12em;
+    --kr-name-budget: var(--kr-title-budget);
+    /* grow into spare room; never shrink below the reserved budget */
+    flex: 1 0 calc(var(--kr-title-budget) + 0.4em);
+  }
+
+  .team-name {
+    font-size: clamp(0.5em, calc(var(--kr-name-budget) / var(--kr-name-em, 12)), 0.9em);
+  }
+
+  /* The school line gets the same treatment (a 51-character university name
+   * needs only a 0.44em font to fit); the ellipsis stays as a last resort. */
+  .team-group {
+    font-size: clamp(0.34em, calc(var(--kr-name-budget) / var(--kr-group-em, 24)), 0.5em);
+  }
+}
+
+/* Narrow desktops (769-1000px): balloons are hidden and the cells shrink
+ * (see below), but the row is still tight — spend less on the name so the
+ * badge column keeps a usable width. */
+@media (min-width: 769px) and (max-width: 1000px) {
+  .team-title {
+    --kr-title-budget: 9em;
+  }
 }
 
 /* Badge column (spec §7): a fixed-width slot of its own, so a badge can never
@@ -214,9 +261,11 @@
    * carousel viewport and the rise wrapper inherit the row font size, so this
    * custom property resolves identically on them. */
   --kr-badge-line: 0.72em;
-  flex: none;
-  width: 16em;
-  min-width: 0;
+  /* Shrinkable, unlike the name column: when the row runs out of room the
+   * badges give way so the team name still fits in full (spec §7). 16em is
+   * the designed width (two badges + a `+N` chip), 5em the hard floor. */
+  flex: 0 1 16em;
+  min-width: 5em;
   display: flex;
   align-items: center;
   overflow: hidden;
@@ -530,7 +579,8 @@
 
   /* Less horizontal room: the badge column gives its share back to the name. */
   .team-badge-col {
-    width: 9em;
+    flex-basis: 9em;
+    min-width: 3.5em;
   }
 
   .problem-result {
@@ -545,13 +595,26 @@
  * rendered exclusively on mobile. Desktop and award mode (which draws its own
  * rows and never renders Scoreboard) are untouched. */
 
+/* The compact row grows instead of clipping the name (see below), so its
+ * height is a minimum rather than a fixed 2em. */
 .scoreboard--mobile .team-row--compact {
   cursor: pointer;
   font-size: 2.2em;
+  height: auto;
+  min-height: 2em;
 }
 
 .scoreboard--mobile .team-row--compact .team-title {
   padding-right: 0.3em;
+}
+
+/* Mobile has no room to scale a long name down and stay legible, so the name
+ * wraps onto a second line instead — still shown in full, still no ellipsis
+ * (spec §7). Desktop keeps the single-line, font-scaled version above. */
+.scoreboard--mobile .team-name {
+  white-space: normal;
+  overflow-wrap: anywhere;
+  line-height: 1.2;
 }
 
 .team-score-compact {
@@ -634,11 +697,10 @@
   flex-direction: column;
 }
 
+/* Wraps rather than truncates — the modal is as tall as it needs to be. */
 .team-detail-name {
   font-weight: 600;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
+  overflow-wrap: anywhere;
 }
 
 .team-detail-group {

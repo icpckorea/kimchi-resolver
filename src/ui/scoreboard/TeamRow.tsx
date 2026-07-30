@@ -18,7 +18,7 @@ import { BOARD_MAX_BADGES, Badges } from './Badges';
 import { Balloons } from './Balloons';
 import { ProblemCell } from './ProblemCell';
 import { useCellFlip } from './useCellFlip';
-import { cls, ordinalSuffix, solvedSpineColor } from './util';
+import { cls, groupFitStyle, nameFitStyle, ordinalSuffix, solvedSpineColor } from './util';
 
 /** Derivation comes from the APAC rules (core); the row just renders it. */
 export interface ApacStarInfo {
@@ -234,11 +234,19 @@ export function TeamRow({
         <SchoolLogo key={logo} logo={logo} group={team.group} />
       ) : null}
 
+      {/* The name is never truncated (spec §7): the column reserves its width
+       * and these fit hints let the text scale down instead (util.ts). */}
       <div className="team-title">
         <div className="team-name-line">
-          <span className="team-name">{team.name}</span>
+          <span className="team-name" style={nameFitStyle(team.name)}>
+            {team.name}
+          </span>
         </div>
-        {config.showTeamGroup ? <div className="team-group">{team.group}</div> : null}
+        {config.showTeamGroup ? (
+          <div className="team-group" style={groupFitStyle(team.group)}>
+            {team.group}
+          </div>
+        ) : null}
       </div>
 
       {/* Badges live in their own fixed-width column so they can never cover

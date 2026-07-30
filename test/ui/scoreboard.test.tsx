@@ -20,7 +20,7 @@ import { LIVE_FLIP_MS } from '@ui/scoreboard/TeamRow';
 import { BOARD_MAX_BADGES, Badges, autoLabelText } from '@ui/scoreboard/Badges';
 import { ProblemCell } from '@ui/scoreboard/ProblemCell';
 import { useCellFlip } from '@ui/scoreboard/useCellFlip';
-import { solvedSpineColor, hsv2rgb, ordinalSuffix } from '@ui/scoreboard/util';
+import { estimateTextEm, solvedSpineColor, hsv2rgb, ordinalSuffix } from '@ui/scoreboard/util';
 
 // ---------------------------------------------------------------------------
 // Fixtures
@@ -354,6 +354,165 @@ describe('Badges', () => {
     );
     expect(container.querySelectorAll('.team-badge')).toHaveLength(2);
     expect(container.querySelector('.team-badge--overflow')).toBeNull();
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Team name overflow (spec §7: "팀명은 항상 완전히 표시")
+// ---------------------------------------------------------------------------
+
+describe('team names are never truncated', () => {
+  const CSS_PATH = resolve(__dirname, '../../src/ui/scoreboard/scoreboard.css');
+  const css = readFileSync(CSS_PATH, 'utf8');
+
+  /** Body of the (first) rule whose selector list is exactly `selector`. */
+  function ruleBody(selector: string): string {
+    const escaped = selector.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    const match = new RegExp(`(^|[};/])\\s*${escaped}\\s*\\{([^}]*)\\}`, 'm').exec(css);
+    expect(match, `rule ${selector} not found in scoreboard.css`).not.toBeNull();
+    return (match as RegExpExecArray)[2];
+  }
+
+  /** Number in front of `em` for `prop` inside `body`, or null. */
+  function em(body: string, prop: string): number | null {
+    const match = new RegExp(`${prop}\\s*:[^;]*?([\\d.]+)em`).exec(body);
+    return match === null ? null : Number(match[1]);
+  }
+
+  /** Brace-matched body of the `@media` block starting at `head`. */
+  function blockAt(head: number): string {
+    const open = css.indexOf('{', head);
+    let depth = 0;
+    for (let i = open; i < css.length; i += 1) {
+      if (css[i] === '{') depth += 1;
+      else if (css[i] === '}') {
+        depth -= 1;
+        if (depth === 0) return css.slice(open + 1, i);
+      }
+    }
+    throw new Error('unbalanced @media block');
+  }
+
+  /**
+   * The desktop text-fit block — the `@media (min-width: 769px)` block that
+   * sizes `.team-name` (not the board-scale one, nor the narrow-desktop
+   * budget override).
+   */
+  function desktopFitBlock(): string {
+    for (let at = css.indexOf('@media (min-width: 769px)'); at !== -1; ) {
+      const body = blockAt(at);
+      if (body.includes('.team-name')) return body;
+      at = css.indexOf('@media (min-width: 769px)', at + 1);
+    }
+    throw new Error('desktop .team-name fit block not found');
+  }
+
+  it('applies no ellipsis or clipping to .team-name in any rule', () => {
+    // Every rule that styles a team name — desktop, mobile and detail modal.
+    const nameRules = css
+      .split('}')
+      .filter((chunk) => /(^|[,\s])\.team-(name|detail-name)\b[^{]*\{/.test(chunk))
+      .map((chunk) => chunk.slice(chunk.indexOf('{') + 1));
+    expect(nameRules.length).toBeGreaterThan(0);
+    for (const body of nameRules) {
+      expect(body).not.toMatch(/text-overflow/);
+      expect(body).not.toMatch(/overflow\s*:\s*hidden/);
+    }
+  });
+
+  it('reserves an unshrinkable name column and lets the badge column give way', () => {
+    const title = ruleBody('.team-title');
+    const badge = ruleBody('.team-badge-col');
+    // Desktop: `flex: 1 0 calc(--kr-title-budget + 0.4em)` — grow, never shrink.
+    const desktopTitle = /\.team-title\s*\{([^}]*)\}/.exec(desktopFitBlock());
+    expect(desktopTitle).not.toBeNull();
+    expect((desktopTitle as RegExpExecArray)[1]).toMatch(/flex:\s*1\s+0\s+calc\(/);
+    // The name scales with the fit estimate instead of being clipped.
+    expect(desktopFitBlock()).toMatch(/font-size:\s*clamp\(.*--kr-name-em/);
+    expect(title).toMatch(/flex:\s*1/);
+    // The badge column is the flexible one (shrink 1) with a floor.
+    expect(badge).toMatch(/flex:\s*0\s+1\s+\d/);
+    expect(em(badge, 'min-width')).not.toBeNull();
+  });
+
+  it('fits the longest sample name at 1024x768 without shrinking below full size', () => {
+    const teams: Array<{ name: string }> = JSON.parse(
+      readFileSync(resolve(__dirname, '../..', 'public/sample/contest.json'), 'utf8'),
+    ).teams;
+    const problemCount = 13; // the sample contest
+
+    // --- board scale at 1024x768 (scoreboard.css ~20-rows rule) -------------
+    const base = (768 - 4.15 * 16) / 80; // .scoreboard font-size, px
+    const rowPx = 2 * base; // .team-row font-size
+    const rowWidthEm = (1024 - 2 * 12) / rowPx; // minus .app-main side padding
+
+    // --- fixed columns, in row-em (mirrors the rules above) ----------------
+    const fixed =
+      1.3 + // .solved-count (1em + 0.3em margin)
+      (2.1 + 0.15 + 2.4 * 0.8) + // .team-ranks (icpc + gap + domestic @0.8em)
+      1.2 + // .apac-slot
+      1.6 + // .team-flag (1.1em + 0.25em margins)
+      (0.8 + (problemCount - 1) * 0.45 + 0.2) + // .balloons, worst case: all solved
+      problemCount * 2.3 * 0.6 + // .results cells @0.6em
+      3.5; // .team-penalty
+    const pool = rowWidthEm - fixed; // left for .team-title + .team-badge-col
+
+    const budget = em(desktopFitBlock(), '--kr-title-budget') as number;
+    const badgeMin = em(ruleBody('.team-badge-col'), 'min-width') as number;
+    expect(budget).toBeGreaterThan(0);
+    expect(badgeMin).toBeGreaterThan(0);
+
+    // The name column's reserved width plus the badge floor still fit the row.
+    expect(pool).toBeGreaterThanOrEqual(budget + 0.4 + badgeMin);
+
+    // ...and every sample name fits that budget at the full 0.9em name size,
+    // so nothing is truncated *and* nothing has to shrink.
+    const widest = teams.reduce((a, b) => (estimateTextEm(a.name) > estimateTextEm(b.name) ? a : b));
+    expect(estimateTextEm(widest.name) * 0.9).toBeLessThanOrEqual(budget);
+  });
+
+  it('hands the fit estimate to CSS on every row', () => {
+    const contest = makeContest(
+      [makeTeam('t1', 'Just Reboot JungSangHwa', 'Pusan National University', false, 'KR')],
+      ['A'],
+    );
+    const snapshot = computeStandings(contest, []);
+    const { container } = renderBoard(contest, snapshot, cfg({ showTeamGroup: true }));
+
+    const name = container.querySelector('.team-name') as HTMLElement;
+    expect(name.textContent).toBe('Just Reboot JungSangHwa');
+    expect(name.style.getPropertyValue('--kr-name-em')).toBe(
+      String(estimateTextEm('Just Reboot JungSangHwa')),
+    );
+    // No inline truncation either.
+    expect(name.style.textOverflow).toBe('');
+    expect(name.style.overflow).toBe('');
+
+    const group = container.querySelector('.team-group') as HTMLElement;
+    expect(group.style.getPropertyValue('--kr-group-em')).toBe(
+      String(estimateTextEm('Pusan National University')),
+    );
+  });
+
+  it('scales an absurdly long name down instead of cutting it', () => {
+    // 12em budget / 0.5em floor ⇒ text up to 24em still fits on one line.
+    const long = 'A'.repeat(30);
+    expect(estimateTextEm(long)).toBeGreaterThan(12 / 0.9); // would overflow at full size
+    expect(estimateTextEm(long)).toBeLessThanOrEqual(12 / 0.5); // still fits at the floor
+  });
+
+  it('wraps rather than ellipsizes on mobile', () => {
+    const mobileName = /\.scoreboard--mobile \.team-name\s*\{([^}]*)\}/.exec(css);
+    expect(mobileName).not.toBeNull();
+    expect((mobileName as RegExpExecArray)[1]).toMatch(/white-space:\s*normal/);
+    expect((mobileName as RegExpExecArray)[1]).toMatch(/overflow-wrap:\s*anywhere/);
+  });
+
+  it('estimates text width per script: CJK is wider than latin, never zero', () => {
+    expect(estimateTextEm('')).toBe(1); // floor — CSS divides by this value
+    expect(estimateTextEm('nnnn')).toBeGreaterThan(estimateTextEm('nn'));
+    expect(estimateTextEm('한글팀이름')).toBe(5); // square glyphs
+    expect(estimateTextEm('iiiii')).toBeLessThan(estimateTextEm('MMMMM'));
   });
 });
 

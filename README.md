@@ -54,6 +54,7 @@ Runtime configuration lives in `public/config.json` (served as `config.json` nex
 | `publish.enabled` | `false` | boot into publish mode |
 | `publish.siteScore` | `null` | site score (publish gate; required for the board) |
 | `publish.invitedScoreCutoff` | `null` | invited score cutoff for the gold-star rule |
+| `publish.alreadyInvited.teamIds` / `.groups` | `[]` | teams/schools already invited at another regional (see APAC stars) |
 | `award.mode` | `false` | boot into award mode |
 | `award.hideName` | `true` | mask unrevealed teams as "Team {id}" |
 | `award.rankBegin` | `null` | fast-forward the ceremony to this rank |
@@ -74,13 +75,20 @@ With `apac.enabled`, award and publish modes mark APAC Championship advancement 
 - silver star — APAC championship 초대 가능
 - gold star — APAC championship 진출
 
-During the ceremony every schoolRank ≤ 3 team wears bronze. Once the final standings are known (ceremony fully revealed, or publish mode):
+During the ceremony every schoolRank ≤ 3 team wears bronze. Once the final standings are known (ceremony fully revealed, or publish mode), the **scored list** decides the colors. It is built like this (validated against the 58 published rows of 2025-26 Seoul at icpcapac.solved.ac/2026):
 
-- the champion (icpcRank 1) turns gold — World Finals direct entry;
-- the champion's other schoolmates with schoolRank ≤ 3 **keep bronze**, because the World Finals takes one team per school, so they are not invitation candidates;
-- every other school's schoolRank ≤ 3 teams turn silver.
+1. a school that **already has an invited team drops out entirely** — every one of its teams. The route does not matter: this regional's champion (auto-qualified) counts the same as a team invited at another regional. The invited team itself is still shown, but takes no rank slot;
+2. teams with **0 solved problems** are excluded;
+3. of what remains, each school keeps its **top 3** in ICPC standing order. `filteredRank` is the 1-based position in that list; foreign teams occupy slots normally, since the 3-per-school cap is per site.
 
-In publish mode a silver team is promoted to gold when `(filteredRank − 1) / siteScore ≤ invitedScoreCutoff`. `filteredRank` is the team's 1-based position in the candidate list — all schoolRank ≤ 3 teams in ICPC standing order, the champion and the champion's schoolmates included, since they still occupy rank slots. Bronze teams are never promoted.
+Star colors follow from it:
+
+- every **invited** team is gold — the champion, plus anyone listed in `publish.alreadyInvited`;
+- teams in the scored list are silver, and a silver team is promoted to gold when `(filteredRank − 1) / siteScore ≤ invitedScoreCutoff` (publish mode; both numbers required);
+- a team that is out of the running but still 학내 3등 이내 keeps bronze — the other teams of an already-invited school, and 0-solve teams. Bronze is never promoted;
+- schoolRank ≥ 4 teams get no star.
+
+"Already invited at another regional" cannot be derived from the contest data, so it comes from `publish.alreadyInvited` (`teamIds` for invited teams competing here, `groups` for the school names) and is editable in the publish controls. While both lists are empty only the champion's school drops out, so the ranks may be optimistic — the publish controls say so.
 
 ### URL parameters
 

@@ -20,7 +20,12 @@
   "excludeTeams": [],
   "foreign": { "ids": [], "groups": [] },
   "apac": { "enabled": true },
-  "publish": { "enabled": false, "siteScore": null, "invitedScoreCutoff": null },
+  "publish": {
+    "enabled": false,
+    "siteScore": null,
+    "invitedScoreCutoff": null,
+    "alreadyInvited": { "teamIds": [], "groups": [] }
+  },
   "award": {
     "mode": false,
     "hideName": true,

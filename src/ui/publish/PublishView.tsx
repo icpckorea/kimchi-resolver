@@ -6,15 +6,16 @@
  * - Gate: until a valid site score exists the board is replaced by an
  *   instruction panel ("site score를 입력하세요") plus the input form.
  * - APAC stars: computeApacStars in the 'final' phase with the champion
- *   taken from standings[0]; siteScore / invitedCutoff edits re-evaluate
- *   live. A star whose tier changed spins once (previous tiers are tracked
- *   in a ref; the star remounts via key={tier} so the animation replays).
+ *   taken from standings[0]; siteScore / invitedCutoff / alreadyInvited edits
+ *   re-evaluate live. A star whose tier changed spins once (previous tiers are
+ *   tracked in a ref; the star remounts via key={tier} so the animation
+ *   replays).
  */
 
 import { useEffect, useMemo, useRef, useState } from 'react';
 import type { Snapshot } from '@core/types';
 import { computeApacStars, type ApacStarTier } from '@core/apac';
-import { useAppStore } from '@store/appStore';
+import { useAppStore, type AlreadyInvitedState } from '@store/appStore';
 import { Scoreboard, type ApacStarInfo } from '@ui/scoreboard';
 import { PublishControls } from './PublishControls';
 import './publish.css';
@@ -52,6 +53,7 @@ function useApacStars(
   snapshot: Snapshot | null,
   siteScore: number | null,
   invitedCutoff: number | null,
+  alreadyInvited: AlreadyInvitedState,
 ): ApacStarState {
   const stars = useMemo(() => {
     if (snapshot === null) return new Map<string, ApacStarTier>();
@@ -60,8 +62,9 @@ function useApacStars(
       championTeamId: snapshot.standings[0]?.team.id ?? null,
       siteScore,
       invitedScoreCutoff: invitedCutoff,
+      alreadyInvited,
     });
-  }, [snapshot, siteScore, invitedCutoff]);
+  }, [snapshot, siteScore, invitedCutoff, alreadyInvited]);
 
   // Previous tiers live in a ref: comparing against them marks changed stars
   // as spinning, and the ref is advanced after commit.
@@ -95,6 +98,7 @@ export function PublishView({ manualLabels = null }: PublishViewProps) {
   const snapshot = useAppStore((s) => s.snapshot);
   const siteScore = useAppStore((s) => s.siteScore);
   const invitedCutoff = useAppStore((s) => s.invitedCutoff);
+  const alreadyInvited = useAppStore((s) => s.alreadyInvited);
   const config = useAppStore((s) => s.config);
   const clock = useClock();
 
@@ -102,7 +106,12 @@ export function PublishView({ manualLabels = null }: PublishViewProps) {
   // APAC stars are gated by config.apac.enabled in publish mode too
   // (spec §13: "config.apac.enabled로 on/off").
   const apacEnabled = config.apac.enabled;
-  const starState = useApacStars(gateOpen && apacEnabled ? snapshot : null, siteScore, invitedCutoff);
+  const starState = useApacStars(
+    gateOpen && apacEnabled ? snapshot : null,
+    siteScore,
+    invitedCutoff,
+    alreadyInvited,
+  );
 
   // Static board (spec §13): no row animation, no pagination slices; the
   // APAC star slot follows config.apac.enabled.

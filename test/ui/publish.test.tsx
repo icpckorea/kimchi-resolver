@@ -79,6 +79,8 @@ function seedStore(
     invitedCutoff?: number | null;
     /** Stars are gated by config.apac.enabled (spec §13); most tests want them on. */
     apacEnabled?: boolean;
+    /** Cross-site invitations (spec §13 rule 3.1). */
+    alreadyInvited?: { teamIds: string[]; groups: string[] };
   } = {},
 ) {
   appStore.setState({
@@ -89,6 +91,7 @@ function seedStore(
     config: { ...initialState.config, apac: { enabled: overrides.apacEnabled ?? true } },
     siteScore: overrides.siteScore ?? null,
     invitedCutoff: overrides.invitedCutoff ?? null,
+    alreadyInvited: overrides.alreadyInvited ?? { teamIds: [], groups: [] },
   });
 }
 
@@ -168,8 +171,8 @@ describe('PublishView APAC stars', () => {
     seedStore({ siteScore: 5 });
     render(<PublishView />);
     expect(starFill('x1')).toBe(FILL.gold); // champion — World Finals direct entry
-    // x2 shares school X with the champion. WF takes one team per school, so
-    // x2 is not an invitation candidate → stays bronze (spec §13 rule 2).
+    // x2 shares school X with the champion, whose school leaves the scored
+    // list entirely (spec §13 rule 3.1) → bronze, and never promoted.
     expect(starFill('x2')).toBe(FILL.bronze);
     expect(starFill('y1')).toBe(FILL.silver);
     expect(starFill('y2')).toBe(FILL.silver);
@@ -177,15 +180,15 @@ describe('PublishView APAC stars', () => {
   });
 
   it('promotes silver teams within the invited cutoff to gold (boundary ≤)', () => {
-    // filteredRank: x1 1, x2 2, y1 3, y2 4, z1 5 — champion and his schoolmate
-    // occupy slots 1 and 2 even though they are not promotion candidates.
-    // cutoff 1, siteScore 2 → invited iff (filteredRank − 1)/2 ≤ 1 ⇔ fr ≤ 3.
-    seedStore({ siteScore: 2, invitedCutoff: 1 });
+    // School X (the champion's) is out of the scored list, so the filtered
+    // ranks are y1 1, y2 2, z1 3. siteScore 2, cutoff 0.5 → invited iff
+    // (filteredRank − 1)/2 ≤ 0.5 ⇔ fr ≤ 2.
+    seedStore({ siteScore: 2, invitedCutoff: 0.5 });
     render(<PublishView />);
-    expect(starFill('y1')).toBe(FILL.gold); // fr 3 → (3−1)/2 = 1 ≤ 1
-    expect(starFill('y2')).toBe(FILL.silver); // fr 4 → 1.5 > 1
-    expect(starFill('z1')).toBe(FILL.silver); // fr 5 → 2 > 1
-    // Bronze is never promoted, even though x2 sits at fr 2.
+    expect(starFill('y1')).toBe(FILL.gold); // fr 1 → 0 ≤ 0.5
+    expect(starFill('y2')).toBe(FILL.gold); // fr 2 → 0.5 — exactly the cutoff
+    expect(starFill('z1')).toBe(FILL.silver); // fr 3 → 1 > 0.5
+    // Bronze is never promoted, and the champion is gold either way.
     expect(starFill('x2')).toBe(FILL.bronze);
     expect(starFill('x1')).toBe(FILL.gold);
   });
@@ -196,6 +199,28 @@ describe('PublishView APAC stars', () => {
     expect(starFill('y1')).toBe(FILL.silver);
     expect(starFill('y2')).toBe(FILL.silver);
     expect(starFill('x2')).toBe(FILL.bronze);
+  });
+
+  it('removes an already-invited school entirely and lifts everyone below it', () => {
+    // School Y is invited elsewhere → the scored list is just z1 (fr 1).
+    seedStore({
+      siteScore: 2,
+      invitedCutoff: 0,
+      alreadyInvited: { teamIds: [], groups: ['Y'] },
+    });
+    render(<PublishView />);
+    expect(starFill('y1')).toBe(FILL.bronze); // out of the running…
+    expect(starFill('y2')).toBe(FILL.bronze); // …both of them
+    expect(starFill('z1')).toBe(FILL.gold); // fr 1 → 0 ≤ 0
+    expect(starFill('x1')).toBe(FILL.gold); // champion
+  });
+
+  it('shows an already-invited team itself as gold and its schoolmates as bronze', () => {
+    seedStore({ siteScore: 2, invitedCutoff: null, alreadyInvited: { teamIds: ['y1'], groups: [] } });
+    render(<PublishView />);
+    expect(starFill('y1')).toBe(FILL.gold); // invited at another regional
+    expect(starFill('y2')).toBe(FILL.bronze); // schoolmate — out of the running
+    expect(starFill('z1')).toBe(FILL.silver); // now the only candidate
   });
 
   it('gives no star to schoolRank ≥ 4 teams (per-school cap)', () => {
@@ -257,13 +282,13 @@ describe('PublishView star spin', () => {
       appStore.setState({}); // no-op notify; effects already flushed by render
     });
     const cutoff = document.getElementById('publish-invited-cutoff') as HTMLInputElement;
-    fireEvent.change(cutoff, { target: { value: '1' } });
-    // y1 (filteredRank 3): silver → gold — must spin with the new tier.
+    fireEvent.change(cutoff, { target: { value: '0' } });
+    // y1 (filteredRank 1, score 0): silver → gold — must spin with the tier.
     const y1 = starOf('y1');
     expect(y1?.querySelector('polygon')?.getAttribute('fill')).toBe(FILL.gold);
     expect(y1?.classList.contains('kr-apac-star--spin')).toBe(true);
     // Unchanged tiers must not spin — including the champion's bronze
-    // schoolmate x2, which sits at filteredRank 2 but is never promoted.
+    // schoolmate x2, which is out of the scored list and never promoted.
     expect(starFill('x2')).toBe(FILL.bronze);
     expect(starOf('x2')?.classList.contains('kr-apac-star--spin')).toBe(false);
     expect(starOf('y2')?.classList.contains('kr-apac-star--spin')).toBe(false);
@@ -271,14 +296,34 @@ describe('PublishView star spin', () => {
   });
 
   it('spins again when the cutoff change demotes the star back to silver', () => {
-    seedStore({ siteScore: 2, invitedCutoff: 1 });
+    // y2 is filteredRank 2 → score 0.5: gold at cutoff 0.5, silver at 0.4.
+    seedStore({ siteScore: 2, invitedCutoff: 0.5 });
     render(<PublishView />);
     const cutoff = document.getElementById('publish-invited-cutoff') as HTMLInputElement;
-    fireEvent.change(cutoff, { target: { value: '0' } });
-    const y1 = starOf('y1');
-    expect(y1?.querySelector('polygon')?.getAttribute('fill')).toBe(FILL.silver);
-    expect(y1?.classList.contains('kr-apac-star--spin')).toBe(true);
-    expect(starOf('y2')?.classList.contains('kr-apac-star--spin')).toBe(false);
+    fireEvent.change(cutoff, { target: { value: '0.4' } });
+    const y2 = starOf('y2');
+    expect(y2?.querySelector('polygon')?.getAttribute('fill')).toBe(FILL.silver);
+    expect(y2?.classList.contains('kr-apac-star--spin')).toBe(true);
+    // y1 (score 0) is gold under both cutoffs → no spin.
+    expect(starFill('y1')).toBe(FILL.gold);
+    expect(starOf('y1')?.classList.contains('kr-apac-star--spin')).toBe(false);
+  });
+
+  it('spins the stars a cross-site invitation edit changes', () => {
+    seedStore({ siteScore: 2, invitedCutoff: null });
+    render(<PublishView />);
+    act(() => {
+      appStore.setState({}); // settle: previous tiers recorded
+    });
+    const groups = document.getElementById('publish-already-invited-groups') as HTMLInputElement;
+    fireEvent.change(groups, { target: { value: 'Y' } });
+    expect(appStore.getState().alreadyInvited.groups).toEqual(['Y']);
+    // School Y leaves the scored list: silver → bronze, spinning.
+    expect(starFill('y1')).toBe(FILL.bronze);
+    expect(starOf('y1')?.classList.contains('kr-apac-star--spin')).toBe(true);
+    // z1 stays silver (still a candidate, just at a better rank) → no spin.
+    expect(starFill('z1')).toBe(FILL.silver);
+    expect(starOf('z1')?.classList.contains('kr-apac-star--spin')).toBe(false);
   });
 });
 
@@ -322,5 +367,46 @@ describe('PublishControls', () => {
     expect(site.getAttribute('aria-invalid')).toBe('true');
     expect(site.getAttribute('aria-required')).toBe('true');
     expect(cutoff.getAttribute('aria-invalid')).toBeNull();
+  });
+
+  it('seeds the already-invited fields from the store as comma-separated text', () => {
+    seedStore({ alreadyInvited: { teamIds: ['t1', 't2'], groups: ['National Taiwan University'] } });
+    render(<PublishControls />);
+    expect(
+      (document.getElementById('publish-already-invited-teams') as HTMLInputElement).value,
+    ).toBe('t1, t2');
+    expect(
+      (document.getElementById('publish-already-invited-groups') as HTMLInputElement).value,
+    ).toBe('National Taiwan University');
+  });
+
+  it('commits the already-invited lists, trimming blanks', () => {
+    seedStore();
+    render(<PublishControls />);
+    const teams = document.getElementById('publish-already-invited-teams') as HTMLInputElement;
+    const groups = document.getElementById('publish-already-invited-groups') as HTMLInputElement;
+
+    fireEvent.change(teams, { target: { value: ' t1 ,, t2 ,' } });
+    expect(appStore.getState().alreadyInvited.teamIds).toEqual(['t1', 't2']);
+    fireEvent.change(groups, { target: { value: 'Kyoto U, NTU' } });
+    expect(appStore.getState().alreadyInvited).toEqual({
+      teamIds: ['t1', 't2'],
+      groups: ['Kyoto U', 'NTU'],
+    });
+
+    fireEvent.change(teams, { target: { value: '' } });
+    expect(appStore.getState().alreadyInvited.teamIds).toEqual([]);
+  });
+
+  it('warns that ranks may be optimistic while both already-invited lists are empty', () => {
+    seedStore();
+    render(<PublishControls />);
+    const hint = document.querySelector('.publish-controls-hint');
+    expect(hint?.textContent).toContain('낙관적');
+
+    // Naming one invited school removes the warning.
+    const groups = document.getElementById('publish-already-invited-groups') as HTMLInputElement;
+    fireEvent.change(groups, { target: { value: 'NTU' } });
+    expect(document.querySelector('.publish-controls-hint')).toBeNull();
   });
 });
