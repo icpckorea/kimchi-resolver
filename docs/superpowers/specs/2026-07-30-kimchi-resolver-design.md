@@ -266,9 +266,9 @@ URL 파라미터 (`URLSearchParams`로 파싱, config보다 우선): `r`, `time`
 
 1. **award 모드, 최종 순위 미공개 상태**: 모든 학교의 교내 1~3위(현재 스냅샷의 ICPC 랭킹 기준) 팀의 랭킹 칸 옆에 **동색 별**. 공개가 진행되어 교내 순위가 바뀌면 별도 이동(회전 애니메이션 재생).
 2. **award 모드에서 최종 순위 전부 공개 완료 시, 또는 publish 모드**:
-   - 대회 전체 1등 팀(챔피언)의 별을 **금색**으로 변경 (APAC 진출 확정).
-   - 그 외 모든 학교의 교내 1~3위 별(챔피언 학교의 2·3위 포함)을 **은색**으로 변경 — 학교당 3팀 캡 내 초청 후보.
-3. **publish 모드의 invited 판정**: **필터링된 순위**(교내 3위 이내 팀만 ICPC 순위 순으로 나열한 후보 리스트에서의 1-based 위치, 챔피언 포함)를 사용해 `(filteredRank − 1) / siteScore ≤ invited score cutoff`인 은색 별 팀을 **금색**으로 변경. raw ICPC 순위를 쓰지 않는 이유: APAC 규칙 D3은 학교당 4위 이하 팀을 제거한 순위로 score를 계산한다 (검증: 2025-26 Seoul, siteScore 68.98, bound 0.1838에서 JustRebootJungsanghwa(부산대)가 필터링 13위 → score 0.1740 ≤ 0.1838로 qualify — icpcapac.solved.ac/2026과 일치).
+   - 대회 전체 1등 팀(챔피언)의 별을 **금색**으로 변경 (World Finals 직행 = APAC 진출 확정).
+   - 챔피언 학교를 **제외한** 모든 학교의 교내 1~3위 별을 **은색**으로 변경 — 초청 후보. **챔피언 학교의 2·3위는 동색 유지** (WF는 학교당 1팀이므로 초청 대상 아님).
+3. **publish 모드의 invited 판정**: **필터링된 순위**(교내 3위 이내 팀 전원을 ICPC 순위 순으로 나열한 리스트에서의 1-based 위치 — 챔피언과 챔피언 학교 팀도 **순위 슬롯은 차지**)를 사용해 `(filteredRank − 1) / siteScore ≤ invited score cutoff`인 **은색 별** 팀을 **금색**으로 변경 (동색인 챔피언 학교 팀은 promotion 대상 아님). raw ICPC 순위를 쓰지 않는 이유: APAC 규칙 D3은 학교당 4위 이하 팀을 제거한 순위로 score를 계산한다 (검증: 2025-26 Seoul, siteScore 68.98, bound 0.1838에서 JustRebootJungsanghwa(부산대)가 필터링 13위 → score 0.1740 ≤ 0.1838로 qualify — icpcapac.solved.ac/2026과 일치).
 
 **publish 모드** (신설, 세 번째 앱 모드):
 
