@@ -79,7 +79,7 @@ kimchi-resolver/
 - **이중 랭킹**: 같은 comparator를 두 모집단에 적용 — `icpcRank`(전체), `domesticRank`(foreign 제외, foreign 팀은 null).
 - **교내 순위**: 각 group 내 icpcRank 순서로 `schoolRank`(1부터) 파생. APAC 별 판정(13장)의 입력. 별도 왕관 표시는 없음(취소됨).
 - **first solve**: 문제별 accepted run의 최소 시각. 동시각 복수 팀 모두 first solve (원본 동일).
-- **last solve**: 문제별 accepted run 중 가장 늦은 것 (분 → run id 순 비교, 단일 셀). **contest-last solve**: 대회 전체 accepted run 중 가장 늦은 것 (단일 셀). **contest-first solve**: 대회 전체 accepted run 중 가장 빠른 것 (분 → run id 순, 단일 셀). 모두 스냅샷 파생값 — 라이브 중에는 "현재까지" 기준으로 동작하고, award 모드에서 pending이 공개될 때마다 이동하며, 종료 후 확정된다.
+- **last solve**: 문제별 accepted run 중 가장 늦은 것 (분 → run id 순 비교, 단일 셀). **contest-last solve**: 대회 전체 accepted run 중 가장 늦은 것 (단일 셀). **contest-first solve**: 대회 전체 accepted run 중 가장 빠른 것 (분 → run id 순, 단일 셀). spectator에서는 "현재까지" 기준 파생값. **award 모드에서는 숨겨진 run까지 포함한 최종 데이터 기준으로 고정 계산** — 공개가 진행되어도 파랑/보라가 옮겨 다니지 않고, 해당 셀이 공개(accepted)된 뒤에야 표시된다. (같은 규칙이 last-solve 기반 자동 칭호에도 적용.)
 - **자동 칭호** (awards.json과 무관, 스냅샷에서 파생되어 팀 행 배지로 표시):
 
   | 조건 | 배지 텍스트 |
@@ -112,7 +112,7 @@ FeedSource(어댑터) → parse → diff → 표시 대기 큐 → tick 소비 �
 순수 state machine. 입력은 `advance()`와 `dismissSlide()` 두 가지. DOM 조회 없음.
 
 - **진입**: `config.award.mode` 또는 `?award=true`. 폴링·autoplay·WebSocket·header 비활성, animation 강제 on, pagination 강제 off (원본 동일).
-- **frozen 투영**: `r=` 컷오프 이후의 run은 결과를 숨긴 채 pending으로 반영하고, 실제 결과는 (팀×문제)별 공개 대기 큐에 보관. 원본의 monkey-patch 대신 "같은 run 목록의 두 projection"으로 구현.
+- **frozen 투영**: `r=` 컷오프 이후의 run이 하나라도 있는 셀은 **그 셀의 pre-freeze net run까지 포함해 통째로 마스킹**한다 — 보드에는 pending + 전체 시도 수로 표시되고, 공개 시 그 셀의 전체 net 이력을 처음부터 순서대로 flip 재생한다 (예: 컷오프 전 5회 실패 + 이후 3회 → 공개 때 8회 연속 재생). 컷오프 이후 run이 없는 셀은 그대로 노출. 원본의 monkey-patch 대신 "같은 run 목록의 두 projection"으로 구현.
 - **상태**: 팀별 단계(`hidden → focused → revealing → finalized`), 셀별 공개 대기 결과, 현재 슬라이드, blink 단계.
 - **진행 순서**: ICPC 랭킹 통합 최하위부터 (국내/외국 구분 없음). 다음 셀은 `award.revealOrder` 우선순위(문제 label 또는 id, 미지정 문제는 보드 순서), 같은 셀의 실패 시도들은 `advance()` 1회에 연속 재생 후 최종 결과.
 - **blink**: `award.focusBlinking = { minSolved, maxRank }` 충족 팀의 셀은 공개 전 blink 단계 1회 추가 (키 1회 소모).
@@ -160,10 +160,12 @@ FeedSource(어댑터) → parse → diff → 표시 대기 큐 → tick 소비 �
 
   우선순위(중복 시): 보라 > 파랑 > 연두 > 초록. 판정은 accepted run만 대상(4장 파생값).
 - **대회 첫 Yes 반짝임**: contest-first solve 셀은 연두 위에 추가 sparkle/shimmer 애니메이션(CSS keyframe, 은은한 반복 광택)을 얹는다.
-- **시상식 피날레 스포트라이트**: award 모드에서 전체 공개 대기 큐의 마지막 셀(대회의 최종 오픈)을 공개할 때 — 화면을 어둡게(오버레이) 하고 해당 셀을 스포트라이트 + 확대(scale)한 상태에서 flip을 재생하며, 최종 공개 5초 후 오버레이·확대를 원래대로 되돌린다. state machine이 남은 공개 수를 알고 있으므로 `remainingReveals === 1`일 때 트리거되는 파생 상태로 구현.
+- **시상식 피날레 스포트라이트**: award 모드에서 전체 공개 대기 큐의 마지막 셀(대회의 최종 오픈)을 공개할 때 — 화면을 어둡게(오버레이) 하고 해당 셀을 스포트라이트 + **확대(scale ≈ 1.9)** 한 상태에서, **아주 느린 flip**(일반 slowFlip의 4~5배, 약 3초 이상)을 재생한다. **flip이 도는 동안에도 진동(가차 shake)이 계속되고** 무지개 오버레이가 흐른다. 최종 공개 5초 후 오버레이·확대를 원래대로 되돌린다. state machine이 남은 공개 수를 알고 있으므로 `remainingReveals === 1`일 때 트리거되는 파생 상태로 구현.
 - **가차 이펙트 연출** (발동 조건은 6장): 마지막 flip 직전, 셀이 상하좌우로 약간씩 진동하며 미세한 각도로 회전 진동하고 반짝이는 sparkle을 재생. 공개(flip) 후에는 셀이 정확히 제자리로 복귀하고 진동·반짝임이 멈춘다. **시상식 최종 공개 셀인 경우 얇은 sparkle 대신 셀 전체를 덮는 무지개 그라데이션이 연속으로 흐르는(hue가 순환하며 이동) 오버레이를 재생** — 진동이 멈출 때까지 계속 흐르고, 피날레 스포트라이트와 중첩 적용.
 - **애셋 현대화**: 원본 PNG 아이콘(헤더 버튼, 메달/수상 아이콘, 국기)을 전부 SVG로 교체 — 헤더·별은 MIT 아이콘 세트(예: Lucide), 국기는 MIT SVG 국기 세트(예: flag-icons/circle-flags)에서 필요한 국가만 번들, 메달류는 SVG로 제작/선별. 이모지 사용 금지.
-- **풍선 SVG 틴팅**: 풍선은 PNG 19장 대신 SVG 1장. 본체 fill을 CSS 변수(`--balloon-color`)로 받아 문제의 `color` 값(named color, hex 모두)을 그대로 주입. 외곽선·하이라이트는 고정이라 white/ivory 같은 밝은 색도 식별 가능. 임의 색상 코드 지원으로 "풍선 색상표에 없는 색" 문제가 사라진다.
+- **풍선 SVG 틴팅**: 풍선은 PNG 19장 대신 SVG 1장. 본체 fill을 CSS 변수(`--balloon-color`)로 받아 문제의 `color` 값(named color, hex 모두)을 그대로 주입. 외곽선·하이라이트는 고정이라 white/ivory 같은 밝은 색도 식별 가능. 임의 색상 코드 지원으로 "풍선 색상표에 없는 색" 문제가 사라진다. **꼬리(끈) 없이 풍선 본체만** 그린다.
+- **보드 폭/스케일**: 4:3 프로젝터 발표 기준. 보드는 화면 폭을 꽉 채우고(고정 1024px 중앙 정렬 폐지), 행 높이를 뷰포트 기준으로 스케일해 **화면에 약 20팀**이 보이게 한다 (header 제외 가용 높이 / 20, vh 기반 font-size, 데스크톱 한정 — 모바일 규칙은 14장).
+- **태극기**: KR 국기 SVG는 건곤감리 4괘와 회전된 태극을 포함한 제대로 된 태극기로 그린다 (단순화된 원 2색 금지).
 - **검색**(100ms debounce, 팀명+소속), **follow**(`t=`, sticky 고정 — 모던 브라우저 전제로 분기 제거), **pagination**(`paginationSize`).
 - **Dashboard**: 최근 judge 이벤트 피드, accepted 필터, `maxNotifications` 캡(정확히 N개, sentinel 중복 버그 미이식), 표시 상태 localStorage 유지.
 - **Desktop notification**: 표준 Notification API. accepted run만, 7초 auto-close, 권한 요청 2단계 플로우 유지, 원본의 `cancel()` 버그 미이식.
@@ -252,13 +254,15 @@ URL 파라미터 (`URLSearchParams`로 파싱, config보다 우선): `r`, `time`
 
 **전제**: 대회가 종료된 상황(award 모드 또는 publish 모드)에서만 동작. `config.apac.enabled`로 on/off.
 
+**별 의미**: 동색 = 학내 3등 이내, 은색 = APAC championship **초대 가능**(후보), 금색 = APAC championship **진출**. 툴팁·범례·README도 이 문구를 사용한다.
+
 **별 아이콘 규칙** (별 부여·색상 변경 시 항상 별이 한 바퀴 회전하는 애니메이션 포함):
 
 1. **award 모드, 최종 순위 미공개 상태**: 모든 학교의 교내 1~3위(현재 스냅샷의 ICPC 랭킹 기준) 팀의 랭킹 칸 옆에 **동색 별**. 공개가 진행되어 교내 순위가 바뀌면 별도 이동(회전 애니메이션 재생).
 2. **award 모드에서 최종 순위 전부 공개 완료 시, 또는 publish 모드**:
-   - 대회 전체 1등 팀의 별을 **금색**으로 변경.
-   - 1등 팀이 속하지 않은 모든 학교의 교내 1~3위 별을 **은색**으로 변경. (1등 팀 학교의 나머지 팀은 동색 유지.)
-3. **publish 모드의 invited 판정**: 은색 별 팀 중 `(ICPC 최종 rank − 1) / siteScore ≤ invited score cutoff`인 팀의 별을 **금색**으로 변경.
+   - 대회 전체 1등 팀(챔피언)의 별을 **금색**으로 변경 (APAC 진출 확정).
+   - 그 외 모든 학교의 교내 1~3위 별(챔피언 학교의 2·3위 포함)을 **은색**으로 변경 — 학교당 3팀 캡 내 초청 후보.
+3. **publish 모드의 invited 판정**: **필터링된 순위**(교내 3위 이내 팀만 ICPC 순위 순으로 나열한 후보 리스트에서의 1-based 위치, 챔피언 포함)를 사용해 `(filteredRank − 1) / siteScore ≤ invited score cutoff`인 은색 별 팀을 **금색**으로 변경. raw ICPC 순위를 쓰지 않는 이유: APAC 규칙 D3은 학교당 4위 이하 팀을 제거한 순위로 score를 계산한다 (검증: 2025-26 Seoul, siteScore 68.98, bound 0.1838에서 JustRebootJungsanghwa(부산대)가 필터링 13위 → score 0.1740 ≤ 0.1838로 qualify — icpcapac.solved.ac/2026과 일치).
 
 **publish 모드** (신설, 세 번째 앱 모드):
 
