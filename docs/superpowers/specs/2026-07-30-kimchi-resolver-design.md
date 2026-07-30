@@ -134,8 +134,8 @@ FeedSource(어댑터) → parse → diff → 표시 대기 큐 → tick 소비 �
 - **키 매핑**: Enter/ArrowRight/Semicolon/**PageDown** → `advance()`, Escape → `dismissSlide()`, PageUp → 무동작. `KeyboardEvent.key` 기준. **슬라이드가 떠 있는 동안 advance 키를 누르면 그 입력은 슬라이드 닫기로 소비된다** (프로젝터 리모컨에 Esc가 없음 — PageDown만으로 시상식 전체 진행 가능해야 함). 닫기 1회 + 다음 진행 1회의 2단계 구조는 유지되어 오조작 방지 효과는 그대로.
 - **animationSpeeds**: `[{ minSolved, fastFlip, slowFlip, moveUpMsPerRow }]` — solved 수가 `minSolved` 이상인 첫 항목 매칭 (원본의 "내림차순 정렬 필수" 함정 제거, 스키마 검증으로 정렬 무관).
 - **가차 이펙트**: 셀 공개 시 그 셀의 시도 횟수(net runs)가 `gachaEffectRequirement`(기본 8) 이상이거나 시상식 최종 공개(`remainingReveals === 1`)인 경우 —
-  - 최종 결과가 **Yes**면 마지막 flip 직전에 무조건 가차 이펙트 발동.
-  - 최종 결과가 **No**면 `gachaEffectForNoRatio`%(기본 30) 확률로 발동 (페이크 연출).
+  - **시상식 최종 공개(피날레) 셀은 결과와 무관하게 100% 발동** (§7 피날레 6단계 시퀀스의 일부).
+  - 그 외: 최종 결과가 **Yes**면 마지막 flip 직전에 무조건 발동, **No**면 `gachaEffectForNoRatio`%(기본 30) 확률로 발동 (페이크 연출).
   - 발동 여부는 state machine이 결정해 reveal 상태에 플래그로 포함. 확률 판정의 RNG는 주입 가능하게 하여 테스트에서 결정적으로 재현.
 - 시상식 중에도 두 랭킹 동시 노출.
 
