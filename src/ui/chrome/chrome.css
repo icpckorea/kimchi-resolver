@@ -1,0 +1,363 @@
+/*
+ * Chrome styles: fixed header, events dashboard, system message toasts.
+ * Em-based sizing throughout (spec §7) to reproduce the original spotboard
+ * look-and-feel: dark fixed header bar with icon buttons, 16em right-hand
+ * events panel (original: 256px), viewport-gated at 1300px.
+ */
+
+/* ------------------------------------------------------------------ header */
+
+.kr-header {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  z-index: 100;
+  display: flex;
+  align-items: center;
+  gap: 0.75em;
+  height: 2.6em;
+  padding: 0 0.75em;
+  background: #20242a;
+  color: #e8eaed;
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.35);
+  font-size: 1em;
+  line-height: 1;
+  user-select: none;
+}
+
+.kr-header__title {
+  margin: 0;
+  font-size: 1.05em;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  gap: 0.5em;
+}
+
+/* Distinct "no more update" state: the standings are final. */
+.kr-header__title--final {
+  color: #ffd75e;
+}
+
+.kr-header__final-chip {
+  font-size: 0.6em;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: #20242a;
+  background: #ffd75e;
+  border-radius: 0.8em;
+  padding: 0.25em 0.7em;
+}
+
+.kr-header__spacer {
+  flex: 1 1 auto;
+}
+
+.kr-header__actions {
+  display: flex;
+  align-items: center;
+  gap: 0.25em;
+}
+
+.kr-hbtn {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 2em;
+  height: 2em;
+  padding: 0;
+  border: 0;
+  border-radius: 0.35em;
+  background: transparent;
+  color: #aeb4bd;
+  cursor: pointer;
+  transition: color 120ms ease, background-color 120ms ease;
+}
+
+.kr-hbtn:hover:not(:disabled) {
+  color: #ffffff;
+  background: rgba(255, 255, 255, 0.09);
+}
+
+.kr-hbtn:disabled {
+  opacity: 0.35;
+  cursor: default;
+}
+
+.kr-hbtn--on {
+  color: #7ee787;
+}
+
+/* Pending-run count on the update button. */
+.kr-hbtn__badge {
+  position: absolute;
+  top: -0.25em;
+  right: -0.35em;
+  min-width: 1.5em;
+  padding: 0.1em 0.35em;
+  border-radius: 1em;
+  background: #e5534b;
+  color: #ffffff;
+  font-size: 0.6em;
+  font-weight: 700;
+  text-align: center;
+  pointer-events: none;
+}
+
+/* Update icon spins while a fetch is in flight. */
+.kr-spin {
+  animation: kr-spin 0.8s linear infinite;
+}
+
+@keyframes kr-spin {
+  from {
+    transform: rotate(0deg);
+  }
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+.kr-header__search {
+  display: flex;
+  align-items: center;
+  gap: 0.4em;
+  padding: 0.25em 0.7em;
+  border-radius: 1em;
+  background: rgba(255, 255, 255, 0.08);
+  color: #aeb4bd;
+}
+
+.kr-header__search:focus-within {
+  background: rgba(255, 255, 255, 0.14);
+  color: #ffffff;
+}
+
+.kr-header__search input {
+  width: 9em;
+  border: 0;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  outline: none;
+}
+
+.kr-header__search input::placeholder {
+  color: #7d848d;
+}
+
+.kr-header__pages {
+  display: flex;
+  align-items: center;
+  gap: 0.2em;
+  white-space: nowrap;
+}
+
+.kr-header__page-label {
+  font-size: 0.85em;
+  color: #c8cdd3;
+  min-width: 5em;
+  text-align: center;
+}
+
+.kr-header__clock {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4em;
+  color: #c8cdd3;
+}
+
+.kr-header__clock-text {
+  font-size: 1.05em;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  letter-spacing: 0.05em;
+}
+
+/* --------------------------------------------------------------- dashboard */
+
+.kr-dashboard {
+  position: fixed;
+  top: 2.6em;
+  right: 0;
+  bottom: 0;
+  z-index: 90;
+  width: 16em; /* original: 256px */
+  display: flex;
+  flex-direction: column;
+  background: rgba(24, 26, 30, 0.94);
+  color: #dfe3e8;
+  box-shadow: -1px 0 4px rgba(0, 0, 0, 0.3);
+}
+
+/* Original behavior: no dashboard below 1300px viewports. */
+@media (max-width: 1299px) {
+  .kr-dashboard {
+    display: none;
+  }
+}
+
+.kr-dashboard__head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0.5em 0.75em;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+}
+
+.kr-dashboard__title {
+  margin: 0;
+  font-size: 0.85em;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.1em;
+  color: #9aa0a6;
+}
+
+.kr-dashboard__filter {
+  border: 1px solid rgba(255, 255, 255, 0.25);
+  border-radius: 1em;
+  padding: 0.15em 0.7em;
+  background: transparent;
+  color: #aeb4bd;
+  font-size: 0.75em;
+  cursor: pointer;
+  transition: color 120ms ease, border-color 120ms ease;
+}
+
+.kr-dashboard__filter--on {
+  color: #7ee787;
+  border-color: #7ee787;
+}
+
+.kr-dashboard__list {
+  flex: 1 1 auto;
+  margin: 0;
+  padding: 0.4em 0;
+  list-style: none;
+  overflow-y: auto;
+}
+
+.kr-dash-item {
+  display: flex;
+  align-items: center;
+  gap: 0.55em;
+  padding: 0.35em 0.75em;
+  font-size: 0.85em;
+  line-height: 1.3;
+  border-left: 0.25em solid transparent;
+  animation: kr-dash-slide-in 250ms ease-out;
+}
+
+.kr-dash-item__balloon {
+  flex-shrink: 0;
+}
+
+.kr-dash-item__text {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.kr-dash-item--accepted {
+  border-left-color: #4caf50;
+  color: #b8ecb0;
+}
+
+.kr-dash-item--pending {
+  border-left-color: #e3c15a;
+  color: #efe0ac;
+}
+
+.kr-dash-item--failed {
+  border-left-color: #e5534b;
+  color: #f2b8b4;
+}
+
+/* New entries slide in from the right; in-place verdict updates keep their
+   li mounted (stable run-id key) and therefore do not replay this. */
+@keyframes kr-dash-slide-in {
+  from {
+    transform: translateX(100%);
+    opacity: 0;
+  }
+  to {
+    transform: translateX(0);
+    opacity: 1;
+  }
+}
+
+/* --------------------------------------------------------- system messages */
+
+.kr-system-messages {
+  position: fixed;
+  top: 3.1em;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 200;
+  display: flex;
+  flex-direction: column;
+  gap: 0.4em;
+  max-width: 36em;
+  width: calc(100% - 2em);
+}
+
+.kr-sysmsg {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.6em;
+  padding: 0.55em 0.75em;
+  border-radius: 0.35em;
+  border-left: 0.3em solid;
+  background: #2b2f36;
+  color: #e8eaed;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.4);
+  font-size: 0.85em;
+  line-height: 1.35;
+  animation: kr-dash-slide-in 200ms ease-out;
+}
+
+.kr-sysmsg--info {
+  border-left-color: #58a6ff;
+}
+
+.kr-sysmsg--warning {
+  border-left-color: #e3c15a;
+}
+
+.kr-sysmsg--error {
+  border-left-color: #e5534b;
+}
+
+.kr-sysmsg__text {
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.kr-sysmsg__close {
+  flex-shrink: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 1.5em;
+  height: 1.5em;
+  padding: 0;
+  border: 0;
+  border-radius: 0.25em;
+  background: transparent;
+  color: #9aa0a6;
+  cursor: pointer;
+}
+
+.kr-sysmsg__close:hover {
+  color: #ffffff;
+  background: rgba(255, 255, 255, 0.1);
+}

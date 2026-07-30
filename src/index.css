@@ -1,0 +1,102 @@
+/*
+ * Global page styles: minimal reset, Open Sans-ish system font stack, page
+ * background and the wrapper layout mirroring the original spotboard —
+ * fixed 2.6em header offset, centered 1024px board, and a right-hand gutter
+ * for the 16em events dashboard on viewports ≥ 1300px (chrome.css hides the
+ * dashboard below that).
+ */
+
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+
+html,
+body {
+  margin: 0;
+  padding: 0;
+}
+
+body {
+  font-family:
+    'Open Sans',
+    system-ui,
+    -apple-system,
+    'Segoe UI',
+    Roboto,
+    'Helvetica Neue',
+    Arial,
+    sans-serif;
+  font-size: 16px;
+  line-height: 1.4;
+  background: #e9ebee; /* original-ish light gray page behind the white board */
+  color: #1c1c1c;
+  -webkit-font-smoothing: antialiased;
+}
+
+button,
+input,
+select,
+textarea {
+  font: inherit;
+}
+
+img,
+svg {
+  vertical-align: middle;
+}
+
+#root,
+.app-shell {
+  min-height: 100vh;
+}
+
+/* ---- wrapper layout ------------------------------------------------------ */
+
+/* Content clears the fixed 2.6em header (chrome.css) plus breathing room. */
+.app-main {
+  padding: 3.4rem 0.75rem 2.5rem;
+}
+
+/* Award mode has no header — the ceremony board starts near the top. */
+.app-main--award {
+  padding-top: 0.75rem;
+}
+
+/* Board width mirrors the original 1024px wrapper, centered. */
+.board-wrap {
+  max-width: 64rem; /* 1024px */
+  margin: 0 auto;
+  background: #fff;
+  border-radius: 4px;
+  box-shadow: 0 1px 6px rgba(0, 0, 0, 0.14);
+  overflow: hidden;
+}
+
+/* ≥1300px: reserve a gutter for the fixed 16em (256px) events dashboard so
+ * the centered board never sits underneath it. Below 1300px the dashboard is
+ * display:none (chrome.css) and no gutter is needed. */
+@media (min-width: 1300px) {
+  .app-main--with-dashboard {
+    padding-right: 17.25rem;
+  }
+}
+
+/* ---- boot states --------------------------------------------------------- */
+
+.boot-panel {
+  max-width: 30rem;
+  margin: 6rem auto 0;
+  padding: 1.5rem;
+  text-align: center;
+  color: #5f6368;
+  background: #fff;
+  border-radius: 6px;
+  box-shadow: 0 1px 6px rgba(0, 0, 0, 0.12);
+}
+
+.boot-panel--error {
+  color: #a03026;
+  border-left: 4px solid #d9534f;
+}

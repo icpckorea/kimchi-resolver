@@ -1,0 +1,625 @@
+/**
+ * App store (zustand) — the bridge between the framework-free core and React
+ * (spec §5, §6, §13).
+ *
+ * Responsibilities:
+ * - boot(): config.json → parseConfig → URL overrides → orgs.json → mode
+ *   selection → FeedSource construction → contest load → asset check →
+ *   initial fetch/ingest → replay (r= / time=) → award machine construction.
+ * - Spectator loop: poll timer (autoRefreshInterval), autoplay tick
+ *   (autoPlayDelay, one run per tick), manual pollNow() with timer reset,
+ *   WebSocket poll-nudge ("doorbell", no reconnect).
+ * - Publish mode: everything applied at boot, no timers, siteScore /
+ *   invitedCutoff state.
+ * - Derived state: memoized Snapshot (recomputed only when applied runs
+ *   change), pendingCount, contestTimeSec, noMoreUpdate, system messages,
+ *   recent judge events (dashboard, capped at maxNotifications) plus a
+ *   teamUpdated-style listener stream for desktop notifications.
+ *
+ * Headless-testable: fetch, timers (scheduler), RNG and the WebSocket
+ * factory are all injectable via {@link createAppStore}.
+ */
+
+import { createStore, type StoreApi } from 'zustand/vanilla';
+import { useStore } from 'zustand';
+
+import type {
+  AppMode,
+  AwardMachine,
+  AwardStepResult,
+  Contest,
+  OrgsIndex,
+  Rng,
+  Run,
+  RunFeeder,
+  FeedSource,
+  Snapshot,
+} from '@core/types';
+import {
+  applyUrlOverrides,
+  parseConfig,
+  selectMode,
+  defaultConfig,
+  type AppConfig,
+  type ResolvedConfig,
+} from '@core/config';
+import { createRunFeeder } from '@core/feeder';
+import { computeStandings } from '@core/standings';
+import { createAwardMachine } from '@core/award';
+import { createSpotboardSource } from '@core/ingest/spotboard';
+import { createContestApiSource } from '@core/ingest/contest-api';
+
+// ---------------------------------------------------------------------------
+// Public types
+// ---------------------------------------------------------------------------
+
+export type SystemMessageLevel = 'info' | 'warning' | 'error';
+
+export interface SystemMessage {
+  id: number;
+  level: SystemMessageLevel;
+  text: string;
+}
+
+/** One applied (displayed) run — the dashboard feed unit. Newest first. */
+export interface JudgeEvent {
+  /** Monotonic id; stable React key even when a run id is re-fed. */
+  eventId: number;
+  run: Run;
+}
+
+export type TeamUpdatedListener = (event: JudgeEvent) => void;
+
+/** Injectable timer pair; defaults to the global setInterval/clearInterval. */
+export interface Scheduler {
+  setInterval(handler: () => void, ms: number): unknown;
+  clearInterval(handle: unknown): void;
+}
+
+/** Minimal WebSocket surface the store needs (doorbell only). */
+export interface WebSocketLike {
+  onmessage: ((event: unknown) => void) | null;
+  onerror: ((event: unknown) => void) | null;
+  onclose: ((event: unknown) => void) | null;
+  close(): void;
+}
+
+export type WebSocketFactory = (url: string) => WebSocketLike;
+
+export interface StoreDeps {
+  fetchImpl?: typeof fetch;
+  scheduler?: Scheduler;
+  rng?: Rng;
+  createWebSocket?: WebSocketFactory;
+}
+
+export type BootStatus = 'idle' | 'booting' | 'ready' | 'error';
+
+export interface AppState {
+  status: BootStatus;
+  mode: AppMode;
+  config: ResolvedConfig;
+  orgs: OrgsIndex;
+  contest: Contest | null;
+  /** Memoized standings; award mode mirrors awardMachine.snapshot. */
+  snapshot: Snapshot | null;
+  systemMessages: SystemMessage[];
+  /** Feeder queue length (update-button badge). */
+  pendingCount: number;
+  /** Applied-run count (mostly for tests/diagnostics). */
+  appliedRunCount: number;
+  contestTimeSec: number | null;
+  noMoreUpdate: boolean;
+  /** Autoplay on/off (spectator). */
+  playing: boolean;
+  awardMachine: AwardMachine | null;
+  /** Bumped after every advance/dismiss so React re-renders machine reads. */
+  awardTick: number;
+  /** Recent applied runs, newest first, capped at config.maxNotifications. */
+  recentEvents: JudgeEvent[];
+  /** Publish mode (spec §13). */
+  siteScore: number | null;
+  invitedCutoff: number | null;
+
+  // -- actions --------------------------------------------------------------
+  /** Full boot sequence. `search` is window.location.search (injected for tests). */
+  boot(search: string): Promise<void>;
+  /** Manual/doorbell poll: fetchRuns+ingest now and reset the poll timer. */
+  pollNow(): Promise<void>;
+  /** Apply exactly one queued run (feed-one button). */
+  feedOne(): void;
+  /** Apply everything queued (feed-all button). */
+  feedAllQueued(): void;
+  setPlaying(playing: boolean): void;
+  togglePlaying(): void;
+  /** Award keypress. Returns null outside award mode. */
+  awardAdvance(): AwardStepResult | null;
+  awardDismiss(): void;
+  addSystemMessage(level: SystemMessageLevel, text: string): void;
+  dismissSystemMessage(id: number): void;
+  setSiteScore(value: number | null): void;
+  setInvitedCutoff(value: number | null): void;
+  /** Desktop-notification stream; returns the unsubscribe function. */
+  subscribeTeamUpdated(listener: TeamUpdatedListener): () => void;
+  /** Stop timers, close the WebSocket. Safe to call repeatedly. */
+  dispose(): void;
+}
+
+export type AppStore = StoreApi<AppState>;
+
+// ---------------------------------------------------------------------------
+// Defaults
+// ---------------------------------------------------------------------------
+
+const defaultScheduler: Scheduler = {
+  setInterval: (handler, ms) => setInterval(handler, ms),
+  clearInterval: (handle) => clearInterval(handle as Parameters<typeof clearInterval>[0]),
+};
+
+const defaultWebSocketFactory: WebSocketFactory = (url) =>
+  new WebSocket(url) as unknown as WebSocketLike;
+
+function initialResolvedConfig(): ResolvedConfig {
+  return {
+    ...defaultConfig(),
+    replayRunId: null,
+    replayTimeMinutes: null,
+    searchQuery: null,
+    followTeamId: null,
+  };
+}
+
+function errorText(err: unknown): string {
+  return err instanceof Error ? err.message : String(err);
+}
+
+// ---------------------------------------------------------------------------
+// Store factory
+// ---------------------------------------------------------------------------
+
+export function createAppStore(deps: StoreDeps = {}): AppStore {
+  const fetchImpl: typeof fetch = deps.fetchImpl ?? ((...args) => fetch(...args));
+  const scheduler = deps.scheduler ?? defaultScheduler;
+  const rng: Rng = deps.rng ?? Math.random;
+  const wsFactory = deps.createWebSocket ?? defaultWebSocketFactory;
+
+  // Non-reactive internals (never rendered directly).
+  let source: FeedSource | null = null;
+  let feeder: RunFeeder | null = null;
+  let pollTimer: unknown = null;
+  let autoplayTimer: unknown = null;
+  let ws: WebSocketLike | null = null;
+  let wsErrorReported = false;
+  let pollErrorReported = false;
+  let pollPromise: Promise<void> | null = null;
+  let nextMessageId = 1;
+  let nextEventId = 1;
+  const teamUpdatedListeners = new Set<TeamUpdatedListener>();
+
+  return createStore<AppState>()((set, get) => {
+    // -- system messages ------------------------------------------------------
+    function addMessage(level: SystemMessageLevel, text: string): void {
+      const message: SystemMessage = { id: nextMessageId++, level, text };
+      set((state) => ({ systemMessages: [...state.systemMessages, message] }));
+    }
+
+    // -- feeder-derived state -------------------------------------------------
+    /** Mirrors cheap feeder metadata (no standings recompute). */
+    function syncFeederMeta(): void {
+      if (feeder === null) return;
+      set({
+        pendingCount: feeder.queueLength,
+        appliedRunCount: feeder.appliedRuns.length,
+        contestTimeSec: feeder.contestTimeSec,
+        noMoreUpdate: feeder.noMoreUpdate,
+      });
+      if (feeder.noMoreUpdate) stopLiveFeeds();
+    }
+
+    /** Recompute the snapshot — call ONLY after the applied-run set changed. */
+    function recomputeSnapshot(): void {
+      const contest = get().contest;
+      if (contest === null || feeder === null) return;
+      set({ snapshot: computeStandings(contest, feeder.appliedRuns) });
+    }
+
+    /** Record applied runs for the dashboard and notify listeners. */
+    function recordApplied(runs: Run[], emit: boolean): void {
+      if (runs.length === 0) return;
+      const cap = get().config.maxNotifications;
+      const events = runs.map((run): JudgeEvent => ({ eventId: nextEventId++, run }));
+      set((state) => ({
+        // Newest first.
+        recentEvents: [...events].reverse().concat(state.recentEvents).slice(0, cap),
+      }));
+      if (emit && get().mode !== 'award') {
+        for (const event of events) {
+          for (const listener of teamUpdatedListeners) listener(event);
+        }
+      }
+    }
+
+    function applyRuns(runs: Run[], emit: boolean): void {
+      if (runs.length > 0) {
+        recordApplied(runs, emit);
+        recomputeSnapshot();
+      }
+      syncFeederMeta();
+    }
+
+    // -- timers ---------------------------------------------------------------
+    function stopPollTimer(): void {
+      if (pollTimer !== null) {
+        scheduler.clearInterval(pollTimer);
+        pollTimer = null;
+      }
+    }
+
+    function startPollTimer(): void {
+      stopPollTimer();
+      if (get().noMoreUpdate) return;
+      pollTimer = scheduler.setInterval(() => {
+        void pollOnce();
+      }, get().config.autoRefreshInterval);
+    }
+
+    function stopAutoplayTimer(): void {
+      if (autoplayTimer !== null) {
+        scheduler.clearInterval(autoplayTimer);
+        autoplayTimer = null;
+      }
+    }
+
+    function closeWs(): void {
+      if (ws !== null) {
+        const socket = ws;
+        ws = null;
+        try {
+          socket.close();
+        } catch {
+          // A socket that failed to open may throw on close; nothing to do.
+        }
+      }
+    }
+
+    /** The feed is over (noMoreUpdate): polling and the doorbell are pointless. */
+    function stopLiveFeeds(): void {
+      stopPollTimer();
+      closeWs();
+    }
+
+    // -- polling --------------------------------------------------------------
+    /** One poll at a time; concurrent callers join the in-flight promise. */
+    function pollOnce(): Promise<void> {
+      if (pollPromise !== null) return pollPromise;
+      if (source === null || feeder === null) return Promise.resolve();
+      const activeSource = source;
+      const activeFeeder = feeder;
+      pollPromise = (async () => {
+        try {
+          const result = await activeSource.fetchRuns(activeFeeder.cursor);
+          activeFeeder.ingest(result);
+          pollErrorReported = false;
+          syncFeederMeta();
+        } catch (err) {
+          // One message per failure streak, not one per failed poll.
+          if (!pollErrorReported) {
+            pollErrorReported = true;
+            addMessage('warning', `Fetching runs failed: ${errorText(err)}`);
+          }
+        } finally {
+          pollPromise = null;
+        }
+      })();
+      return pollPromise;
+    }
+
+    // -- WebSocket doorbell ---------------------------------------------------
+    function reportWsError(): void {
+      if (wsErrorReported) return;
+      wsErrorReported = true;
+      addMessage(
+        'warning',
+        'WebSocket connection failed — falling back to polling only (no reconnect).',
+      );
+    }
+
+    function connectWs(url: string): void {
+      let socket: WebSocketLike;
+      try {
+        socket = wsFactory(url);
+      } catch {
+        reportWsError();
+        return;
+      }
+      socket.onmessage = () => {
+        void get().pollNow();
+      };
+      socket.onerror = () => reportWsError();
+      socket.onclose = null;
+      ws = socket;
+    }
+
+    // -- boot helpers ---------------------------------------------------------
+    async function fetchJson(url: string): Promise<unknown> {
+      const res = await fetchImpl(url);
+      if (!res.ok) throw new Error(`HTTP ${res.status} ${res.statusText}`);
+      return res.json();
+    }
+
+    async function loadConfigJson(): Promise<AppConfig> {
+      let raw: unknown;
+      try {
+        raw = await fetchJson('./config.json');
+      } catch (err) {
+        addMessage(
+          'info',
+          `config.json could not be loaded (${errorText(err)}); using default configuration.`,
+        );
+        return defaultConfig();
+      }
+      const { config, errors } = parseConfig(raw);
+      for (const error of errors) addMessage('warning', error);
+      return config;
+    }
+
+    async function loadOrgsJson(): Promise<OrgsIndex> {
+      try {
+        const raw = await fetchJson('./orgs/orgs.json');
+        if (raw !== null && typeof raw === 'object' && !Array.isArray(raw)) {
+          return raw as OrgsIndex;
+        }
+        addMessage('warning', 'orgs/orgs.json: expected an object; school metadata disabled.');
+        return {};
+      } catch (err) {
+        addMessage(
+          'warning',
+          `orgs/orgs.json could not be loaded (${errorText(err)}); school metadata disabled.`,
+        );
+        return {};
+      }
+    }
+
+    /** Spec §8: warn about groups missing from orgs.json / missing logos. */
+    function checkAssets(contest: Contest, orgs: OrgsIndex, config: ResolvedConfig): void {
+      const missingOrg: string[] = [];
+      const missingLogo: string[] = [];
+      const seen = new Set<string>();
+      for (const team of contest.teams.values()) {
+        if (seen.has(team.group)) continue;
+        seen.add(team.group);
+        const org = orgs[team.group] as OrgsIndex[string] | undefined;
+        if (org === undefined) missingOrg.push(team.group);
+        else if (config.showSchoolLogos && !org.logo) missingLogo.push(team.group);
+      }
+      if (missingOrg.length > 0) {
+        addMessage('warning', `orgs.json has no entry for: ${missingOrg.join(', ')}`);
+        console.warn('[kimchi-resolver] groups missing from orgs.json:', missingOrg);
+      }
+      if (missingLogo.length > 0) {
+        addMessage('warning', `School logo missing for: ${missingLogo.join(', ')}`);
+        console.warn('[kimchi-resolver] groups without a logo file:', missingLogo);
+      }
+    }
+
+    function createSource(config: ResolvedConfig, orgs: OrgsIndex): FeedSource {
+      const common = {
+        fetchTimeout: config.fetchTimeout,
+        excludeTeamIds: config.excludeTeams,
+        foreign: config.foreign,
+        orgs,
+        fetchImpl,
+      };
+      if (config.source.type === 'contest-api') {
+        return createContestApiSource({
+          baseUrl: config.source.baseUrl,
+          contestId: config.source.contestId,
+          auth: config.source.auth,
+          ...common,
+        });
+      }
+      return createSpotboardSource({ apiBase: config.source.apiBase, ...common });
+    }
+
+    // -- the store ------------------------------------------------------------
+    return {
+      status: 'idle',
+      mode: 'spectator',
+      config: initialResolvedConfig(),
+      orgs: {},
+      contest: null,
+      snapshot: null,
+      systemMessages: [],
+      pendingCount: 0,
+      appliedRunCount: 0,
+      contestTimeSec: null,
+      noMoreUpdate: false,
+      playing: false,
+      awardMachine: null,
+      awardTick: 0,
+      recentEvents: [],
+      siteScore: null,
+      invitedCutoff: null,
+
+      async boot(search: string): Promise<void> {
+        if (get().status !== 'idle') return;
+        set({ status: 'booting' });
+
+        // 1. config.json → parse → URL overrides.
+        const baseConfig = await loadConfigJson();
+        const { config, warnings } = applyUrlOverrides(baseConfig, search);
+        for (const warning of warnings) addMessage('warning', warning);
+
+        // 2. orgs.json.
+        const orgs = await loadOrgsJson();
+
+        // 3. Mode + feed source.
+        const mode = selectMode(config);
+        source = createSource(config, orgs);
+        set({
+          config,
+          orgs,
+          mode,
+          siteScore: config.publish.siteScore,
+          invitedCutoff: config.publish.invitedScoreCutoff,
+        });
+
+        // 4. Contest (fatal on failure).
+        let contest: Contest;
+        try {
+          contest = await source.loadContest();
+        } catch (err) {
+          addMessage('error', `Loading the contest failed: ${errorText(err)}`);
+          set({ status: 'error' });
+          return;
+        }
+        set({ contest });
+        checkAssets(contest, orgs, config);
+
+        // 5. Initial fetch + ingest (non-fatal; spectator retries by polling).
+        feeder = createRunFeeder(contest);
+        try {
+          feeder.ingest(await source.fetchRuns(feeder.cursor));
+        } catch (err) {
+          addMessage('warning', `Initial run fetch failed: ${errorText(err)}`);
+        }
+
+        // 6. Replay up to r= / time=, then mode-specific consumption.
+        const { replayRunId, replayTimeMinutes } = config;
+        const bounded = replayRunId !== null || replayTimeMinutes !== null;
+        const withinReplayBound = (run: Run): boolean =>
+          (replayRunId === null || run.seq <= replayRunId) &&
+          (replayTimeMinutes === null || run.minute <= replayTimeMinutes);
+
+        if (mode === 'award') {
+          // Revealed = applied up to the cutoff; hidden = the rest with their
+          // REAL verdicts (the machine masks them itself).
+          if (bounded) feeder.feedWhile(withinReplayBound);
+          else feeder.feedAll();
+          const revealedRuns = feeder.appliedRuns.slice();
+          const hiddenRuns = feeder.feedAll();
+          const award = config.award;
+          const machine = createAwardMachine({
+            contest,
+            revealedRuns,
+            hiddenRuns,
+            config: {
+              hideName: award.hideName,
+              rankBegin: award.rankBegin,
+              revealOrder: award.revealOrder,
+              focusBlinking: award.focusBlinking,
+              gachaEffectRequirement: award.gachaEffectRequirement,
+              gachaEffectForNoRatio: award.gachaEffectForNoRatio,
+            },
+            rng,
+            computeStandings,
+          });
+          set({ awardMachine: machine, awardTick: 0, snapshot: machine.snapshot });
+          syncFeederMeta();
+        } else {
+          const replayed = bounded ? feeder.feedWhile(withinReplayBound) : feeder.feedAll();
+          applyRuns(replayed, false);
+          if (get().snapshot === null) recomputeSnapshot(); // empty feed still renders
+        }
+
+        // 7. Spectator live loop (polling + autoplay + doorbell).
+        if (mode === 'spectator') {
+          set({ playing: config.autoPlay });
+          startPollTimer();
+          stopAutoplayTimer();
+          autoplayTimer = scheduler.setInterval(() => {
+            if (!get().playing || feeder === null) return;
+            applyRuns(feeder.feed(1), true);
+          }, config.autoPlayDelay);
+          if (config.source.eventsWs !== null && !get().noMoreUpdate) {
+            connectWs(config.source.eventsWs);
+          }
+        }
+
+        set({ status: 'ready' });
+      },
+
+      async pollNow(): Promise<void> {
+        if (get().mode !== 'spectator' || get().status !== 'ready') return;
+        // Manual refresh resets the timer (spec §5) — the doorbell shares this.
+        if (pollTimer !== null) startPollTimer();
+        await pollOnce();
+      },
+
+      feedOne(): void {
+        if (feeder === null || get().mode === 'award') return;
+        applyRuns(feeder.feed(1), true);
+      },
+
+      feedAllQueued(): void {
+        if (feeder === null || get().mode === 'award') return;
+        applyRuns(feeder.feedAll(), true);
+      },
+
+      setPlaying(playing: boolean): void {
+        set({ playing });
+      },
+
+      togglePlaying(): void {
+        set((state) => ({ playing: !state.playing }));
+      },
+
+      awardAdvance(): AwardStepResult | null {
+        const machine = get().awardMachine;
+        if (machine === null) return null;
+        const result = machine.advance();
+        set((state) => ({ awardTick: state.awardTick + 1, snapshot: machine.snapshot }));
+        return result;
+      },
+
+      awardDismiss(): void {
+        const machine = get().awardMachine;
+        if (machine === null) return;
+        machine.dismissSlide();
+        set((state) => ({ awardTick: state.awardTick + 1, snapshot: machine.snapshot }));
+      },
+
+      addSystemMessage(level: SystemMessageLevel, text: string): void {
+        addMessage(level, text);
+      },
+
+      dismissSystemMessage(id: number): void {
+        set((state) => ({
+          systemMessages: state.systemMessages.filter((message) => message.id !== id),
+        }));
+      },
+
+      setSiteScore(value: number | null): void {
+        set({ siteScore: value });
+      },
+
+      setInvitedCutoff(value: number | null): void {
+        set({ invitedCutoff: value });
+      },
+
+      subscribeTeamUpdated(listener: TeamUpdatedListener): () => void {
+        teamUpdatedListeners.add(listener);
+        return () => {
+          teamUpdatedListeners.delete(listener);
+        };
+      },
+
+      dispose(): void {
+        stopPollTimer();
+        stopAutoplayTimer();
+        closeWs();
+      },
+    };
+  });
+}
+
+// ---------------------------------------------------------------------------
+// Singleton for the React app
+// ---------------------------------------------------------------------------
+
+export const appStore: AppStore = createAppStore();
+
+/** React hook over the singleton store. */
+export function useAppStore<T>(selector: (state: AppState) => T): T {
+  return useStore(appStore, selector);
+}

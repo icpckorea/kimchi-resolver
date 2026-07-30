@@ -1,0 +1,413 @@
+/*
+ * Scoreboard styles — reproduction of the original spotboard look
+ * (docs/spotboard-analysis.md §1.3) on a modern flex layout.
+ * Em-based sizing throughout; colors ported from the original CSS, plus the
+ * new last-solve (blue) and contest-last-solve (purple) cells (spec §2/§7).
+ */
+
+.scoreboard {
+  /* Original board: 10px base with 2em rows. */
+  font-size: 0.625rem;
+  background: #fff;
+  color: #1c1c1c;
+}
+
+.scoreboard--empty {
+  min-height: 4em;
+}
+
+/* ---- row ------------------------------------------------------------------ */
+
+.team-row {
+  position: relative;
+  display: flex;
+  align-items: stretch;
+  font-size: 2em;
+  height: 2em;
+  background: #fff;
+  border-bottom: 1px solid #f1f1f1;
+}
+
+.team-row:hover {
+  background-color: #e2f08b; /* original hover */
+}
+
+/* followed team highlight (original #CAE4F3) */
+.team-row.followed {
+  background-color: #cae4f3;
+}
+
+.team-row.followed .team-rank,
+.team-row.followed .team-penalty,
+.team-row.followed .team-name {
+  font-weight: 600;
+}
+
+/* Sticky pinning: standard position sticky, pinned both ways — the row stays
+ * visible at the top when scrolled past and at the bottom when not yet
+ * reached. (The original's WebKit-only fixed-position branch is not ported.) */
+.team-row.followed.sticky {
+  position: sticky;
+  top: 0;
+  bottom: 0;
+  z-index: 30;
+}
+
+/* ---- solved-count color spine -------------------------------------------- */
+
+.solved-count {
+  flex: none;
+  width: 1em;
+  margin-right: 0.3em;
+  padding-right: 0.15em;
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  font-size: 1.05em;
+  font-weight: 600;
+  letter-spacing: -0.05em;
+  color: transparent; /* count only visible on band-first rows and hover */
+  user-select: none;
+}
+
+.solved-count.spine-first {
+  color: #fff;
+  text-shadow: 0 0 1px rgba(255, 255, 255, 0.5), 0 0 2px rgba(255, 255, 255, 0.2);
+  border-top-right-radius: 0.3em;
+}
+
+.solved-count.spine-last {
+  border-bottom-right-radius: 0.3em;
+}
+
+.team-row:hover .solved-count {
+  color: #fff;
+}
+
+/* ---- ranks ---------------------------------------------------------------- */
+
+.team-ranks {
+  flex: none;
+  display: flex;
+  align-items: center;
+  gap: 0.15em;
+}
+
+.team-rank {
+  display: inline-block;
+  width: 2.1em;
+  text-align: right;
+  white-space: nowrap;
+}
+
+.team-rank.domestic-rank {
+  color: #666;
+  font-size: 0.8em;
+  width: 2.4em;
+}
+
+.team-rank.rank-none {
+  color: #bbb;
+  text-align: center;
+}
+
+.rank-suffix {
+  font-size: 0.5em;
+  vertical-align: super;
+}
+
+/* ---- APAC star / flag / logo ---------------------------------------------- */
+
+.apac-slot {
+  flex: none;
+  width: 1.2em;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.team-apac-star {
+  width: 1em;
+  height: 1em;
+}
+
+.team-flag {
+  flex: none;
+  align-self: center;
+  width: 1.1em;
+  height: auto;
+  margin: 0 0.25em;
+}
+
+.team-logo {
+  flex: none;
+  align-self: center;
+  width: 1.4em;
+  height: 1.4em;
+  object-fit: contain;
+  margin-right: 0.25em;
+}
+
+/* ---- name / group / badges ------------------------------------------------ */
+
+.team-title {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  padding-right: 0.4em;
+}
+
+.team-name-line {
+  display: flex;
+  align-items: baseline;
+  min-width: 0;
+}
+
+.team-name {
+  font-size: 0.9em;
+  font-weight: 400;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.team-group {
+  font-size: 0.5em;
+  color: #777;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.team-badges {
+  display: inline-flex;
+  gap: 0.5em;
+  margin-left: 0.6em;
+  min-width: 0;
+  overflow: hidden;
+}
+
+.team-badge {
+  flex: none;
+  font-size: 0.45em;
+  line-height: 1.5;
+  padding: 0 0.7em;
+  border-radius: 1em;
+  white-space: nowrap;
+  background: #f2ecff;
+  border: 1px solid #cdbcf3;
+  color: #4c3391;
+}
+
+.team-badge--manual {
+  background: #fff4d6;
+  border-color: #eccf7a;
+  color: #7a5b12;
+}
+
+/* ---- balloons -------------------------------------------------------------- */
+
+.balloons {
+  flex: none;
+  display: flex;
+  align-items: center;
+  padding-right: 0.2em;
+}
+
+.balloons .kr-balloon.balloon-item {
+  width: 0.8em;
+  height: 1em;
+  margin-left: -0.35em; /* overlap like the original stack */
+}
+
+.balloons .kr-balloon.balloon-item:first-child {
+  margin-left: 0;
+}
+
+/* ---- problem cells --------------------------------------------------------- */
+
+.results {
+  flex: none;
+  display: flex;
+  align-items: stretch;
+}
+
+.problem-result {
+  position: relative;
+  overflow: hidden;
+  box-sizing: border-box;
+  width: 2.3em;
+  font-size: 0.6em;
+  border: 1px solid #fff;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.1em;
+  font-weight: 600;
+  letter-spacing: -1px;
+  color: #fff;
+  text-align: center;
+  user-select: none;
+}
+
+.problem-label {
+  color: #bbb;
+  font-size: 1.3em;
+  text-shadow: 0 0 1px rgba(153, 153, 153, 0.5);
+}
+
+.problem-attempts {
+  color: inherit;
+}
+
+/* verdict colors (original) */
+.problem-result.solved {
+  background: linear-gradient(180deg, rgba(32, 102, 14, 0.75), rgba(32, 102, 14, 1));
+}
+
+.problem-result.solved-first {
+  background: linear-gradient(180deg, rgba(81, 207, 102, 0.75), rgba(43, 138, 62, 1));
+}
+
+/* new: per-problem last solve = blue (spec §2) */
+.problem-result.last-solve {
+  background: linear-gradient(180deg, rgba(38, 108, 200, 0.8), rgba(21, 74, 148, 1));
+}
+
+/* new: contest-wide last yes = purple (spec §2) */
+.problem-result.contest-last-solve {
+  background: linear-gradient(180deg, rgba(142, 68, 173, 0.85), rgba(94, 39, 128, 1));
+}
+
+.problem-result.failed {
+  background: repeating-linear-gradient(
+    -45deg,
+    rgba(166, 10, 10, 0.8),
+    rgba(166, 10, 10, 0.8) 10px,
+    #e06b66 10px,
+    #e06b66 20px
+  );
+}
+
+.problem-result.pending {
+  background-color: #e0b400;
+  color: #555;
+}
+
+.problem-result.pending .problem-label {
+  color: #555;
+  text-shadow: 0 0 1px rgba(80, 80, 80, 0.5);
+}
+
+.problem-result.solved .problem-label,
+.problem-result.failed .problem-label {
+  color: #fff;
+  text-shadow: 0 0 1px rgba(255, 255, 255, 0.5), 0 0 2.5px rgba(255, 255, 255, 0.2);
+}
+
+/* contest-first solve: subtle looping sparkle shimmer on top of the color */
+.problem-result.contest-first-solve::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  background: linear-gradient(
+    115deg,
+    transparent 25%,
+    rgba(255, 255, 255, 0.5) 50%,
+    transparent 75%
+  );
+  transform: translateX(-100%);
+  animation: cell-sparkle 3s ease-in-out infinite;
+}
+
+@keyframes cell-sparkle {
+  0% {
+    transform: translateX(-100%);
+  }
+  55%,
+  100% {
+    transform: translateX(100%);
+  }
+}
+
+/* ---- cell flip (standard syntax; see useCellFlip) -------------------------- */
+
+.flip-run {
+  backface-visibility: hidden;
+  transform-style: preserve-3d;
+  will-change: transform;
+}
+
+/* Class alone (no phase attribute): one full flip with the midpoint at 50%. */
+.flip-run:not([data-flip-phase]) {
+  animation: cell-flip calc(var(--flip-half, 150ms) * 2) ease-in-out;
+}
+
+.flip-run[data-flip-phase='out'] {
+  animation: cell-flip-out var(--flip-half, 150ms) ease-in forwards;
+}
+
+.flip-run[data-flip-phase='in'] {
+  animation: cell-flip-in var(--flip-half, 150ms) ease-out forwards;
+}
+
+@keyframes cell-flip {
+  0% {
+    transform: rotateX(0deg);
+  }
+  50% {
+    transform: rotateX(90deg);
+  }
+  100% {
+    transform: rotateX(360deg);
+  }
+}
+
+@keyframes cell-flip-out {
+  from {
+    transform: rotateX(0deg);
+  }
+  to {
+    transform: rotateX(90deg);
+  }
+}
+
+@keyframes cell-flip-in {
+  from {
+    transform: rotateX(270deg);
+  }
+  to {
+    transform: rotateX(360deg);
+  }
+}
+
+/* ---- penalty --------------------------------------------------------------- */
+
+.team-penalty {
+  flex: none;
+  width: 3.5em;
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  padding-right: 0.2em;
+  white-space: nowrap;
+}
+
+.penalty-unit {
+  font-size: 0.5em;
+}
+
+/* ---- narrow screens (original media query level) --------------------------- */
+
+@media all and (max-width: 1000px) {
+  .balloons {
+    display: none;
+  }
+
+  .problem-result {
+    width: 2em;
+  }
+}

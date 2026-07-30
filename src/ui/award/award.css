@@ -1,0 +1,339 @@
+/*
+ * Award ceremony skin (spec §6/§7).
+ * em-based sizing to match the original spotboard look. No emoji — SVG only.
+ */
+
+/* ------------------------------------------------------------------ */
+/* Board skin                                                          */
+/* ------------------------------------------------------------------ */
+
+.award-view {
+  position: relative;
+}
+
+/* Row layout and cell colors come from the shared scoreboard styles
+ * (scoreboard.css, imported by AwardView) — this file only adds the award
+ * skin on top. */
+.award-board {
+  display: flex;
+  flex-direction: column;
+}
+
+/* Effect wrapper between .results and .problem-result: transforms applied
+ * here move the whole cell; the flip stays on the inner .problem-result. */
+.award-view .results .award-cell-fx {
+  display: flex;
+  align-items: stretch;
+}
+
+/* Masked ("Team {id}" / "Unknown") rows read as intentionally anonymous. */
+.award-view .award-team-hidden .team-name,
+.award-view .award-team-hidden .team-group {
+  color: #9aa0a6;
+  font-style: italic;
+}
+
+/* Focused team: highlighted while the presenter walks its pending cells. */
+.award-view .team-row.award-row-focused {
+  outline: 0.15em solid #f5d34c;
+  outline-offset: -0.15em;
+  background-color: #fdf6d8;
+  box-shadow: 0 0 0.8em rgba(245, 211, 76, 0.45);
+  z-index: 3;
+}
+
+/* Finalized team: settled, warm golden tone + medal icon slot. */
+.award-view .team-row.award-row-finalized {
+  background-color: #f7ecca;
+}
+
+.award-medal-slot {
+  display: inline-flex;
+  align-items: center;
+  vertical-align: middle;
+  margin-right: 0.25em;
+}
+
+.award-row-finalized .award-medal-slot {
+  display: inline-flex;
+  align-items: center;
+  vertical-align: middle;
+  margin-right: 0.25em;
+}
+
+.award-medalist-name {
+  cursor: pointer;
+  text-decoration: underline dotted rgba(230, 180, 34, 0.8);
+  text-underline-offset: 0.2em;
+}
+
+/* ------------------------------------------------------------------ */
+/* Blink step (pre-reveal drama)                                       */
+/* ------------------------------------------------------------------ */
+
+.award-cell-blink {
+  animation: award-blink 0.5s steps(1, end) infinite;
+}
+
+@keyframes award-blink {
+  0%,
+  100% {
+    filter: brightness(1);
+  }
+  50% {
+    filter: brightness(2.1);
+  }
+}
+
+/* ------------------------------------------------------------------ */
+/* Gacha effect: shake + sparkle (spec §7)                             */
+/* ------------------------------------------------------------------ */
+
+/* The animated wrapper sits exactly on the cell; rest state = identity
+ * transform so the cell returns exactly to rest when the class is removed. */
+.award-cell-fx {
+  position: relative;
+}
+
+.award-cell-gacha {
+  animation: award-gacha-shake 0.18s linear infinite;
+}
+
+@keyframes award-gacha-shake {
+  0% {
+    transform: translate(0, 0) rotate(0deg);
+  }
+  20% {
+    transform: translate(1.5px, -1px) rotate(0.7deg);
+  }
+  40% {
+    transform: translate(-1.5px, 1px) rotate(-0.6deg);
+  }
+  60% {
+    transform: translate(1px, 1.5px) rotate(0.5deg);
+  }
+  80% {
+    transform: translate(-1px, -1.5px) rotate(-0.7deg);
+  }
+  100% {
+    transform: translate(0, 0) rotate(0deg);
+  }
+}
+
+.award-sparkle-overlay {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  z-index: 2;
+}
+
+.award-sparkle-overlay svg {
+  width: 100%;
+  height: 100%;
+  display: block;
+}
+
+.award-sparkle {
+  opacity: 0;
+  transform-origin: center;
+  animation: award-sparkle-twinkle 0.55s ease-in-out infinite;
+}
+
+@keyframes award-sparkle-twinkle {
+  0%,
+  100% {
+    opacity: 0;
+  }
+  50% {
+    opacity: 1;
+  }
+}
+
+/* ------------------------------------------------------------------ */
+/* Finale: dim + spotlight + zoom + flowing rainbow (spec §7)          */
+/* ------------------------------------------------------------------ */
+
+.award-finale-dim {
+  position: fixed;
+  inset: 0;
+  z-index: 40;
+  pointer-events: none;
+  /* Radial spotlight punched out of a dark veil, centered on the cell. */
+  background: radial-gradient(
+    circle 9em at var(--spot-x, 50%) var(--spot-y, 50%),
+    rgba(0, 0, 0, 0) 0,
+    rgba(0, 0, 0, 0.28) 55%,
+    rgba(0, 0, 0, 0.82) 100%
+  );
+}
+
+.award-cell-finale {
+  position: relative;
+  z-index: 50; /* above the dim veil */
+  transform: scale(1.9);
+  transition: transform 0.35s ease;
+}
+
+/* Finale + gacha shake combined: keep the 1.9x zoom inside the keyframes. */
+.award-cell-finale.award-cell-gacha {
+  animation: award-gacha-shake-zoomed 0.18s linear infinite;
+}
+
+@keyframes award-gacha-shake-zoomed {
+  0% {
+    transform: scale(1.9) translate(0, 0) rotate(0deg);
+  }
+  20% {
+    transform: scale(1.9) translate(1.5px, -1px) rotate(0.7deg);
+  }
+  40% {
+    transform: scale(1.9) translate(-1.5px, 1px) rotate(-0.6deg);
+  }
+  60% {
+    transform: scale(1.9) translate(1px, 1.5px) rotate(0.5deg);
+  }
+  80% {
+    transform: scale(1.9) translate(-1px, -1.5px) rotate(-0.7deg);
+  }
+  100% {
+    transform: scale(1.9) translate(0, 0) rotate(0deg);
+  }
+}
+
+/* Continuous flowing FULL-CELL rainbow (NOT a thin sweep): oversized
+ * gradient whose background-position loops, so hues visibly stream by. */
+.award-rainbow-overlay {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  z-index: 3;
+  opacity: 0.55;
+  mix-blend-mode: screen;
+  background-image: linear-gradient(
+    115deg,
+    #ff3b30,
+    #ff9500,
+    #ffcc00,
+    #34c759,
+    #32ade6,
+    #5856d6,
+    #af52de,
+    #ff3b30
+  );
+  background-size: 300% 300%;
+  animation: award-rainbow-flow 1.6s linear infinite;
+}
+
+@keyframes award-rainbow-flow {
+  0% {
+    background-position: 0% 50%;
+  }
+  100% {
+    background-position: 300% 50%;
+  }
+}
+
+/* ------------------------------------------------------------------ */
+/* Award slide overlay                                                 */
+/* ------------------------------------------------------------------ */
+
+.award-slide-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 100;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(6, 8, 16, 0.86);
+  cursor: pointer;
+}
+
+.award-slide-card {
+  cursor: default;
+  min-width: 24em;
+  max-width: 80vw;
+  padding: 2.2em 3em 2.4em;
+  border-radius: 0.5em;
+  background: linear-gradient(175deg, #1c2333, #10141f);
+  border: 0.12em solid rgba(230, 180, 34, 0.65);
+  box-shadow: 0 0 3em rgba(230, 180, 34, 0.25);
+  color: #f4f4f0;
+  text-align: center;
+}
+
+.award-slide-icon {
+  display: flex;
+  justify-content: center;
+  margin-bottom: 0.4em;
+}
+
+.award-slide-rank {
+  font-size: 2.2em;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  color: #f5d34c;
+}
+
+.award-slide-team {
+  margin-top: 0.35em;
+  font-size: 1.7em;
+  font-weight: 700;
+}
+
+.award-slide-group {
+  margin-top: 0.2em;
+  font-size: 1.05em;
+  color: #b9c0cc;
+}
+
+.award-slide-labels {
+  margin-top: 1em;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4em;
+  justify-content: center;
+}
+
+.award-badge {
+  display: inline-block;
+  padding: 0.22em 0.7em;
+  border-radius: 1em;
+  font-size: 0.85em;
+  background: rgba(245, 211, 76, 0.16);
+  border: 1px solid rgba(245, 211, 76, 0.5);
+  color: #f5d34c;
+  white-space: nowrap;
+}
+
+.award-slide-others {
+  margin-top: 1.3em;
+  border-top: 1px solid rgba(255, 255, 255, 0.14);
+  padding-top: 0.9em;
+  font-size: 0.95em;
+}
+
+.award-slide-others-title {
+  color: #9aa0a6;
+  text-transform: uppercase;
+  font-size: 0.78em;
+  letter-spacing: 0.12em;
+  margin-bottom: 0.4em;
+}
+
+.award-slide-others ul {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.award-slide-others li {
+  padding: 0.12em 0;
+}
+
+.award-slide-other-name {
+  font-weight: 600;
+}
+
+.award-slide-other-group {
+  color: #b9c0cc;
+}

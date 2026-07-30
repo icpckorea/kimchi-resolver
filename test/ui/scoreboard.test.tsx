@@ -1,0 +1,620 @@
+/**
+ * Scoreboard UI tests (jsdom): sample-snapshot render, cell color priority,
+ * badge texts, search filtering, domestic-rank em-dash, pagination, balloons,
+ * followed sticky, spine colors and the cell flip hook.
+ */
+import { describe, it, expect, beforeAll, vi } from 'vitest';
+import { act, render, renderHook } from '@testing-library/react';
+import { readFileSync } from 'node:fs';
+import { resolve } from 'node:path';
+
+import type { Contest, OrgsIndex, Run, Snapshot, Team, Verdict } from '@core/types';
+import { computeStandings } from '@core/standings';
+import { createSpotboardSource } from '@core/ingest/spotboard';
+import { createRunFeeder } from '@core/feeder';
+import { applyUrlOverrides, defaultConfig, type ResolvedConfig } from '@core/config';
+
+import { Scoreboard } from '@ui/scoreboard/Scoreboard';
+import { Badges, autoLabelText } from '@ui/scoreboard/Badges';
+import { ProblemCell } from '@ui/scoreboard/ProblemCell';
+import { useCellFlip } from '@ui/scoreboard/useCellFlip';
+import { solvedSpineColor, hsv2rgb, ordinalSuffix } from '@ui/scoreboard/util';
+
+// ---------------------------------------------------------------------------
+// Fixtures
+// ---------------------------------------------------------------------------
+
+const baseConfig: ResolvedConfig = applyUrlOverrides(defaultConfig(), '').config;
+
+function cfg(over: Partial<ResolvedConfig> = {}): ResolvedConfig {
+  return { ...baseConfig, ...over };
+}
+
+function makeTeam(
+  id: string,
+  name: string,
+  group: string,
+  foreign = false,
+  countryCode?: string,
+): Team {
+  return { id, name, group, foreign, countryCode };
+}
+
+const PALETTE = ['red', 'blue', 'green', 'yellow'];
+
+function makeContest(teams: Team[], problemIds: string[]): Contest {
+  return {
+    title: 'test contest',
+    systemName: 'test',
+    systemVersion: '0',
+    problems: problemIds.map((id, i) => ({
+      id,
+      label: id,
+      title: `Problem ${id}`,
+      color: PALETTE[i % PALETTE.length],
+      order: i,
+    })),
+    teams: new Map(teams.map((t) => [t.id, t])),
+  };
+}
+
+function runFactory() {
+  let seq = 0;
+  return (teamId: string, problemId: string, minute: number, verdict: Verdict): Run => {
+    seq += 1;
+    return { id: String(seq), teamId, problemId, minute, verdict, penaltyCounts: true, seq };
+  };
+}
+
+/** Small contest exercising every cell color (see assertions below). */
+function priorityFixture(): { contest: Contest; snapshot: Snapshot } {
+  const contest = makeContest(
+    [
+      makeTeam('t1', 'Alpha', 'KAIST', false, 'KR'),
+      makeTeam('t2', 'Beta', 'SNU', false, 'KR'),
+      makeTeam('t3', 'Gamma', 'Fuzhou University', true, 'CN'),
+    ],
+    ['A', 'B'],
+  );
+  const r = runFactory();
+  const runs: Run[] = [
+    r('t1', 'A', 5, 'accepted'), // contest-first + first solve of A
+    r('t2', 'A', 8, 'failed'),
+    r('t2', 'A', 10, 'accepted'),
+    r('t3', 'A', 20, 'accepted'), // last solve of A
+    r('t1', 'B', 30, 'accepted'), // contest-last (also first+last of B)
+    r('t2', 'B', 40, 'failed'),
+    r('t3', 'B', 45, 'pending'),
+  ];
+  return { contest, snapshot: computeStandings(contest, runs) };
+}
+
+function renderBoard(
+  contest: Contest,
+  snapshot: Snapshot,
+  config: ResolvedConfig = cfg(),
+  extra: Partial<Parameters<typeof Scoreboard>[0]> = {},
+) {
+  return render(
+    <Scoreboard
+      snapshot={snapshot}
+      problems={contest.problems}
+      config={config}
+      orgs={{}}
+      {...extra}
+    />,
+  );
+}
+
+function cell(container: HTMLElement, teamId: string, problemId: string): HTMLElement {
+  const el = container.querySelector(
+    `[data-team-id="${teamId}"] [data-problem-id="${problemId}"]`,
+  );
+  expect(el, `cell ${teamId}/${problemId}`).not.toBeNull();
+  return el as HTMLElement;
+}
+
+// ---------------------------------------------------------------------------
+// 84-team sample snapshot
+// ---------------------------------------------------------------------------
+
+describe('Scoreboard with the 2025 sample (84 teams)', () => {
+  const ROOT = resolve(__dirname, '../..');
+  let contest: Contest;
+  let snapshot: Snapshot;
+  let orgs: OrgsIndex;
+
+  beforeAll(async () => {
+    const contestJson = JSON.parse(
+      readFileSync(resolve(ROOT, 'public/sample/contest.json'), 'utf8'),
+    );
+    const runsJson = JSON.parse(readFileSync(resolve(ROOT, 'public/sample/runs.json'), 'utf8'));
+    orgs = JSON.parse(readFileSync(resolve(ROOT, 'public/orgs/orgs.json'), 'utf8'));
+    const fetchStub = (async (input: RequestInfo | URL) => {
+      const url = String(input);
+      const body = url.includes('contest.json')
+        ? contestJson
+        : url.includes('runs.json')
+          ? runsJson
+          : undefined;
+      if (body === undefined) return new Response('not found', { status: 404 });
+      return new Response(JSON.stringify(body), { status: 200 });
+    }) as typeof fetch;
+    const source = createSpotboardSource({
+      apiBase: './sample/',
+      fetchTimeout: 5000,
+      excludeTeamIds: [],
+      foreign: { ids: [], groups: [] },
+      orgs,
+      fetchImpl: fetchStub,
+    });
+    contest = await source.loadContest();
+    const feeder = createRunFeeder(contest);
+    feeder.ingest(await source.fetchRuns(null));
+    feeder.feedAll();
+    snapshot = computeStandings(contest, feeder.appliedRuns);
+  });
+
+  it('renders all 84 teams in standings order with 13 cells each', () => {
+    const { container } = render(
+      <Scoreboard snapshot={snapshot} problems={contest.problems} config={cfg()} orgs={orgs} />,
+    );
+    const rows = container.querySelectorAll('.team-row');
+    expect(rows).toHaveLength(84);
+    const first = rows[0] as HTMLElement;
+    expect(first.querySelector('.team-name')?.textContent).toBe('Just use CRT');
+    expect(first.querySelector('.icpc-rank')?.textContent).toBe('1st');
+    expect(first.querySelectorAll('.problem-result')).toHaveLength(13);
+    expect(first.querySelector('.team-penalty')?.textContent).toBe('1041 min.');
+    expect(first.querySelector('.solved-count')?.textContent).toBe('10');
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Cell color priority
+// ---------------------------------------------------------------------------
+
+describe('ProblemCell colors and attempts', () => {
+  it('applies the color priority: contest-last > last > first > solved', () => {
+    const { contest, snapshot } = priorityFixture();
+    const { container } = renderBoard(contest, snapshot);
+
+    const t1A = cell(container, 't1', 'A');
+    expect(t1A.classList.contains('solved-first')).toBe(true);
+    expect(t1A.classList.contains('contest-first-solve')).toBe(true); // sparkle
+    expect(t1A.classList.contains('last-solve')).toBe(false);
+    expect(t1A.classList.contains('contest-last-solve')).toBe(false);
+
+    const t2A = cell(container, 't2', 'A');
+    expect(t2A.classList.contains('solved')).toBe(true);
+    expect(t2A.classList.contains('solved-first')).toBe(false);
+    expect(t2A.classList.contains('last-solve')).toBe(false);
+
+    const t3A = cell(container, 't3', 'A');
+    expect(t3A.classList.contains('last-solve')).toBe(true);
+    expect(t3A.classList.contains('contest-last-solve')).toBe(false);
+
+    // t1 B is first AND last solve of B AND contest-last — purple wins.
+    const t1B = cell(container, 't1', 'B');
+    expect(t1B.classList.contains('contest-last-solve')).toBe(true);
+    expect(t1B.classList.contains('last-solve')).toBe(false);
+    expect(t1B.classList.contains('solved-first')).toBe(false);
+
+    expect(cell(container, 't2', 'B').classList.contains('failed')).toBe(true);
+    expect(cell(container, 't3', 'B').classList.contains('pending')).toBe(true);
+  });
+
+  it('renders +N / −N / ?N attempt texts and the letter as real text', () => {
+    const { contest, snapshot } = priorityFixture();
+    const { container } = renderBoard(contest, snapshot);
+
+    const t2A = cell(container, 't2', 'A');
+    expect(t2A.querySelector('.problem-label')?.textContent).toBe('A');
+    expect(t2A.querySelector('.problem-attempts')?.textContent).toBe('+1');
+
+    expect(cell(container, 't2', 'B').querySelector('.problem-attempts')?.textContent).toBe(
+      '−1',
+    );
+    expect(cell(container, 't3', 'B').querySelector('.problem-attempts')?.textContent).toBe('?1');
+    // solved on the first try: letter only, no attempts text
+    expect(cell(container, 't1', 'A').querySelector('.problem-attempts')).toBeNull();
+  });
+
+  it('drops the first-solve highlight when showFirstSolve is off', () => {
+    const { contest, snapshot } = priorityFixture();
+    const { container } = renderBoard(contest, snapshot, cfg({ showFirstSolve: false }));
+    const t1A = cell(container, 't1', 'A');
+    expect(t1A.classList.contains('solved')).toBe(true);
+    expect(t1A.classList.contains('solved-first')).toBe(false);
+  });
+
+  it('passes flip props through (.flip-run + phase attribute)', () => {
+    const { contest, snapshot } = priorityFixture();
+    const standing = snapshot.byTeam.get('t1')!;
+    const { container } = render(
+      <ProblemCell
+        problem={contest.problems[0]}
+        cell={standing.cells.get('A')!}
+        showFirstSolve
+        flip={{
+          className: 'flip-run',
+          style: {},
+          onAnimationEnd: () => undefined,
+          'data-flip-phase': 'out',
+        }}
+      />,
+    );
+    const el = container.querySelector('.problem-result') as HTMLElement;
+    expect(el.classList.contains('flip-run')).toBe(true);
+    expect(el.getAttribute('data-flip-phase')).toBe('out');
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Badges
+// ---------------------------------------------------------------------------
+
+describe('Badges', () => {
+  it('renders the exact spec texts for all five auto labels', () => {
+    expect(autoLabelText({ kind: 'triedNTimes', attempts: 12 })).toBe(
+      'tried 12 times to get Yes!',
+    );
+    expect(autoLabelText({ kind: 'contestFirstYes' })).toBe('got first yes of this contest!');
+    expect(autoLabelText({ kind: 'firstToSolve', problemLabels: ['A', 'C', 'D'] })).toBe(
+      'A, C, D first to solve!',
+    );
+    expect(autoLabelText({ kind: 'lastToSolve', problemLabels: ['B', 'E'] })).toBe(
+      'B, E last to solve!',
+    );
+    expect(autoLabelText({ kind: 'contestLastYes' })).toBe('got last yes of this contest!');
+
+    const { container } = render(
+      <Badges
+        autoLabels={[
+          { kind: 'triedNTimes', attempts: 12 },
+          { kind: 'firstToSolve', problemLabels: ['A', 'C', 'D'] },
+        ]}
+        manualLabels={['E를 마지막으로 푼 팀!']}
+      />,
+    );
+    const texts = Array.from(container.querySelectorAll('.team-badge')).map(
+      (el) => el.textContent,
+    );
+    expect(texts).toEqual([
+      'tried 12 times to get Yes!',
+      'A, C, D first to solve!',
+      'E를 마지막으로 푼 팀!',
+    ]);
+    expect(container.querySelectorAll('.team-badge--manual')).toHaveLength(1);
+  });
+
+  it('shows auto badges on team rows and wires manual labels per team', () => {
+    const { contest, snapshot } = priorityFixture();
+    const { container } = renderBoard(contest, snapshot, cfg(), {
+      manualLabels: new Map([['t2', ['동상 수상자']]]),
+    });
+    const t1 = container.querySelector('[data-team-id="t1"]') as HTMLElement;
+    expect(t1.textContent).toContain('got first yes of this contest!');
+    expect(t1.textContent).toContain('got last yes of this contest!');
+    const t2 = container.querySelector('[data-team-id="t2"]') as HTMLElement;
+    expect(t2.textContent).toContain('동상 수상자');
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Search / ranks / pagination / follow
+// ---------------------------------------------------------------------------
+
+describe('search filtering', () => {
+  it('filters by case-insensitive substring over name + group', () => {
+    const contest = makeContest(
+      [
+        makeTeam('1', 'Alpha', 'KAIST'),
+        makeTeam('2', 'Beta', 'SNU'),
+        makeTeam('3', 'Kappa', 'Kaist Institute'),
+      ],
+      ['A'],
+    );
+    const snapshot = computeStandings(contest, []);
+
+    const kai = renderBoard(contest, snapshot, cfg(), { searchQuery: 'kai' });
+    const kaiIds = Array.from(kai.container.querySelectorAll('.team-row')).map((el) =>
+      el.getAttribute('data-team-id'),
+    );
+    expect(kaiIds).toEqual(['1', '3']);
+
+    const eta = renderBoard(contest, snapshot, cfg(), { searchQuery: 'ETA' });
+    const etaIds = Array.from(eta.container.querySelectorAll('.team-row')).map((el) =>
+      el.getAttribute('data-team-id'),
+    );
+    expect(etaIds).toEqual(['2']);
+
+    const none = renderBoard(contest, snapshot, cfg(), { searchQuery: '' });
+    expect(none.container.querySelectorAll('.team-row')).toHaveLength(3);
+  });
+});
+
+describe('dual ranks', () => {
+  it('shows an em-dash for the domestic rank of foreign teams', () => {
+    const { contest, snapshot } = priorityFixture();
+    const { container } = renderBoard(contest, snapshot);
+    const t3 = container.querySelector('[data-team-id="t3"]') as HTMLElement;
+    expect(t3.classList.contains('foreign')).toBe(true);
+    expect(t3.querySelector('.domestic-rank')?.textContent).toBe('—');
+    expect(t3.querySelector('.icpc-rank')?.textContent).toBe('2nd');
+    const t2 = container.querySelector('[data-team-id="t2"]') as HTMLElement;
+    expect(t2.querySelector('.icpc-rank')?.textContent).toBe('3rd');
+    expect(t2.querySelector('.domestic-rank')?.textContent).toBe('2nd');
+  });
+
+  it('ordinalSuffix handles teens', () => {
+    expect(ordinalSuffix(1)).toBe('st');
+    expect(ordinalSuffix(2)).toBe('nd');
+    expect(ordinalSuffix(3)).toBe('rd');
+    expect(ordinalSuffix(11)).toBe('th');
+    expect(ordinalSuffix(12)).toBe('th');
+    expect(ordinalSuffix(13)).toBe('th');
+    expect(ordinalSuffix(21)).toBe('st');
+    expect(ordinalSuffix(111)).toBe('th');
+  });
+});
+
+describe('pagination', () => {
+  it('slices the page when config.pagination is on', () => {
+    const contest = makeContest(
+      ['1', '2', '3', '4', '5'].map((id) => makeTeam(id, `Team ${id}`, `Univ ${id}`)),
+      ['A'],
+    );
+    const snapshot = computeStandings(contest, []);
+    const { container } = renderBoard(
+      contest,
+      snapshot,
+      cfg({ pagination: true, paginationSize: 2 }),
+      { page: 1 },
+    );
+    const ids = Array.from(container.querySelectorAll('.team-row')).map((el) =>
+      el.getAttribute('data-team-id'),
+    );
+    expect(ids).toEqual(['3', '4']);
+    expect(container.querySelector('.scoreboard')?.getAttribute('data-page-count')).toBe('3');
+  });
+});
+
+describe('followed team', () => {
+  it('highlights and sticky-pins the followed team', () => {
+    const { contest, snapshot } = priorityFixture();
+    const { container } = renderBoard(contest, snapshot, cfg(), { followTeamId: 't2' });
+    const t2 = container.querySelector('[data-team-id="t2"]') as HTMLElement;
+    expect(t2.classList.contains('followed')).toBe(true);
+    expect(t2.classList.contains('sticky')).toBe(true);
+    expect(
+      (container.querySelector('[data-team-id="t1"]') as HTMLElement).classList.contains(
+        'followed',
+      ),
+    ).toBe(false);
+  });
+
+  it('skips the sticky class when useFollowedTeamSticky is off', () => {
+    const { contest, snapshot } = priorityFixture();
+    const { container } = renderBoard(
+      contest,
+      snapshot,
+      cfg({ useFollowedTeamSticky: false }),
+      { followTeamId: 't2' },
+    );
+    const t2 = container.querySelector('[data-team-id="t2"]') as HTMLElement;
+    expect(t2.classList.contains('followed')).toBe(true);
+    expect(t2.classList.contains('sticky')).toBe(false);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Balloons / APAC star slot / spine colors
+// ---------------------------------------------------------------------------
+
+describe('balloons', () => {
+  it('shows tinted balloons for solved cells in solve order', () => {
+    const { contest, snapshot } = priorityFixture();
+    const { container } = renderBoard(contest, snapshot);
+    const t1Balloons = Array.from(
+      (container.querySelector('[data-team-id="t1"] .balloons') as HTMLElement).querySelectorAll(
+        'svg',
+      ),
+    );
+    expect(t1Balloons).toHaveLength(2);
+    // A solved at minute 5 (red) before B at minute 30 (blue)
+    expect((t1Balloons[0] as SVGElement).style.getPropertyValue('--balloon-color')).toBe('red');
+    expect((t1Balloons[1] as SVGElement).style.getPropertyValue('--balloon-color')).toBe('blue');
+    // t3 has one solve, t2 has one solve
+    expect(
+      container.querySelectorAll('[data-team-id="t3"] .balloons svg'),
+    ).toHaveLength(1);
+  });
+
+  it('hides balloons when showBalloons is off', () => {
+    const { contest, snapshot } = priorityFixture();
+    const { container } = renderBoard(contest, snapshot, cfg({ showBalloons: false }));
+    expect(container.querySelector('.balloons')).toBeNull();
+  });
+});
+
+describe('APAC star slot', () => {
+  it('renders the wired star when apac is enabled', () => {
+    const { contest, snapshot } = priorityFixture();
+    const { container } = renderBoard(
+      contest,
+      snapshot,
+      cfg({ apac: { enabled: true } }),
+      { apacStars: new Map([['t1', { tier: 'gold' as const, spinning: true }]]) },
+    );
+    const star = container.querySelector('[data-team-id="t1"] .kr-apac-star');
+    expect(star).not.toBeNull();
+    expect(star?.classList.contains('kr-apac-star--spin')).toBe(true);
+    // slot exists but empty for the others
+    expect(container.querySelector('[data-team-id="t2"] .apac-slot')).not.toBeNull();
+    expect(container.querySelector('[data-team-id="t2"] .kr-apac-star')).toBeNull();
+  });
+
+  it('renders no slot when apac is disabled', () => {
+    const { contest, snapshot } = priorityFixture();
+    const { container } = renderBoard(contest, snapshot);
+    expect(container.querySelector('.apac-slot')).toBeNull();
+  });
+});
+
+describe('solved-count spine color', () => {
+  it('interpolates from red to green with odd-count desaturation', () => {
+    const channels = (hex: string): [number, number, number] => [
+      parseInt(hex.slice(1, 3), 16),
+      parseInt(hex.slice(3, 5), 16),
+      parseInt(hex.slice(5, 7), 16),
+    ];
+    const zero = solvedSpineColor(0, 13);
+    const full = solvedSpineColor(13, 13);
+    expect(zero).toMatch(/^#[0-9a-f]{6}$/);
+    const [r0, g0] = channels(zero);
+    expect(r0).toBeGreaterThan(g0); // red end
+    const [rf, gf] = channels(full);
+    expect(gf).toBeGreaterThan(rf); // green end
+    // odd counts are desaturated/brightened relative to the pure ramp
+    expect(solvedSpineColor(5, 13)).not.toBe(hsv2rgb(-2 / 360 + (107 / 360) * (5 / 13), 0.96, 0.31));
+    // exact port check: original endpoints
+    expect(zero).toBe(hsv2rgb(-2 / 360, 0.96, 0.31));
+  });
+
+  it('marks band-first rows so the count is visible once per band', () => {
+    const { contest, snapshot } = priorityFixture();
+    const { container } = renderBoard(contest, snapshot);
+    const spines = Array.from(container.querySelectorAll('.solved-count'));
+    // t1 solved 2 (band of one), t3/t2 solved 1 (band of two)
+    expect(spines[0].classList.contains('spine-first')).toBe(true);
+    expect(spines[0].classList.contains('spine-last')).toBe(true);
+    expect(spines[1].classList.contains('spine-first')).toBe(true);
+    expect(spines[1].classList.contains('spine-last')).toBe(false);
+    expect(spines[2].classList.contains('spine-first')).toBe(false);
+    expect(spines[2].classList.contains('spine-last')).toBe(true);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// useCellFlip
+// ---------------------------------------------------------------------------
+
+describe('useCellFlip', () => {
+  it('swaps at the midpoint between the out and in animations', async () => {
+    const { result } = renderHook(() => useCellFlip(150));
+    expect(result.current.flipping).toBe(false);
+    expect(result.current.props.className).toBe('');
+
+    const midpoint = vi.fn();
+    let promise!: Promise<void>;
+    act(() => {
+      promise = result.current.flip(midpoint);
+    });
+    expect(result.current.phase).toBe('out');
+    expect(result.current.props.className).toBe('flip-run');
+    expect(result.current.props['data-flip-phase']).toBe('out');
+    expect(midpoint).not.toHaveBeenCalled();
+
+    act(() => {
+      result.current.props.onAnimationEnd(); // end of the "out" half
+    });
+    expect(midpoint).toHaveBeenCalledTimes(1);
+    expect(result.current.phase).toBe('in');
+
+    act(() => {
+      result.current.props.onAnimationEnd(); // end of the "in" half
+    });
+    await promise;
+    expect(result.current.phase).toBe('idle');
+    expect(result.current.flipping).toBe(false);
+    expect(midpoint).toHaveBeenCalledTimes(1); // exactly once
+  });
+
+  it('falls back to a 2x-duration timer when animation events never fire', async () => {
+    vi.useFakeTimers();
+    try {
+      const { result } = renderHook(() => useCellFlip(300));
+      const midpoint = vi.fn();
+      let resolved = false;
+      act(() => {
+        void result.current.flip(midpoint).then(() => {
+          resolved = true;
+        });
+      });
+      expect(result.current.phase).toBe('out');
+
+      act(() => {
+        vi.advanceTimersByTime(599);
+      });
+      expect(midpoint).not.toHaveBeenCalled();
+
+      act(() => {
+        vi.advanceTimersByTime(1);
+      });
+      expect(midpoint).toHaveBeenCalledTimes(1);
+      expect(result.current.phase).toBe('idle');
+      await act(async () => {
+        await Promise.resolve();
+      });
+      expect(resolved).toBe(true);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('settles (never hangs) when the component unmounts mid-flip', async () => {
+    const { result, unmount } = renderHook(() => useCellFlip(200));
+    const midpoint = vi.fn();
+    let promise!: Promise<void>;
+    act(() => {
+      promise = result.current.flip(midpoint);
+    });
+    unmount();
+    await promise; // resolves via the unmount cleanup — no timers needed
+    expect(midpoint).toHaveBeenCalledTimes(1);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Misc rendering
+// ---------------------------------------------------------------------------
+
+describe('misc', () => {
+  it('renders an empty shell without a snapshot', () => {
+    const { container } = render(
+      <Scoreboard snapshot={null} problems={[]} config={cfg()} orgs={{}} />,
+    );
+    expect(container.querySelector('.scoreboard--empty')).not.toBeNull();
+    expect(container.querySelectorAll('.team-row')).toHaveLength(0);
+  });
+
+  it('hides the group line when showTeamGroup is off', () => {
+    const { contest, snapshot } = priorityFixture();
+    const on = renderBoard(contest, snapshot);
+    expect(on.container.querySelector('.team-group')?.textContent).toBe('KAIST');
+    const off = renderBoard(contest, snapshot, cfg({ showTeamGroup: false }));
+    expect(off.container.querySelector('.team-group')).toBeNull();
+  });
+
+  it('shows the school logo only when enabled and known, hiding on error', () => {
+    const { contest, snapshot } = priorityFixture();
+    const orgs: OrgsIndex = { KAIST: { country: 'KR', logo: 'kaist.png' } };
+    const { container } = renderBoard(
+      contest,
+      snapshot,
+      cfg({ showSchoolLogos: true }),
+      { orgs },
+    );
+    const img = container.querySelector('[data-team-id="t1"] img.team-logo') as HTMLImageElement;
+    expect(img).not.toBeNull();
+    expect(img.getAttribute('src')).toBe('./orgs/logos/kaist.png');
+    // no entry for SNU → no logo img
+    expect(container.querySelector('[data-team-id="t2"] img.team-logo')).toBeNull();
+    // broken asset disappears
+    act(() => {
+      img.dispatchEvent(new Event('error'));
+    });
+    expect(container.querySelector('[data-team-id="t1"] img.team-logo')).toBeNull();
+  });
+});

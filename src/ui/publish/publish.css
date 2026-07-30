@@ -1,0 +1,288 @@
+/* Publish mode (spec §13) — static final scoreboard chrome.
+   Board rows/cells are styled by the shared scoreboard styles; this file only
+   owns the publish chrome: header (title + clock), instruction panel, inputs.
+   Sizing is em-based to match the original spotboard look. */
+
+.publish-view {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75em;
+  min-height: 100vh;
+  padding: 0.75em 1em 2em;
+  box-sizing: border-box;
+}
+
+/* -- chrome: title + clock only (no header buttons) ----------------------- */
+
+.publish-header {
+  display: flex;
+  align-items: baseline;
+  gap: 1em;
+  padding: 0.35em 0.25em;
+  border-bottom: 0.15em solid rgba(255, 255, 255, 0.18);
+}
+
+.publish-title {
+  margin: 0;
+  font-size: 1.5em;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+}
+
+.publish-clock {
+  margin-left: auto;
+  font-size: 1.25em;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+  opacity: 0.85;
+}
+
+.publish-mode-tag {
+  font-size: 0.8em;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.12em;
+  padding: 0.15em 0.6em;
+  border: 1px solid currentColor;
+  border-radius: 1em;
+  opacity: 0.7;
+}
+
+/* -- controls -------------------------------------------------------------- */
+
+.publish-controls {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  gap: 1.25em;
+  padding: 0.6em 0.75em;
+  border-radius: 0.4em;
+  background: rgba(255, 255, 255, 0.06);
+}
+
+.publish-field {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25em;
+}
+
+.publish-field-label {
+  font-size: 0.8em;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  opacity: 0.75;
+}
+
+.publish-field-input {
+  font: inherit;
+  font-variant-numeric: tabular-nums;
+  width: 9em;
+  padding: 0.3em 0.5em;
+  border: 0.12em solid rgba(255, 255, 255, 0.35);
+  border-radius: 0.3em;
+  background: rgba(0, 0, 0, 0.25);
+  color: inherit;
+}
+
+.publish-field-input:focus {
+  outline: none;
+  border-color: #7db4ff;
+}
+
+.publish-field-input[aria-invalid='true'] {
+  border-color: #e05252;
+}
+
+/* -- instruction panel (site score missing) -------------------------------- */
+
+.publish-gate {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 1em;
+  flex: 1;
+  padding: 3em 1em;
+  text-align: center;
+}
+
+.publish-gate-title {
+  margin: 0;
+  font-size: 1.6em;
+  font-weight: 700;
+}
+
+.publish-gate-hint {
+  margin: 0;
+  max-width: 36em;
+  font-size: 1em;
+  line-height: 1.6;
+  opacity: 0.8;
+}
+
+/* -- board ------------------------------------------------------------------ */
+/* TODO(scoreboard): trim to a plain wrapper once the shared scoreboard
+   components/styles replace the fallback board markup in PublishView. */
+
+.publish-board {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 0.15em;
+  font-size: 0.95em;
+}
+
+.publish-row {
+  display: flex;
+  align-items: center;
+  gap: 0.4em;
+  padding: 0.25em 0.3em;
+  border-radius: 0.25em;
+  background: rgba(255, 255, 255, 0.045);
+}
+
+.publish-row:nth-child(odd) {
+  background: rgba(255, 255, 255, 0.08);
+}
+
+.publish-row--head {
+  background: none;
+  font-size: 0.8em;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  opacity: 0.7;
+}
+
+.publish-rank {
+  width: 2.4em;
+  text-align: center;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  border-radius: 0.2em;
+  padding: 0.15em 0;
+}
+
+.publish-rank-icpc {
+  color: #fff;
+  text-shadow: 0 1px 1px rgba(0, 0, 0, 0.45);
+}
+
+.publish-rank-domestic {
+  opacity: 0.85;
+}
+
+.publish-star-slot {
+  width: 1.6em;
+  display: inline-flex;
+  justify-content: center;
+}
+
+.publish-flag-slot {
+  width: 1.8em;
+  display: inline-flex;
+  justify-content: center;
+}
+
+.publish-team-name {
+  flex: 1.4;
+  min-width: 10em;
+  font-weight: 600;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.publish-team-group {
+  flex: 1;
+  min-width: 8em;
+  opacity: 0.75;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.publish-solved {
+  width: 3em;
+  text-align: right;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+}
+
+.publish-penalty {
+  width: 4em;
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+  opacity: 0.85;
+}
+
+.publish-cells {
+  display: flex;
+  gap: 0.2em;
+  margin-left: 0.5em;
+}
+
+.publish-cell {
+  width: 2.7em;
+  height: 2em;
+  display: inline-flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  border-radius: 0.2em;
+  font-size: 0.85em;
+  font-variant-numeric: tabular-nums;
+  background: rgba(255, 255, 255, 0.05);
+  color: #fff;
+}
+
+.publish-cell--head {
+  background: none;
+  font-weight: 700;
+}
+
+.publish-cell-minute {
+  font-weight: 700;
+  line-height: 1.1;
+}
+
+.publish-cell-attempts {
+  font-size: 0.75em;
+  line-height: 1.1;
+  opacity: 0.85;
+}
+
+/* Cell tones (spec §7): purple > blue > light-green > green; yellow pending,
+   red (striped) wrong answer. */
+.publish-cell--solved {
+  background: #2e8b57;
+}
+
+.publish-cell--first {
+  background: #79c93c;
+  color: #10310a;
+}
+
+.publish-cell--last {
+  background: #2f6fd0;
+}
+
+.publish-cell--contest-last {
+  background: #7a3fbf;
+}
+
+.publish-cell--pending {
+  background: #d9b82f;
+  color: #3a3006;
+}
+
+.publish-cell--failed {
+  background: repeating-linear-gradient(
+    135deg,
+    #c0392b 0,
+    #c0392b 0.5em,
+    #a93226 0.5em,
+    #a93226 1em
+  );
+}

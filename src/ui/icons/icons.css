@@ -1,0 +1,32 @@
+/* Shared styles for the SVG icon set. */
+
+.kr-icon {
+  display: inline-block;
+  vertical-align: middle;
+  flex-shrink: 0;
+}
+
+/* APAC star — one full 360° rotation with a badge-pop scale overshoot.
+   Re-triggered by remounting (change the React key) or toggling the class. */
+.kr-apac-star {
+  transform-origin: 50% 50%;
+}
+
+.kr-apac-star--spin {
+  animation: kr-apac-star-spin 0.95s cubic-bezier(0.33, 1.1, 0.45, 1) both;
+}
+
+@keyframes kr-apac-star-spin {
+  0% {
+    transform: rotate(0deg) scale(0.5);
+  }
+  55% {
+    transform: rotate(245deg) scale(1.28);
+  }
+  80% {
+    transform: rotate(328deg) scale(0.94);
+  }
+  100% {
+    transform: rotate(360deg) scale(1);
+  }
+}
