@@ -24,6 +24,15 @@
  * One advance() call = one user keypress = one state transition:
  *   slide-on → (focus | blink | reveal | finalize | end)
  *
+ * Slides are raised ONLY for teams in `awardedTeamIds` (spec §6: "awards.json
+ * 항목이 없는 팀은 슬라이드를 아예 띄우지 않는다"). Everyone else finalizes with
+ * showSlide: false and costs exactly one keypress. The machine — not the view —
+ * owns this, because the alternative (raise a slide, let an effect close it)
+ * leaves an invisible slide latched for one render: any keypress arriving in
+ * that window is consumed as a dismissal and nothing visible happens. With 84
+ * teams and 3 award entries that race sits at 81 of 84 finalize boundaries,
+ * exactly where a held or double-tapped presenter remote fires.
+ *
  * Slide dismissal (spec §6): a visible slide CONSUMES the next advance() —
  * the machine closes the slide and returns { type: 'slide-on' } without
  * touching the ceremony, so a projector remote with no Escape key drives the
@@ -56,6 +65,17 @@ export interface CreateAwardMachineOptions {
   /** Post-freeze runs; they mask their whole cell as pending until revealed. */
   hiddenRuns: Run[];
   config: AwardConfigInput;
+  /**
+   * Team ids that have an awards.json entry (spec §6). ONLY these teams raise
+   * a slide on finalize; every other team finalizes with `showSlide: false`
+   * and consumes exactly one keypress.
+   *
+   * Ordering contract: the ids must be known BEFORE the first advance(), so
+   * the loader (store.boot) awaits awards.json and passes them here. Omitting
+   * the option means "no team has an entry" — a machine built without it runs
+   * a slide-less ceremony rather than one with invisible slides.
+   */
+  awardedTeamIds?: ReadonlySet<string>;
   /** Injected RNG for the gacha "No" probability roll ([0, 1)). */
   rng: Rng;
   computeStandings: ComputeStandings;
@@ -74,6 +94,7 @@ interface FinalCellRef {
 
 export function createAwardMachine(opts: CreateAwardMachineOptions): AwardMachine {
   const { contest, config, rng, computeStandings } = opts;
+  const awardedTeamIds: ReadonlySet<string> = opts.awardedTeamIds ?? new Set<string>();
 
   // -------------------------------------------------------------------------
   // Reveal-order priority: entries match a problem label OR id; problems not
@@ -380,8 +401,12 @@ export function createAwardMachine(opts: CreateAwardMachineOptions): AwardMachin
     if (problemId === null) {
       teamStage.set(teamId, 'finalized');
       focusedTeamId = null;
-      slideTeamId = teamId;
-      return { type: 'finalize', teamId, showSlide: true };
+      // Only an awards.json entry earns a slide (spec §6). Without an entry
+      // there is nothing to show, so no slide is raised and the next keypress
+      // moves the ceremony on — no invisible latch to swallow it.
+      const showSlide = awardedTeamIds.has(teamId);
+      if (showSlide) slideTeamId = teamId;
+      return { type: 'finalize', teamId, showSlide };
     }
 
     const key = cellKey(teamId, problemId);

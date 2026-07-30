@@ -10,18 +10,24 @@
  *   sequences (hard-timeout so it can never stick). While a slide is up an
  *   advance key is consumed as its dismissal, so PageDown alone drives the
  *   whole ceremony (projector remotes have no Escape; spec §6),
- * - reveal playback via the scoreboard's useCellFlip (fast flips for
- *   intermediate fails, slow for the final result per animationSpeeds),
+ * - reveal playback via the scoreboard's useCellFlip (intermediate fails on
+ *   the ease-in-out pacing curve of revealFlipDurations — slow start, fast
+ *   middle, slow finish — then the slow verdict flip per animationSpeeds),
  * - gacha shake+sparkle, the 6-step finale sequence (pre-heat blink → zoom +
  *   spotlight + rainbow + shake → slow flips → slower verdict flip → shake
  *   stops, confetti on Yes → ~5s restore), full-screen AwardSlide on
  *   finalize; clicking a finalized medalist's name re-shows its slide.
  *
+ * awards.json comes from the store (loaded during boot), NOT from a fetch
+ * here: the machine takes the entry ids at construction and raises a slide
+ * only for a team that has one (spec §6). The view therefore never has to
+ * close a slide the ceremony should not have opened.
+ *
  * Board rows are composed from the shared scoreboard building blocks
  * (ProblemCell, useCellFlip, Badges, Balloons, util) — the award skin needs
  * per-cell overrides and masking that the plain spectator row does not.
  */
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState, type CSSProperties } from 'react';
 import { motion } from 'framer-motion';
 import { useStore } from 'zustand';
 
@@ -43,12 +49,13 @@ import {
 import '@ui/scoreboard/scoreboard.css';
 
 import { AwardSlide, type AwardSlideOther } from './AwardSlide';
-import { parseAwardsJson, type AwardEntry } from './awardsData';
+import type { AwardEntry } from './awardsData';
 import {
   FINALE_PREHEAT_MS,
   FINALE_ZOOM_MS,
   GACHA_SHAKE_MS,
   accumulateDisplay,
+  flipMsAt,
   matchAnimationSpeed,
   moveUpDurationSec,
   useRevealDriver,
@@ -64,8 +71,6 @@ const ADVANCE_KEYS = new Set(['Enter', 'ArrowRight', ';', 'PageDown']);
 export interface AwardViewProps {
   /** Store override for tests; the app uses the singleton. */
   store?: AppStore;
-  /** awards.json override for tests; by default fetched from awardsUrl. */
-  awards?: AwardEntry[];
   /**
    * team id → APAC star (App wires computeApacStars per spec §13: ceremony
    * phase during the reveal, final once the machine is finished). null/absent
@@ -91,59 +96,22 @@ export function maskIdentity(
   return { name: `Team ${team.id}`, group: 'Unknown', masked: true };
 }
 
-export function AwardView({ store = appStore, awards, apacStars = null }: AwardViewProps) {
+export function AwardView({ store = appStore, apacStars = null }: AwardViewProps) {
   const machine = useStore(store, (s) => s.awardMachine);
   // awardTick subscribes this component to machine mutations.
   useStore(store, (s) => s.awardTick);
   const snapshot = useStore(store, (s) => s.snapshot);
   const config = useStore(store, (s) => s.config);
   const contest = useStore(store, (s) => s.contest);
+  // awards.json is loaded by the store during boot — the machine takes the
+  // entry ids at construction (spec §6), so the view must read the SAME map
+  // it was built from. A second fetch here could disagree with the machine.
+  const awardsByTeam = useStore(store, (s) => s.awards);
 
   const driver = useRevealDriver(config.award.animationSpeeds, {
     flip: config.award.finaleFlipSlowdown,
     intermediateFlip: config.award.finaleIntermediateFlipSlowdown,
   });
-
-  // -- awards.json ----------------------------------------------------------
-  const [awardsByTeam, setAwardsByTeam] = useState<Map<string, AwardEntry>>(
-    () => new Map(awards?.map((entry) => [entry.teamId, entry]) ?? []),
-  );
-  useEffect(() => {
-    if (awards !== undefined) return; // test-injected
-    let cancelled = false;
-    (async () => {
-      try {
-        const res = await fetch(config.award.awardsUrl);
-        if (!res.ok) throw new Error(`HTTP ${res.status}`);
-        const parsed = parseAwardsJson(await res.json());
-        if (!cancelled) setAwardsByTeam(parsed);
-      } catch (err) {
-        store
-          .getState()
-          .addSystemMessage(
-            'warning',
-            `awards.json could not be loaded (${
-              err instanceof Error ? err.message : String(err)
-            }); award slides and medals will be skipped.`,
-          );
-      }
-    })();
-    return () => {
-      cancelled = true;
-    };
-  }, [awards, config.award.awardsUrl, store]);
-
-  // -- entry-less slide auto-dismiss (spec §6) ------------------------------
-  // The machine raises a slide on every finalize, but the full-screen slide
-  // exists only "awards.json 데이터가 있으면". Without this dismissal an
-  // invisible slide would latch and swallow every advance key (a presenter
-  // remote has no Escape). An effect (not a handleStep check) also covers
-  // the async awards fetch and rankBegin fast-forward edge cases.
-  const machineSlideTeamId = machine?.currentSlideTeamId ?? null;
-  useEffect(() => {
-    if (machineSlideTeamId === null) return;
-    if (!awardsByTeam.has(machineSlideTeamId)) store.getState().awardDismiss();
-  }, [machineSlideTeamId, awardsByTeam, store]);
 
   // -- ceremony step handling ----------------------------------------------
   /** Cell in its one-keypress blink stage (cleared on the next transition). */
@@ -613,6 +581,8 @@ function RevealingCell({
   const [shaking, setShaking] = useState(false);
   const [done, setDone] = useState(false);
   const [activeFlip, setActiveFlip] = useState<'fast' | 'slow' | null>(null);
+  /** Duration of the flip in flight — the eased pacing varies per flip (spec §6). */
+  const [flipMs, setFlipMs] = useState(flip.fast);
   /** Null for a normal reveal; the finale walks preheat → … → settled. */
   const [phase, setPhase] = useState<FinalePhase | null>(finale ? 'preheat' : null);
 
@@ -664,6 +634,9 @@ function RevealingCell({
           if (cancelled) return;
         }
         setActiveFlip(isFinal ? 'slow' : 'fast');
+        // Ease-in-out pacing (spec §6): every intermediate flip has its own
+        // duration; the verdict flip keeps the plain slow one.
+        setFlipMs(flipMsAt(flip, i, runs.length));
         const ctl = isFinal ? slowRef.current : fastRef.current;
         // Verdict swap at the flip midpoint (original spotboard behavior).
         // The cancelled guard keeps a superseded playback run (StrictMode
@@ -704,8 +677,19 @@ function RevealingCell({
         isContestLastSolve: false,
       };
 
+  // The hooks are created with the band durations, but the eased pacing gives
+  // each intermediate flip its own length — override the CSS half-duration for
+  // the flip in flight. useCellFlip's own 2× fallback timer stays bound to the
+  // (never shorter) band value, so a lost animationend still cannot wedge the
+  // sequence, and the driver's busy deadline stays an upper bound.
+  const activeCtl = activeFlip === 'fast' ? fastCtl : activeFlip === 'slow' ? slowCtl : null;
   const flipProps =
-    activeFlip === 'fast' ? fastCtl.props : activeFlip === 'slow' ? slowCtl.props : undefined;
+    activeCtl === null
+      ? undefined
+      : {
+          ...activeCtl.props,
+          style: { ...activeCtl.props.style, '--flip-half': `${flipMs / 2}ms` } as CSSProperties,
+        };
 
   const preheating = phase === 'preheat';
 

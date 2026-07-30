@@ -163,6 +163,12 @@ interface MachineOptions {
   hidden?: Run[];
   config?: Partial<AwardConfigInput>;
   rng?: () => number;
+  /**
+   * Team ids with an awards.json entry (spec §6 — only these raise a slide).
+   * Defaults to EVERY team so slide-agnostic tests keep exercising the slide
+   * path; the entry-less behaviour has its own tests below.
+   */
+  awarded?: string[];
 }
 
 function makeMachine(options: MachineOptions): AwardMachine {
@@ -170,6 +176,7 @@ function makeMachine(options: MachineOptions): AwardMachine {
     contest: options.contest,
     revealedRuns: options.revealed ?? [],
     hiddenRuns: options.hidden ?? [],
+    awardedTeamIds: new Set(options.awarded ?? [...options.contest.teams.keys()]),
     config: cfg(options.config),
     rng: options.rng ?? (() => 0.99),
     computeStandings: computeStandingsForTest,
@@ -371,6 +378,83 @@ describe('advance(): bottom-up order with rank shifts', () => {
       .filter((r) => r.type === 'finalize')
       .map((r) => (r.type === 'finalize' ? r.teamId : ''));
     expect(finalizeOrder).toEqual(['t3', 't2', 't1']);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// awardedTeamIds: a slide exists only for a team WITH an awards.json entry.
+// ---------------------------------------------------------------------------
+
+describe('finalize slides (awardedTeamIds, spec §6)', () => {
+  /** 3 teams, no hidden runs: the ceremony is focus + finalize only. */
+  function slideFixture(awarded: string[]): AwardMachine {
+    const contest = makeContest(['t1', 't2', 't3']);
+    return makeMachine({
+      contest,
+      revealed: [run(1, 't1', '0', 10, 'accepted'), run(2, 't2', '0', 20, 'accepted')],
+      awarded,
+    });
+  }
+
+  it('raises no slide for an entry-less team and costs exactly one keypress', () => {
+    const machine = slideFixture(['t1']); // only the champion has an entry
+
+    expect(machine.advance()).toEqual({ type: 'focus', teamId: 't3' });
+    // Entry-less finalize: showSlide false, no latched slide, and the NEXT
+    // press moves on instead of being eaten as a dismissal.
+    expect(machine.advance()).toEqual({ type: 'finalize', teamId: 't3', showSlide: false });
+    expect(machine.currentSlideTeamId).toBeNull();
+    expect(machine.advance()).toEqual({ type: 'focus', teamId: 't2' });
+    expect(machine.advance()).toEqual({ type: 'finalize', teamId: 't2', showSlide: false });
+    expect(machine.currentSlideTeamId).toBeNull();
+
+    // The awarded team still gets its slide, which still consumes one press.
+    expect(machine.advance()).toEqual({ type: 'focus', teamId: 't1' });
+    expect(machine.advance()).toEqual({ type: 'finalize', teamId: 't1', showSlide: true });
+    expect(machine.currentSlideTeamId).toBe('t1');
+    expect(machine.advance()).toEqual({ type: 'slide-on' });
+    expect(machine.advance()).toEqual({ type: 'end' });
+  });
+
+  it('treats an omitted awardedTeamIds as "no team has an entry"', () => {
+    const contest = makeContest(['t1', 't2']);
+    const machine = createAwardMachine({
+      contest,
+      revealedRuns: [run(1, 't1', '0', 10, 'accepted')],
+      hiddenRuns: [],
+      config: cfg(),
+      rng: () => 0.99,
+      computeStandings: computeStandingsForTest,
+    });
+    const steps: AwardStepResult[] = [];
+    for (let i = 0; i < 6; i++) steps.push(machine.advance());
+    expect(steps.map((s) => s.type)).toEqual(['focus', 'finalize', 'focus', 'finalize', 'end', 'end']);
+    expect(steps.every((s) => s.type !== 'finalize' || !s.showSlide)).toBe(true);
+  });
+
+  it('ignores award entries for teams that are not in the contest', () => {
+    const machine = slideFixture(['ghost']);
+    const steps = collectToEnd(machine);
+    expect(steps.filter((s) => s.type === 'slide-on')).toHaveLength(0);
+    expect(steps.every((s) => s.type !== 'finalize' || !s.showSlide)).toBe(true);
+  });
+
+  // A held/double-tapped presenter remote fires two advance() calls before any
+  // React effect can run. With no invisible slide to absorb one of them, every
+  // press must land on a real transition.
+  it('loses no keypress when advance() is called twice in a row at every step', () => {
+    const machine = slideFixture(['t1']);
+    const types: string[] = [];
+    for (let i = 0; i < 12; i++) {
+      const first = machine.advance();
+      const second = machine.advance();
+      types.push(first.type, second.type);
+      if (first.type === 'end' || second.type === 'end') break;
+    }
+    // Exactly one dismissal press, for the one real slide (t1).
+    expect(types.filter((t) => t === 'slide-on')).toHaveLength(1);
+    expect(types.filter((t) => t === 'finalize')).toHaveLength(3);
+    expect(types.filter((t) => t === 'focus')).toHaveLength(3);
   });
 });
 

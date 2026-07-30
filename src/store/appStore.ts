@@ -5,7 +5,8 @@
  * Responsibilities:
  * - boot(): config.json → parseConfig → URL overrides → orgs.json → mode
  *   selection → FeedSource construction → contest load → asset check →
- *   initial fetch/ingest → replay (r= / time=) → award machine construction.
+ *   initial fetch/ingest → replay (r= / time=) → (award mode) awards.json →
+ *   award machine construction.
  * - Spectator loop: poll timer (autoRefreshInterval), autoplay tick
  *   (autoPlayDelay, one run per tick), manual pollNow() with timer reset,
  *   WebSocket poll-nudge ("doorbell", no reconnect).
@@ -46,6 +47,7 @@ import {
 import { createRunFeeder } from '@core/feeder';
 import { computeStandings } from '@core/standings';
 import { createAwardMachine } from '@core/award';
+import { parseAwardsJson, type AwardEntry } from '@core/awards';
 import { createSpotboardSource } from '@core/ingest/spotboard';
 import { createContestApiSource } from '@core/ingest/contest-api';
 
@@ -135,6 +137,14 @@ export interface AppState {
   /** Autoplay on/off (spectator). */
   playing: boolean;
   awardMachine: AwardMachine | null;
+  /**
+   * awards.json entries by team id (spec §6). Loaded during boot in AWARD
+   * mode only — the machine needs the entry ids before its first keypress to
+   * decide which finalize raises a slide, so the fetch cannot live in the
+   * view. Empty map when the file is missing/unreadable; the other modes read
+   * their own copy in App (labels only, no ceremony coupling).
+   */
+  awards: ReadonlyMap<string, AwardEntry>;
   /** Bumped after every advance/dismiss so React re-renders machine reads. */
   awardTick: number;
   /** Recent applied runs, newest first, capped at config.maxNotifications. */
@@ -429,6 +439,24 @@ export function createAppStore(deps: StoreDeps = {}): AppStore {
       }
     }
 
+    /**
+     * awards.json for AWARD mode (spec §6). Awaited during boot because the
+     * state machine takes the entry ids at construction: it raises a slide
+     * only for a team that has one. A missing file downgrades to a slide-less
+     * ceremony with a warning — never to invisible slides.
+     */
+    async function loadAwardsJson(url: string): Promise<Map<string, AwardEntry>> {
+      try {
+        return parseAwardsJson(await fetchJson(url));
+      } catch (err) {
+        addMessage(
+          'warning',
+          `awards.json could not be loaded (${errorText(err)}); award slides and medals will be skipped.`,
+        );
+        return new Map<string, AwardEntry>();
+      }
+    }
+
     /** Spec §8: warn about groups missing from orgs.json / missing logos. */
     function checkAssets(contest: Contest, orgs: OrgsIndex, config: ResolvedConfig): void {
       const missingOrg: string[] = [];
@@ -485,6 +513,7 @@ export function createAppStore(deps: StoreDeps = {}): AppStore {
       noMoreUpdate: false,
       playing: false,
       awardMachine: null,
+      awards: new Map<string, AwardEntry>(),
       awardTick: 0,
       recentEvents: [],
       lastAppliedFlips: null,
@@ -554,10 +583,16 @@ export function createAppStore(deps: StoreDeps = {}): AppStore {
           const revealedRuns = feeder.appliedRuns.slice();
           const hiddenRuns = feeder.feedAll();
           const award = config.award;
+          // Awaited BEFORE the machine exists: the entry ids decide which
+          // finalize raises a slide (spec §6), and that must hold from the
+          // very first keypress — including the rankBegin fast-forward that
+          // runs inside the constructor.
+          const awards = await loadAwardsJson(award.awardsUrl);
           const machine = createAwardMachine({
             contest,
             revealedRuns,
             hiddenRuns,
+            awardedTeamIds: new Set(awards.keys()),
             config: {
               hideName: award.hideName,
               rankBegin: award.rankBegin,
@@ -569,7 +604,17 @@ export function createAppStore(deps: StoreDeps = {}): AppStore {
             rng,
             computeStandings,
           });
-          set({ awardMachine: machine, awardTick: 0, snapshot: machine.snapshot });
+          set({ awardMachine: machine, awards, awardTick: 0, snapshot: machine.snapshot });
+          // 빈 시상식 경고 (spec §6): a cutoff at or after the last submission
+          // masks nothing, so the whole ceremony would be focus/finalize
+          // keypresses with no reveal. Warn at boot — the operator still has
+          // time to fix r= / time=.
+          if (machine.remainingReveals === 0) {
+            addMessage(
+              'warning',
+              'The award ceremony has nothing to reveal: no submission falls after the freeze cutoff. Check the r= / time= replay cutoff before starting.',
+            );
+          }
           syncFeederMeta();
         } else {
           const replayed = bounded ? feeder.feedWhile(withinReplayBound) : feeder.feedAll();

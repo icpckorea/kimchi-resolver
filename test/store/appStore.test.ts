@@ -577,6 +577,65 @@ describe('award mode', () => {
     expect(machine!.remainingReveals).toBe(0);
     expect(store.getState().snapshot?.byTeam.get('1')?.solved).toBe(2);
   });
+
+  // -- awards.json → the machine's slide set (spec §6) ----------------------
+
+  it('loads awards.json before the machine so only entry teams raise a slide', async () => {
+    const { store } = makeHarness({
+      ...smallFiles(),
+      'awards.json': [{ teamId: 1, rank: '대상', icon: 'medal_gold', labels: ['champion'] }],
+    });
+    await store.getState().boot('?award=true&r=3');
+    // The view reads the same map the machine was built from.
+    expect([...store.getState().awards.keys()]).toEqual(['1']);
+    expect(store.getState().awards.get('1')?.labels).toEqual(['champion']);
+
+    const finalizes: { teamId: string; showSlide: boolean }[] = [];
+    for (let i = 0; i < 40; i++) {
+      const step = store.getState().awardAdvance();
+      if (step === null || step.type === 'end') break;
+      if (step.type === 'finalize') finalizes.push({ teamId: step.teamId, showSlide: step.showSlide });
+      if (step.type === 'reveal') store.getState().awardCommitSnapshot();
+    }
+    // Teams 2 and 3 have no entry: no slide, and nothing to dismiss.
+    expect(finalizes).toEqual([
+      { teamId: '3', showSlide: false },
+      { teamId: '2', showSlide: false },
+      { teamId: '1', showSlide: true },
+    ]);
+  });
+
+  it('warns and runs a slide-less ceremony when awards.json is missing', async () => {
+    const { store } = makeHarness(smallFiles()); // no awards.json → 404
+    await store.getState().boot('?award=true&r=3');
+    expect(store.getState().awards.size).toBe(0);
+    expect(messages(store).some((text) => text.includes('awards.json could not be loaded'))).toBe(
+      true,
+    );
+    for (let i = 0; i < 40; i++) {
+      const step = store.getState().awardAdvance();
+      if (step === null || step.type === 'end') break;
+      expect(step.type === 'finalize' ? step.showSlide : false).toBe(false);
+      if (step.type === 'reveal') store.getState().awardCommitSnapshot();
+    }
+  });
+
+  // -- 빈 시상식 경고 (spec §6) ----------------------------------------------
+
+  it('warns at boot when the cutoff leaves nothing to reveal', async () => {
+    const { store } = makeHarness(smallFiles());
+    // No r= / time= bound: every run is already applied → remainingReveals 0.
+    await store.getState().boot('?award=true');
+    expect(store.getState().awardMachine?.remainingReveals).toBe(0);
+    expect(messages(store).some((text) => text.includes('nothing to reveal'))).toBe(true);
+  });
+
+  it('does not warn when the ceremony has reveals left', async () => {
+    const { store } = makeHarness(smallFiles());
+    await store.getState().boot('?award=true&r=3');
+    expect(store.getState().awardMachine?.remainingReveals).toBe(3);
+    expect(messages(store).some((text) => text.includes('nothing to reveal'))).toBe(false);
+  });
 });
 
 // ---------------------------------------------------------------------------

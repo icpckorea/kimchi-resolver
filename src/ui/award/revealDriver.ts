@@ -8,6 +8,11 @@
  * RevealingCell in AwardView using the scoreboard's useCellFlip hook, which
  * calls handleSequenceEnd() when done.
  *
+ * Pacing (spec §6): the intermediate flips of one cell are NOT played at a
+ * constant speed — revealFlipDurations() spreads them along an ease-in-out
+ * curve (see EASE_* below) so a 50-attempt history builds up instead of
+ * stalling. The verdict flip keeps the plain slowFlip rule.
+ *
  * Busy latch (the original withDeferredLock equivalent): isBusy() is true
  * from play() until handleSequenceEnd(), with a hard wall-clock deadline so
  * a lost animation can never wedge the ceremony keyboard.
@@ -59,28 +64,95 @@ export function finaleFlipMs(slowFlipMs: number, slowdown: number): number {
   return Math.max(1, Math.round(slowFlipMs * slowdown));
 }
 
-/** Flip durations for one reveal: `fast` for intermediates, `slow` for the verdict. */
-export interface FlipDurations {
-  fast: number;
-  slow: number;
+// --- ease-in-out pacing of long cell histories (spec §6) --------------------
+//
+// A masked cell replays its WHOLE net history on one keypress, and the worst
+// real cell of the 2025 Seoul data (CAPS / problem G) has 50 attempts. At a
+// constant fastFlip that is ~15s of unskippable flipping. Instead the
+// intermediate flips are distributed along an ease-in-out curve: the first
+// few run at the band duration, the middle accelerates hard, the last few
+// decelerate back to the band duration, and the verdict flip then lands at
+// slowFlip. The curve's DEPTH also grows with the history length, so the
+// total grows sub-linearly (~7.0s for 50 attempts, ~2.3s for 8, and 2-3
+// attempt cells are left exactly as they were).
+
+/** Below this many intermediate flips the pacing is untouched (short cells feel identical). */
+export const EASE_MIN_FLIPS = 3;
+/** Flips spent easing in at the start and easing out at the end ("the first/last few"). */
+export const EASE_RAMP_FLIPS = 4;
+/** Asymptotic speed-up at the curve's centre, as a fraction of the band duration. */
+export const EASE_MAX_SPEEDUP = 0.65;
+/** Flips past EASE_MIN_FLIPS at which half of EASE_MAX_SPEEDUP is reached. */
+export const EASE_DEPTH_HALF_FLIPS = 1;
+/** Floor so a very fast speed band can never produce an imperceptible flip. */
+export const EASE_MIN_FLIP_MS = 40;
+
+/** Classic smoothstep — the ease-in-out shape of both ramps. */
+function smoothstep(x: number): number {
+  return x * x * (3 - 2 * x);
 }
 
 /**
- * Per-reveal flip durations (spec §7). A normal reveal uses the matched
- * band as-is; the finale cell replaces BOTH with slowed-down variants of
- * slowFlip — intermediate flips included, so nothing about the last cell
- * of the ceremony goes by quickly.
+ * Per-flip durations for the `count` intermediate flips of one cell, from
+ * `baseMs` (the matched band's intermediate duration). Symmetric: index 0 and
+ * index count-1 stay at baseMs, the middle is the fastest.
+ */
+export function easedFlipSchedule(count: number, baseMs: number): number[] {
+  if (count <= 0) return [];
+  if (count < EASE_MIN_FLIPS) return Array.from({ length: count }, () => Math.max(1, baseMs));
+  const over = count - EASE_MIN_FLIPS + 1;
+  const depth = EASE_MAX_SPEEDUP * (over / (over + EASE_DEPTH_HALF_FLIPS));
+  // Short cells cannot afford the full ramp on both sides — shrink it to fit.
+  const ramp = Math.min(EASE_RAMP_FLIPS, (count - 1) / 2);
+  const floor = Math.min(EASE_MIN_FLIP_MS, baseMs);
+  const out: number[] = [];
+  for (let i = 0; i < count; i++) {
+    const fromEnd = Math.min(i, count - 1 - i);
+    const progress = ramp <= 0 ? 0 : Math.min(1, fromEnd / ramp);
+    out.push(Math.max(floor, Math.round(baseMs * (1 - depth * smoothstep(progress)))));
+  }
+  return out;
+}
+
+/** Flip durations for one reveal: `fast` for intermediates, `slow` for the verdict. */
+export interface FlipDurations {
+  /** The band's intermediate duration, un-eased (curve baseline + fallback bound). */
+  fast: number;
+  /** The verdict flip — always the plain slowFlip rule (finale factor included). */
+  slow: number;
+  /** Eased duration of each intermediate flip, index 0 first. Length = runs − 1. */
+  intermediates: readonly number[];
+}
+
+/**
+ * Per-reveal flip durations (spec §6 pacing + §7 finale). A normal reveal
+ * uses the matched band; the finale cell replaces BOTH with slowed-down
+ * variants of slowFlip — intermediate flips included, so nothing about the
+ * last cell of the ceremony goes by quickly. The intermediate flips are then
+ * spread along the ease-in-out curve in either case; the verdict flip is
+ * never touched by it.
  */
 export function revealFlipDurations(
   step: RevealStep,
   speed: AnimationSpeed,
   slowdowns: FinaleSlowdowns,
 ): FlipDurations {
-  if (!step.effect.finale) return { fast: speed.fastFlip, slow: speed.slowFlip };
-  return {
-    fast: finaleFlipMs(speed.slowFlip, slowdowns.intermediateFlip),
-    slow: finaleFlipMs(speed.slowFlip, slowdowns.flip),
-  };
+  const fast = step.effect.finale
+    ? finaleFlipMs(speed.slowFlip, slowdowns.intermediateFlip)
+    : speed.fastFlip;
+  const slow = step.effect.finale
+    ? finaleFlipMs(speed.slowFlip, slowdowns.flip)
+    : speed.slowFlip;
+  return { fast, slow, intermediates: easedFlipSchedule(step.runs.length - 1, fast) };
+}
+
+/**
+ * Duration of flip `index` of a reveal replaying `totalRuns` runs: the eased
+ * schedule for the intermediates, the untouched slow flip for the verdict.
+ */
+export function flipMsAt(durations: FlipDurations, index: number, totalRuns: number): number {
+  if (index >= totalRuns - 1) return durations.slow;
+  return durations.intermediates[index] ?? durations.fast;
 }
 
 /** Safety margin added to the expected duration for the hard busy deadline. */
@@ -172,7 +244,12 @@ export interface RevealDriver {
   handleSequenceEnd(): void;
 }
 
-/** Worst-case playback length: lead-in + flips at the 2× fallback duration. */
+/**
+ * Worst-case playback length: lead-in + flips at the 2× fallback duration.
+ * Deliberately computed from the UN-eased band duration — useCellFlip's
+ * fallback timer is still bound to it, so this stays an upper bound however
+ * much the ease-in-out curve (spec §6) shortens the real playback.
+ */
 function estimateDurationMs(step: RevealStep, flip: FlipDurations): number {
   // Finale: pre-heat + zoom settle (spec §7 steps 1-2). Otherwise the gacha
   // shake, when it fires.

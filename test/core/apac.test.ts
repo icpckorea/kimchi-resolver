@@ -277,6 +277,53 @@ describe('computeApacFilteredRanks — scored list construction', () => {
     expect(asObject(ranks)).toEqual({ n2: 1, k1: 2 });
   });
 
+  it('gives every org-less team its own school: the 3-per-school cap never applies to ""', () => {
+    // Five teams with an unknown organization plus one school of four. Sharing
+    // a single '' budget would have dropped n4/n5 (and shifted every rank after
+    // them); each org-less team is its own school, so only a4 is capped.
+    const specs: TeamSpec[] = [
+      ...Array.from({ length: 5 }, (_, i) => ({ id: `n${i + 1}`, group: '' })),
+      ...Array.from({ length: 4 }, (_, i) => ({ id: `a${i + 1}`, group: 'A' })),
+    ];
+    const order = ['n1', 'a1', 'n2', 'a2', 'n3', 'a3', 'n4', 'a4', 'n5'];
+    const ranks = computeApacFilteredRanks(snapshotOf(specs, order), { championTeamId: null });
+    expect(asObject(ranks)).toEqual({
+      n1: 1,
+      a1: 2,
+      n2: 3,
+      a2: 4,
+      n3: 5,
+      a3: 6,
+      // a4 is school A's 4th team → capped out, taking no slot.
+      n4: 7,
+      n5: 8,
+    });
+  });
+
+  it('org-less teams still obey every other rule (0 solves out, invited team out, neighbours keep their slots)', () => {
+    const contest = makeContest([
+      { id: 'n1', group: '' },
+      { id: 'n2', group: '' },
+      { id: 'n3', group: '' },
+      { id: 'n4', group: '' },
+      { id: 'k1', group: 'K' },
+    ]);
+    const snap = computeStandings(contest, [
+      run('n1', 'p1', 10),
+      run('n2', 'p1', 20),
+      run('n3', 'p1', 30),
+      run('k1', 'p1', 40),
+      // n4 solves nothing → last place.
+    ]);
+    const ranks = computeApacFilteredRanks(snap, {
+      championTeamId: null,
+      alreadyInvited: { teamIds: ['n2'] },
+    });
+    // n2 leaves by team id only — no school of org-less teams goes with it;
+    // n4 leaves on 0 solves. n1/n3/k1 renumber over the survivors.
+    expect(asObject(ranks)).toEqual({ n1: 1, n3: 2, k1: 3 });
+  });
+
   it('does not mutate the snapshot and is deterministic', () => {
     const snap = fixtureSnapshot();
     const a = computeApacFilteredRanks(snap, { championTeamId: 'x1' });

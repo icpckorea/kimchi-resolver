@@ -10,11 +10,12 @@
  *   computeApacStars — phase 'ceremony' while the ceremony runs and 'final'
  *   once awardMachine.finished (champion = standings[0]); publish derives its
  *   own 'final' stars from siteScore/invitedCutoff inside PublishView.
- * - awards.json (spec §6): fetched from config.award.awardsUrl after boot.
- *   Spectator shows manual labels immediately (a missing file is silent);
- *   publish shows them on the final board (missing → warning); award mode
- *   lets AwardView own the fetch — it gates labels/slides to finalized teams
- *   and reports its own load warning.
+ * - awards.json (spec §6): fetched here from config.award.awardsUrl after boot
+ *   for spectator and publish only. Spectator shows manual labels immediately
+ *   (a missing file is silent); publish shows them on the final board (missing
+ *   → warning). Award mode is loaded by the store DURING boot instead — the
+ *   state machine needs the entry ids to decide which finalize raises a slide
+ *   (spec §6), so it cannot wait for a post-boot view fetch.
  */
 import { useEffect, useMemo, useRef, useState } from 'react';
 

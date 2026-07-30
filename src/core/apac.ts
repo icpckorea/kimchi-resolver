@@ -14,7 +14,9 @@
  * 2. Teams with 0 solved problems are excluded.
  * 3. Of what remains, each school keeps its top 3 teams in ICPC standing
  *    order; `filteredRank` is the 1-based position in that list. Foreign teams
- *    occupy slots normally — the 3-per-school cap is per site.
+ *    occupy slots normally — the 3-per-school cap is per site. A team with an
+ *    unknown organization ('') is its own school: unrelated org-less teams
+ *    must not spend one shared 3-slot budget.
  *
  * score = (filteredRank − 1) / siteScore; invited when score ≤ cutoff.
  *
@@ -133,10 +135,14 @@ export function computeApacFilteredRanks(
     if (isInvited(standing.team.id, group, invitations)) continue;
     // 2. 0-solve teams are excluded.
     if (standing.solved <= 0) continue;
-    // 3. Top 3 per school, over what is left.
-    const nth = (perSchool.get(group) ?? 0) + 1;
-    perSchool.set(group, nth);
-    if (nth > APAC_SCHOOL_RANK_CAP) continue;
+    // 3. Top 3 per school, over what is left. '' (unknown organization) is not
+    //    a school — the same reason isInvited() special-cases it — so every
+    //    org-less team is its own school and is never capped away by another.
+    if (group !== '') {
+      const nth = (perSchool.get(group) ?? 0) + 1;
+      perSchool.set(group, nth);
+      if (nth > APAC_SCHOOL_RANK_CAP) continue;
+    }
 
     filteredRank += 1;
     ranks.set(standing.team.id, filteredRank);

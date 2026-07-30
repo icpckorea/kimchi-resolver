@@ -398,7 +398,8 @@ describe('award mode on a mobile viewport', () => {
     });
     expect(store.getState().mode).toBe('award');
 
-    const { container } = render(<AwardView store={store} awards={[]} />);
+    // awards.json is served by the store (404 here → no medalists, spec §6).
+    const { container } = render(<AwardView store={store} />);
 
     const rows = container.querySelectorAll('.team-row');
     expect(rows.length).toBeGreaterThan(0);

@@ -24,9 +24,12 @@ import {
   FINALE_HOLD_MS,
   FINALE_PREHEAT_MS,
   FINALE_ZOOM_MS,
+  EASE_MIN_FLIP_MS,
   GACHA_SHAKE_MS,
   accumulateDisplay,
+  easedFlipSchedule,
   finaleFlipMs,
+  flipMsAt,
   matchAnimationSpeed,
   moveUpDurationSec,
   revealFlipDurations,
@@ -122,11 +125,20 @@ function jsonResponse(body: unknown): Response {
   });
 }
 
+/**
+ * Per-test awards.json payload. The STORE loads it during boot (the machine
+ * takes the entry ids at construction, spec §6), so a test that needs a
+ * different set of medalists sets this BEFORE bootAwardStore(). null → the
+ * default two-entry fixture; [] → nobody has an entry.
+ */
+let awardsOverride: AwardEntry[] | null = null;
+
 const fetchImpl: typeof fetch = async (input) => {
   const url = String(input);
   if (url.includes('config.json')) return jsonResponse(configJson);
   if (url.includes('contest.json')) return jsonResponse(contestJson);
   if (url.includes('runs.json')) return jsonResponse(runsOverride ?? runsJson);
+  if (url.includes('awards.json')) return jsonResponse(awardsOverride ?? awardsFixture);
   return new Response('not found', { status: 404, statusText: 'Not Found' });
 };
 
@@ -145,7 +157,7 @@ async function bootAwardStore(
 }
 
 function renderAward(store: AppStore) {
-  return render(<AwardView store={store} awards={awardsFixture} />);
+  return render(<AwardView store={store} />);
 }
 
 async function pressKey(key: string): Promise<void> {
@@ -176,6 +188,7 @@ beforeEach(() => {
 afterEach(() => {
   cleanup();
   runsOverride = null;
+  awardsOverride = null;
   vi.unstubAllGlobals();
   vi.useRealTimers();
 });
@@ -260,8 +273,8 @@ describe('moveUpDurationSec', () => {
 describe('finale flip durations (config-driven, spec §7)', () => {
   const speed = { minSolved: 0, fastFlip: 300, slowFlip: 700, moveUpMsPerRow: 100 };
   const slowdowns = { flip: 3, intermediateFlip: 2 };
-  const stepOf = (finale: boolean) =>
-    ({ effect: { gacha: true, finale } }) as unknown as RevealStep;
+  const stepOf = (finale: boolean, runs = 2) =>
+    ({ effect: { gacha: true, finale }, runs: new Array(runs).fill(null) }) as unknown as RevealStep;
 
   it('scales the matched slowFlip by the configured factors', () => {
     expect(finaleFlipMs(700, 3)).toBe(2100);
@@ -276,19 +289,111 @@ describe('finale flip durations (config-driven, spec §7)', () => {
     expect(revealFlipDurations(stepOf(false), speed, slowdowns)).toEqual({
       fast: 300,
       slow: 700,
+      intermediates: [300],
     });
     // Finale: intermediate flips are slowFlip × 2, the verdict flip × 3 —
     // both derived from slowFlip, so fastFlip never leaks into the finale.
     expect(revealFlipDurations(stepOf(true), speed, slowdowns)).toEqual({
       fast: 1400,
       slow: 2100,
+      intermediates: [1400],
     });
   });
 
   it('honours custom config factors', () => {
-    expect(
-      revealFlipDurations(stepOf(true), speed, { flip: 5, intermediateFlip: 1 }),
-    ).toEqual({ fast: 700, slow: 3500 });
+    expect(revealFlipDurations(stepOf(true), speed, { flip: 5, intermediateFlip: 1 })).toEqual({
+      fast: 700,
+      slow: 3500,
+      intermediates: [700],
+    });
+  });
+
+  it('paces a long FINALE history on the curve too, off the finale base', () => {
+    // 10 runs → 9 intermediate flips, all derived from slowFlip × 2 = 1400.
+    const durations = revealFlipDurations(stepOf(true, 10), speed, slowdowns);
+    const eased = durations.intermediates;
+    expect(eased).toHaveLength(9);
+    expect(eased[0]).toBe(1400);
+    expect(eased[8]).toBe(1400);
+    expect(Math.min(...eased)).toBeLessThan(1400 * 0.6);
+    // The verdict flip is never eased.
+    expect(durations.slow).toBe(2100);
+  });
+});
+
+describe('reveal pacing curve (spec §6, ease-in-out over a long history)', () => {
+  const BASE = 300;
+  const SLOW = 700;
+  const total = (runs: number): number =>
+    easedFlipSchedule(runs - 1, BASE).reduce((sum, ms) => sum + ms, 0) + SLOW;
+  const constantTotal = (runs: number): number => (runs - 1) * BASE + SLOW;
+
+  it('leaves short cells (1-3 runs) exactly as they were', () => {
+    expect(easedFlipSchedule(0, BASE)).toEqual([]);
+    expect(easedFlipSchedule(1, BASE)).toEqual([BASE]);
+    expect(easedFlipSchedule(2, BASE)).toEqual([BASE, BASE]);
+    for (const runs of [1, 2, 3]) expect(total(runs)).toBe(constantTotal(runs));
+  });
+
+  it('accelerates then decelerates (monotone down, then monotone up)', () => {
+    const eased = easedFlipSchedule(49, BASE);
+    expect(eased).toHaveLength(49);
+    const fastest = Math.min(...eased);
+    const trough = eased.indexOf(fastest);
+    // Down to the trough…
+    for (let i = 1; i <= trough; i++) expect(eased[i]).toBeLessThanOrEqual(eased[i - 1]);
+    // …then back up, never dipping again.
+    for (let i = eased.lastIndexOf(fastest) + 1; i < eased.length; i++) {
+      expect(eased[i]).toBeGreaterThanOrEqual(eased[i - 1]);
+    }
+    // The ramps are real: the first/last few start and end at the band speed,
+    // the middle runs far faster.
+    expect(eased[0]).toBe(BASE);
+    expect(eased[eased.length - 1]).toBe(BASE);
+    expect(eased[1]).toBeLessThan(BASE);
+    expect(fastest).toBeLessThan(BASE / 2);
+    // Symmetric curve.
+    expect(eased).toEqual([...eased].reverse());
+  });
+
+  it('keeps the worst real cell (CAPS/G, 50 attempts) in the 6-8s band', () => {
+    expect(constantTotal(50)).toBe(15_400); // the unskippable 15.4s being fixed
+    expect(total(50)).toBeGreaterThanOrEqual(6000);
+    expect(total(50)).toBeLessThanOrEqual(8000);
+    // …and 8 attempts stay around 2s.
+    expect(total(8)).toBeGreaterThan(1800);
+    expect(total(8)).toBeLessThan(2600);
+  });
+
+  it('grows with the attempt count, but sub-linearly and always under constant speed', () => {
+    const counts = [4, 6, 8, 12, 20, 30, 50];
+    for (const runs of counts) expect(total(runs)).toBeLessThan(constantTotal(runs));
+    for (let i = 1; i < counts.length; i++) {
+      expect(total(counts[i])).toBeGreaterThan(total(counts[i - 1]));
+    }
+    // Sub-linear: 50 attempts cost well under 6× the 8-attempt playback…
+    expect(total(50)).toBeLessThan(total(8) * 4);
+    // …while constant speed would cost more than 5×.
+    expect(constantTotal(50)).toBeGreaterThan(constantTotal(8) * 5);
+  });
+
+  it('never produces an imperceptible flip on a very fast speed band', () => {
+    const eased = easedFlipSchedule(49, 60);
+    expect(Math.min(...eased)).toBeGreaterThanOrEqual(Math.min(EASE_MIN_FLIP_MS, 60));
+    // A band already below the floor is left alone rather than stretched.
+    expect(Math.max(...easedFlipSchedule(49, 20))).toBeLessThanOrEqual(20);
+  });
+
+  it('flipMsAt returns the eased duration per flip and slowFlip for the verdict', () => {
+    const durations = {
+      fast: BASE,
+      slow: SLOW,
+      intermediates: easedFlipSchedule(7, BASE),
+    };
+    for (let i = 0; i < 7; i++) expect(flipMsAt(durations, i, 8)).toBe(durations.intermediates[i]);
+    expect(flipMsAt(durations, 7, 8)).toBe(SLOW);
+    // Single-run cell: the one flip is the verdict flip.
+    expect(flipMsAt({ ...durations, intermediates: [] }, 0, 1)).toBe(SLOW);
   });
 });
 
@@ -650,6 +755,55 @@ describe('award badge carousel', () => {
 });
 
 // ---------------------------------------------------------------------------
+// Reveal pacing in the real playback
+// ---------------------------------------------------------------------------
+
+describe('eased reveal pacing during playback (spec §6)', () => {
+  /** Team 3's B cell replays 8 runs → 7 intermediate flips on the curve. */
+  const EASED = easedFlipSchedule(7, FAST);
+
+  function flipEl(): HTMLElement {
+    const el = screen.getByTestId('award-cell-3-1').querySelector<HTMLElement>('.problem-result');
+    expect(el).not.toBeNull();
+    return el!;
+  }
+
+  /** The flip duration the cell is actually animating with, in ms. */
+  function flipMsOf(el: HTMLElement): number {
+    const half = el.style.getPropertyValue('--flip-half');
+    expect(half).toMatch(/ms$/);
+    return Number(half.slice(0, -2)) * 2;
+  }
+
+  it('gives every intermediate flip its own duration, verdict flip untouched', async () => {
+    const store = await bootAwardStore();
+    renderAward(store);
+    await pressKey('Enter'); // focus team 3
+    await pressKey('Enter'); // reveal team 3's B cell (8 runs)
+
+    const played: number[] = [];
+    for (let i = 0; i < 7; i++) {
+      const el = flipEl();
+      expect(el.className).toContain('flip-run');
+      played.push(flipMsOf(el));
+      // jsdom fires no animation events: each flip ends on the 2× fallback,
+      // which stays bound to the band duration (never the shorter eased one).
+      await advanceMs(FAST * 2);
+    }
+    expect(played).toEqual([...EASED]);
+    // Slow start, hard acceleration, slow finish.
+    expect(played[0]).toBe(FAST);
+    expect(played[6]).toBe(FAST);
+    expect(Math.min(...played)).toBeLessThan(FAST / 2);
+
+    // Gacha shake (8 attempts ≥ requirement, final Yes), then the verdict
+    // flip at the plain slowFlip — the curve never touches it.
+    await advanceMs(GACHA_SHAKE_MS);
+    expect(flipMsOf(flipEl())).toBe(SLOW);
+  });
+});
+
+// ---------------------------------------------------------------------------
 // Finale effect
 // ---------------------------------------------------------------------------
 
@@ -800,10 +954,11 @@ describe('finale 6-step sequence (spec §7)', () => {
 // ---------------------------------------------------------------------------
 
 describe('finalize without an awards.json entry', () => {
-  it('auto-dismisses the machine slide so the next advance key works', async () => {
-    const store = await bootAwardStore();
+  it('never raises a slide, so the next advance key works immediately', async () => {
     // Only team 2 has an award entry; team 3 (finalized first) has none.
-    render(<AwardView store={store} awards={[awardsFixture[1]]} />);
+    awardsOverride = [awardsFixture[1]];
+    const store = await bootAwardStore();
+    renderAward(store);
 
     await pressKey('Enter'); // focus team 3
     await pressKey('Enter'); // reveal team 3 B
@@ -811,12 +966,33 @@ describe('finalize without an awards.json entry', () => {
     await pressKey('Enter'); // finalize team 3 — no entry → NO slide
     expect(stageOf(store, '3')).toBe('finalized');
     expect(screen.queryByTestId('award-slide')).toBeNull();
-    // The machine slide was auto-dismissed, not left latched invisibly.
+    // No slide was ever raised — nothing to auto-dismiss, nothing latched.
     expect(store.getState().awardMachine?.currentSlideTeamId).toBeNull();
 
     // The very next advance key (presenter remote: no Escape!) must work.
     await pressKey('PageDown');
     expect(stageOf(store, '2')).toBe('focused');
+  });
+
+  it('loses no keypress when a remote repeats the key at the finalize boundary', async () => {
+    // The regression this replaced: the machine raised a slide for every
+    // team and an effect closed it a render later, so a second press landing
+    // inside that window was consumed as a dismissal and did nothing.
+    awardsOverride = [awardsFixture[1]];
+    const store = await bootAwardStore();
+    renderAward(store);
+
+    await pressKey('Enter'); // focus team 3
+    await pressKey('Enter'); // reveal team 3 B
+    await finishSequence();
+
+    // Key repeat: two presses back to back, no time for any effect between.
+    await act(async () => {
+      fireEvent.keyDown(window, { key: 'PageDown' }); // finalize team 3
+      fireEvent.keyDown(window, { key: 'PageDown' }); // focus team 2
+    });
+    expect(stageOf(store, '3')).toBe('finalized');
+    expect(stageOf(store, '2')).toBe('focused'); // the repeat was NOT swallowed
   });
 });
 
@@ -951,7 +1127,7 @@ describe('StrictMode reveal playback', () => {
     const store = await bootAwardStore();
     render(
       <StrictMode>
-        <AwardView store={store} awards={awardsFixture} />
+        <AwardView store={store} />
       </StrictMode>,
     );
 
@@ -1012,7 +1188,7 @@ describe('solved spine bands in award mode', () => {
 
   it('marks only the band edges: a middle row has neither spine class', async () => {
     const store = await bootAwardStore(() => 0.99, '?award=true&r=3', spineFetch);
-    render(<AwardView store={store} awards={[]} />);
+    renderAward(store);
 
     expect(store.getState().snapshot?.standings.map((s) => s.team.id)).toEqual([
       '1',
