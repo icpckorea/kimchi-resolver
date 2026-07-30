@@ -1,0 +1,199 @@
+# kimchi-resolver 설계 문서
+
+작성일: 2026-07-30. 기반 분석: [`docs/spotboard-analysis.md`](../../spotboard-analysis.md).
+
+## 1. 목표
+
+`~/Projects/spotboard`(ACM-ICPC 스코어보드 웹앱, jQuery/RequireJS/CoffeeScript, ~2017)를 현대적 스택으로 재작성한다. 기능은 원본과 동등하되, 분석에서 확인된 버그는 수정하고, 아래 재기획 항목을 반영한다.
+
+테스트 데이터: 2025 ICPC Asia Seoul Regional 샘플
+- `http://static.icpckorea.net/2025/regional/scoreboard/sample/contest.json` (13문제, 84팀, 51개 학교)
+- `http://static.icpckorea.net/2025/regional/scoreboard/sample/runs.json` (1,227 runs, 300분)
+
+## 2. 확정된 결정 사항
+
+| 항목 | 결정 |
+|---|---|
+| 스택 | React + Vite + TypeScript, 상태는 zustand, 테스트는 vitest |
+| 비주얼 | 기존 룩앤필 재현 (색 스파인, flip, balloon 등) |
+| 범위 | 전체 기능 재현. 원본 dead code(flot, hotkeys)는 제외 |
+| 데이터 소스 | ICPC Contest API(DOMjudge/CDS 직결) + spotboard JSON, 어댑터 2개 |
+| exclude 팀 | 수신 시점에 완전 제거 — 어떤 랭킹에도 포함하지 않음 (원본은 랭킹 포함 + 표시만 숨김 → 순위 gap) |
+| foreign 재기획 | ICPC 랭킹(전체 팀)과 국내(대학생프로그래밍경시대회) 랭킹(국내 팀만)을 분리, 두 순위 항상 동시 노출. 외국 팀은 국내 랭킹 없음 |
+| award 진행 순서 | 국내/외국 구분 없이 ICPC 랭킹 통합 최하위부터 |
+| award 키 입력 | Enter / → / 세미콜론 / **PageDown** = 진행, Esc = 슬라이드 닫기, PageUp = 무동작 |
+| 설정 | 런타임 `config.json` (전부 선언적, 함수 predicate 없음) + URL 파라미터 override |
+| 학교 메타데이터 | 국기 표시, 학교 내 1등 왕관(모든 학교), 학교 로고 토글, 애셋 누락 경고 |
+| 아이콘 | 국기·왕관은 이모지 금지, SVG 애셋 사용 (Windows 국기 이모지 미지원) |
+
+## 3. 아키텍처
+
+```
+kimchi-resolver/
+  public/
+    config.json            # 런타임 설정 (배포 후 편집 대상)
+    sample/                # 2025 샘플 데이터 동봉 (오프라인 데모)
+    orgs/
+      orgs.json            # 학교 메타데이터: { "<group명>": { country, logo } }
+      logos/               # 학교 로고 이미지
+  src/
+    core/                  # 프레임워크 무관. React import 금지
+      types.ts             # Contest, Team, Problem, Run, Verdict, Snapshot
+      verdict.ts           # verdict 정규화
+      standings.ts         # 채점·이중 랭킹·왕관 (순수 함수)
+      feeder.ts            # diff + 표시 대기 큐
+      award.ts             # 시상식 state machine (순수)
+      config.ts            # config.json 스키마 + URL override
+      ingest/
+        types.ts           # FeedSource 인터페이스
+        spotboard.ts       # spotboard JSON 어댑터
+        contest-api.ts     # ICPC Contest API 어댑터
+    store/                 # zustand — core 상태를 React에 구독시키는 다리
+    ui/                    # React 컴포넌트 + 애니메이션
+  docs/
+```
+
+계층 규칙: `ui → store → core`. 역방향 의존 금지. 원본의 최대 문제(DOM이 상태 저장소, view→manager 역참조)를 구조로 차단한다.
+
+## 4. 도메인 모델과 채점 규칙
+
+내부 id는 전부 **string** (Contest API가 string id, spotboard number id는 문자열로 변환).
+
+- `Contest`: problems(배열, 표시 순서 = 입력 순서), teams(Map). Team은 `{ id, name, group, countryCode?, foreign }`.
+- `Run`: `{ id, teamId, problemId, minute, verdict, penaltyCounts }`. verdict는 수신 시점에 정규화된 `'accepted' | 'pending' | 'failed'`.
+- **Verdict 정규화** (`verdict.ts`):
+  - spotboard 소스: `"Yes"` prefix → accepted, `""` 또는 `"Pending"` prefix → pending, 그 외 → failed(`penaltyCounts: true`).
+  - Contest API 소스: judgement 없음 → pending, 있으면 `/judgement-types`의 `solved`/`penalty` 플래그 사용. CE 등 무벌점 판정은 `failed + penaltyCounts: false`로 들어와 penalty 계산에서 제외된다.
+  - 원본 버그(`"Pending - Judging"`이 failed로도 집계되어 penalty +20) 는 이 구조에서 성립 불가.
+- **셀 상태** (팀×문제): net runs = id 순 정렬 후 첫 accepted 이후 절단. 셀 verdict = 마지막 net run의 verdict. failedAttempts = net runs 중 `failed && penaltyCounts` 개수.
+- **Penalty**: solved 문제만 `20 × failedAttempts + solveMinute`. pending은 기여 0. 20분 상수는 config가 아닌 상수로 유지(원본 동일).
+- **랭킹 comparator**: solved 내림차순 → penalty 오름차순 → 마지막 solve 시각 오름차순 → team id 오름차순(명시적 최종 tie-break). 완전 동점은 rank 공유, 다음 rank는 인원수만큼 건너뜀 (competition ranking: 1,2,2,2,5).
+- **이중 랭킹**: 같은 comparator를 두 모집단에 적용 — `icpcRank`(전체), `domesticRank`(foreign 제외, foreign 팀은 null).
+- **왕관**: 각 group에서 icpcRank 최상위 팀에 `schoolFirst: true`. 모든 학교 대상.
+- **first solve**: 문제별 accepted run의 최소 시각. 동시각 복수 팀 모두 first solve (원본 동일).
+- `computeStandings(contest, appliedRuns) → Snapshot`은 순수 함수. 84×13 규모라 전체 재계산으로 충분하고, 스냅샷은 appliedRuns 변경 시에만 갱신.
+
+## 5. Feed 파이프라인
+
+```
+FeedSource(어댑터) → parse → diff → 표시 대기 큐 → tick 소비 → appliedRuns → Snapshot
+```
+
+- **FeedSource 인터페이스**: `loadContest(): Promise<Contest>`, `fetchRuns(cursor): Promise<{ runs, contestTimeSec, noMoreUpdate, cursor }>`.
+- **spotboard 어댑터**: `contest.json` 1회 + `runs.json?from=<timestamp>` 폴링. 항상 client-side diff (원본의 `auto_rundiff=false` = changed_runs.json 모드는 삭제 — diff가 상위 호환). `noMoreUpdate`는 필드 부재 시 false (원본 버그 수정). `submissionTime` 문자열 방어 파싱.
+- **Contest API 어댑터**: `/contests/{id}`, `/problems`, `/teams`, `/organizations`, `/judgement-types` 1회 + `/submissions`, `/judgements` 폴링. submission=run, `contest_time`("H:MM:SS.mmm") → 분 내림 변환. organizations의 `country`로 팀 countryCode 자동 채움. event-feed(NDJSON 스트림)는 범위 외(후순위 확장). 브라우저 직결 시 DOMjudge/CDS에 CORS 설정 또는 리버스 프록시 필요 — 운영 문서에 명시.
+- **diff 규칙** (원본 보존): 미지 id → 수용. 큐 대기 중이거나 반영된 동일 id run과 비교해 이미 accepted면 거부, time/result 변경 시만 수용. 해당 셀이 이미 accepted면 skip. exclude 팀 run은 이 단계 전에 폐기.
+- **fetch와 display 분리** (원본 보존): fetch는 큐 적재만. `autoPlayDelay`(기본 100ms) tick이 큐에서 1건씩 꺼내 애니메이션과 함께 반영. 대기 수는 update 버튼 badge. play/pause 상태는 store에 (원본은 CSS class였음).
+- **폴링**: `autoRefreshInterval`(기본 10s). 수동 새로고침 시 타이머 리셋(원본 동일). WebSocket(`source.eventsWs`)은 메시지 수신 시 즉시 폴링 1회 트리거하는 초인종. 미연결/오류는 조용히 무시하되 system message로 1회 알림.
+- **초기 리플레이**: `r=`(run id 상한) / `time=`(분 상한)까지 큐를 일괄 반영(무애니메이션), 이후부터 정상 진행. `time=` 지정 시 autoPlay 강제 off (원본 동일).
+
+## 6. Award state machine (`core/award.ts`)
+
+순수 state machine. 입력은 `advance()`와 `dismissSlide()` 두 가지. DOM 조회 없음.
+
+- **진입**: `config.award.mode` 또는 `?award=true`. 폴링·autoplay·WebSocket·header 비활성, animation 강제 on, pagination 강제 off (원본 동일).
+- **frozen 투영**: `r=` 컷오프 이후의 run은 결과를 숨긴 채 pending으로 반영하고, 실제 결과는 (팀×문제)별 공개 대기 큐에 보관. 원본의 monkey-patch 대신 "같은 run 목록의 두 projection"으로 구현.
+- **상태**: 팀별 단계(`hidden → focused → revealing → finalized`), 셀별 공개 대기 결과, 현재 슬라이드, blink 단계.
+- **진행 순서**: ICPC 랭킹 통합 최하위부터 (국내/외국 구분 없음). 다음 셀은 `award.revealOrder` 우선순위(문제 label 또는 id, 미지정 문제는 보드 순서), 같은 셀의 실패 시도들은 `advance()` 1회에 연속 재생 후 최종 결과.
+- **blink**: `award.focusBlinking = { minSolved, maxRank }` 충족 팀의 셀은 공개 전 blink 단계 1회 추가 (키 1회 소모).
+- **finalize**: 팀의 pending 셀 소진 시 finalized + `award_slide.json` 데이터가 있으면 전체 화면 슬라이드(순위 문자열/아이콘/공동 수상 `others`). finalized 팀 이름 클릭 시 슬라이드 재표시.
+- **`award.rankBegin`**: 애니메이션 없이 `advance()`를 반복하는 순수 계산으로 즉시 fast-forward (원본의 DOM 리플레이 + setTimeout 제거).
+- **`award.hideName`**: 미공개 팀은 "Team {id}" / "Unknown" 표시.
+- **키 매핑**: Enter(13)/ArrowRight/Semicolon/**PageDown** → `advance()`, Escape → `dismissSlide()`, PageUp → 무동작. `KeyboardEvent.key` 기준.
+- **animationSpeeds**: `[{ minSolved, fastFlip, slowFlip, moveUpMsPerRow }]` — solved 수가 `minSolved` 이상인 첫 항목 매칭 (원본의 "내림차순 정렬 필수" 함정 제거, 스키마 검증으로 정렬 무관).
+- 시상식 중에도 두 랭킹 동시 노출.
+
+## 7. UI
+
+컴포넌트: `Header`(시계 HH:MM, notify/update/autoplay/feed-one/feed-all/events 버튼, 검색, 페이지 내비), `Scoreboard` > `TeamRow`, `ProblemCell`, `Dashboard`, `AwardSlide`, `SystemMessage`.
+
+`TeamRow`: ICPC rank + 국내 rank(2칸, foreign은 국내 칸 비움), 국기 아이콘, [로고], 팀명, 소속(+왕관 아이콘), penalty, 문제 셀 × N, balloon 행.
+
+- **순위 이동**: framer-motion layout animation(FLIP). 원본의 수동 top 계산·행 밀어내기와 동일한 시각 효과.
+- **셀 flip**: CSS 3D keyframe(표준 문법) + `onAnimationEnd`, 판정 결과 교체는 flip 중간 시점 (원본 동일). 애니메이션 대상 소멸 시 타임아웃 fallback으로 진행 보장 (원본의 영구 대기 → 보드 정지 버그 차단).
+- **비주얼 재현**: solved 수 색 스파인(HSV 빨강→초록 보간, 홀짝 채도 차이), first solve 하이라이트, balloon(원본 애셋 재사용), pending 앰버/failed 스트라이프/solved 그린. 문제 글자·rank suffix는 실제 DOM 텍스트 (CSS `content` 금지 — 접근성/복사).
+- **아이콘**: 국기는 MIT 라이선스 SVG 국기 세트(예: flag-icons/circle-flags)에서 필요한 국가만 번들, 왕관은 MIT SVG 아이콘. 이모지 사용 금지.
+- **검색**(100ms debounce, 팀명+소속), **follow**(`t=`, sticky 고정 — 모던 브라우저 전제로 분기 제거), **pagination**(`paginationSize`).
+- **Dashboard**: 최근 judge 이벤트 피드, accepted 필터, `maxNotifications` 캡(정확히 N개, sentinel 중복 버그 미이식), 표시 상태 localStorage 유지.
+- **Desktop notification**: 표준 Notification API. accepted run만, 7초 auto-close, 권한 요청 2단계 플로우 유지, 원본의 `cancel()` 버그 미이식.
+
+## 8. 학교 메타데이터
+
+- `public/orgs/orgs.json`: `{ "<group명>": { "country": "KR", "logo": "kaist.png" } }`. 2025 데이터의 51개 학교로 초기 생성. Contest API 소스는 `/organizations`의 country로 자동 보완(orgs.json이 우선).
+- **국기**: countryCode → SVG 아이콘. **왕관**: `schoolFirst` 팀에 표시 (4장 참조).
+- **foreign 판정**: Contest API는 `country ≠ KR` 기본. spotboard 소스는 orgs.json의 country 사용. `config.foreign.ids` / `config.foreign.groups`로 override.
+- **로고**: `config.showSchoolLogos` 토글. `public/orgs/logos/`에 저장, 2025 데이터 기반 51개 수집은 구현 단계 작업.
+- **애셋 검증**: 대회 데이터 로드 직후 전체 팀의 group을 orgs.json과 대조. 항목 없음/로고 파일 없음(로고 토글 on일 때) → SystemMessage 경고 + console 상세. 개발용 `npm run check-assets` 스크립트 별도 제공.
+
+## 9. config.json + URL 파라미터
+
+```jsonc
+{
+  "source": {
+    "type": "spotboard",              // "spotboard" | "contest-api"
+    "apiBase": "./sample/",           // spotboard용
+    "baseUrl": "", "contestId": "",   // contest-api용
+    "auth": null,                     // contest-api용 { "username", "password" } | null
+    "eventsWs": null                  // 폴링 트리거 WebSocket URL | null
+  },
+  "fetchTimeout": 5000,
+  "autoRefreshInterval": 10000,
+  "autoPlay": true,
+  "autoPlayDelay": 100,
+  "animation": true,
+  "showTeamGroup": true,
+  "showFirstSolve": true,
+  "showBalloons": true,
+  "showSchoolLogos": false,
+  "showEvents": false,
+  "maxNotifications": 100,
+  "pagination": false,
+  "paginationSize": 50,
+  "useFollowedTeamSticky": true,
+  "excludeTeams": [],
+  "foreign": { "ids": [], "groups": [] },
+  "award": {
+    "mode": false,
+    "hideName": true,
+    "rankBegin": null,
+    "slideUrl": "./sample/award_slide.json",
+    "revealOrder": [],
+    "focusBlinking": { "minSolved": 7, "maxRank": 10 },
+    "animationSpeeds": [
+      { "minSolved": 10, "fastFlip": 200, "slowFlip": 800, "moveUpMsPerRow": 200 },
+      { "minSolved": 0,  "fastFlip": 300, "slowFlip": 700, "moveUpMsPerRow": 100 }
+    ]
+  }
+}
+```
+
+스키마는 zod로 검증하고 오류 시 어떤 키가 잘못됐는지 SystemMessage로 표시. 모든 키에 기본값 존재(부분 config 허용).
+
+URL 파라미터 (`URLSearchParams`로 파싱, config보다 우선): `r`, `time`, `award`, `award_rank_begin`, `animation`, `q`(검색어, 원본과 달리 부분 일치), `t`(follow 팀 id).
+
+원본 대비 의도적 삭제: `auto_rundiff`(항상 client diff), predicate 함수 config(선언적 필드로 대체), `environment`(Vite 빌드로 불필요).
+
+## 10. 테스트
+
+1. **core 유닛 테스트** (vitest): penalty 공식, net runs 절단, 4단계 tie-break, rank gap(1,2,2,2,5), 이중 랭킹(foreign 제외), 왕관, first solve, verdict 정규화(빈 문자열/Pending/무벌점 판정), diff 규칙 전체, feeder 큐, award 전이 전체(focus→blink→reveal→finalize→slide, revealOrder, rankBegin, 마지막 팀 종료 — 원본의 도달 불가 'end' 버그 미이식 확인).
+2. **골든 테스트**: 2025 runs.json 1,227건 전체 반영 → 최종 standings 스냅샷 고정.
+3. **어댑터 테스트**: 같은 대회를 spotboard/Contest API 두 포맷으로 넣어 동일 standings 산출 확인. Contest API 픽스처는 스펙 예제 기반으로 제작.
+4. **UI**: 핵심 컴포넌트 렌더 테스트(Testing Library). e2e(Playwright)는 범위 외.
+
+## 11. 빌드/배포
+
+- Vite 정적 빌드 → `dist/`. 아무 HTTP 서버로 서빙 (원본과 동일한 배포 모델).
+- `config.json`, `orgs/`는 런타임 fetch — 재빌드 없이 편집 가능.
+- 2025 샘플 데이터 `public/sample/` 동봉.
+- CI/패키징은 범위 외 (필요 시 후속).
+
+## 12. 원본 버그 처리 방침
+
+분석 문서 2장의 버그는 전부 **미이식**(수정): noMoreUpdate 파싱, Pending penalty 비대칭, ProblemSummary 중복 집계, award 종료 TypeError, revealOrder id 0 버그, discard off-by-one, notify `cancel()`, dashboard trim/sentinel. 동작 차이가 사용자 관점에서 보이는 것은 noMoreUpdate(필드 부재 시)와 Pending penalty 두 건이며, 모두 "올바른 쪽"으로 통일한다.
+
+## 13. 범위 외 (명시)
+
+- Contest API event-feed(NDJSON) 스트리밍 — 폴링으로 충분, 후순위.
+- PageUp 등 시상식 되돌리기(undo).
+- e2e 테스트, CI 파이프라인, 모바일 전용 레이아웃(원본 수준의 media query만).
+- feedserver 구현 (DOMjudge/CDS가 대체).
