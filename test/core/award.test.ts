@@ -318,10 +318,12 @@ describe('advance(): bottom-up order with rank shifts', () => {
     expect(machine.currentFocusedTeamId).toBeNull(); // focus released on finalize
     expect(machine.currentSlideTeamId).toBe('t4');
 
-    // 5. while the slide is showing, advance() is a no-op slide-on.
+    // 5. while the slide is showing, the advance key is CONSUMED as its
+    //    dismissal (spec §6: presenter remotes have no Escape) — one press
+    //    closes the slide, the next one advances.
     expect(machine.advance()).toEqual({ type: 'slide-on' });
-    expect(machine.advance()).toEqual({ type: 'slide-on' });
-    machine.dismissSlide();
+    expect(machine.currentSlideTeamId).toBeNull();
+    machine.dismissSlide(); // idempotent no-op after the consumed advance
     expect(machine.currentSlideTeamId).toBeNull();
 
     // 6. back to t3 (focus is re-announced after the detour).
@@ -514,6 +516,194 @@ describe('multi-fail cell', () => {
 });
 
 // ---------------------------------------------------------------------------
+// Full-cell reveal replay (spec §6): a cell with ANY hidden run is masked
+// entirely — pre-freeze net runs included — and one advance replays the whole
+// net history from zero.
+// ---------------------------------------------------------------------------
+
+describe('full-cell reveal replay', () => {
+  /** t1 A: 5 pre-freeze fails + hidden [F, F, A] → the spec's 8-flip example. */
+  function fullCellFixture() {
+    const revealed: Run[] = [];
+    for (let i = 0; i < 5; i++) revealed.push(run(1 + i, 't1', '0', 10 + i, 'failed'));
+    revealed.push(run(6, 't2', '0', 20, 'accepted'));
+    return makeMachine({
+      contest: makeContest(['t1', 't2']),
+      revealed,
+      hidden: [
+        run(10, 't1', '0', 100, 'failed'),
+        run(11, 't1', '0', 103, 'failed'),
+        run(12, 't1', '0', 105, 'accepted'),
+      ],
+    });
+  }
+
+  it('masks the whole cell as pending with the FULL net attempt count', () => {
+    const machine = fullCellFixture();
+    expect(machine.remainingReveals).toBe(1);
+    const t1 = machine.snapshot.byTeam.get('t1')!;
+    const cell = t1.cells.get('0')!;
+    // The 5 pre-freeze fails are masked too: pending, 8 total attempts,
+    // zero penalty contribution.
+    expect(cell.verdict).toBe('pending');
+    expect(cell.attempts).toBe(8);
+    expect(cell.failedAttempts).toBe(0);
+    expect(t1.solved).toBe(0);
+    expect(t1.penalty).toBe(0);
+    // The unmasked t2 cell stays revealed as-is.
+    expect(machine.snapshot.byTeam.get('t2')!.cells.get('0')!.verdict).toBe('accepted');
+  });
+
+  it('replays the whole net history in order in ONE advance (5 fails + 3 hidden = 8 flips)', () => {
+    const machine = fullCellFixture();
+    expect(machine.advance()).toEqual({ type: 'focus', teamId: 't1' }); // bottom team
+    const reveal = machine.advance();
+    if (reveal.type !== 'reveal') throw new Error('expected reveal');
+    expect(reveal.runs.map((r) => r.id)).toEqual(['1', '2', '3', '4', '5', '10', '11', '12']);
+    // Pre-freeze runs carry their REAL verdicts in the replay.
+    expect(reveal.runs.map((r) => r.verdict)).toEqual([
+      'failed',
+      'failed',
+      'failed',
+      'failed',
+      'failed',
+      'failed',
+      'failed',
+      'accepted',
+    ]);
+    // The replay starts from zero attempts — no display offset left.
+    expect(reveal.preFreeze).toEqual({ attempts: 0, failedAttempts: 0 });
+    // Gacha counting = full net attempts = runs.length (8 ≥ default 8).
+    expect(reveal.effect.gacha).toBe(true);
+
+    // After the reveal the cell holds its final truth incl. pre-freeze fails.
+    const t1 = machine.snapshot.byTeam.get('t1')!;
+    const cell = t1.cells.get('0')!;
+    expect(cell.verdict).toBe('accepted');
+    expect(cell.attempts).toBe(8);
+    expect(cell.failedAttempts).toBe(7);
+    expect(t1.penalty).toBe(20 * 7 + 105);
+    expect(machine.remainingReveals).toBe(0);
+  });
+
+  it('drops hidden runs past the first hidden accepted (not net, not displayed)', () => {
+    const machine = makeMachine({
+      contest: makeContest(['t1', 't2']),
+      revealed: [run(1, 't1', '0', 10, 'failed'), run(2, 't2', '1', 5, 'accepted')],
+      hidden: [
+        run(10, 't1', '0', 100, 'failed'),
+        run(11, 't1', '0', 105, 'accepted'),
+        run(12, 't1', '0', 110, 'failed'), // past the first accepted → dropped
+      ],
+    });
+    // Masked pending count = net attempts only (3, not 4).
+    expect(machine.snapshot.byTeam.get('t1')!.cells.get('0')!.attempts).toBe(3);
+
+    machine.advance(); // focus t1
+    const reveal = machine.advance();
+    if (reveal.type !== 'reveal') throw new Error('expected reveal');
+    expect(reveal.runs.map((r) => r.id)).toEqual(['1', '10', '11']);
+    const cell = machine.snapshot.byTeam.get('t1')!.cells.get('0')!;
+    expect(cell.verdict).toBe('accepted');
+    expect(cell.attempts).toBe(3);
+    expect(cell.failedAttempts).toBe(2);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Static last-solve flags in award mode (spec §4): computed once from the
+// FINAL full run set; displayed per cell only once revealed + accepted; never
+// moving during the ceremony.
+// ---------------------------------------------------------------------------
+
+describe('static last-solve / contest first-last flags', () => {
+  /**
+   * Final truth of the fixture:
+   *   A: t1@10 Y (contest FIRST yes), t2@20 Y, hidden t3@100 Y (A's LAST solve)
+   *   B: hidden t1@110 Y (B's last solve AND the contest LAST yes)
+   * Visible order at boot: t1 (1 solved, 10), t2 (1 solved, 20), t3 (0).
+   */
+  function staticFlagsFixture() {
+    return makeMachine({
+      contest: makeContest(['t1', 't2', 't3']),
+      revealed: [run(1, 't1', '0', 10, 'accepted'), run(2, 't2', '0', 20, 'accepted')],
+      hidden: [run(10, 't3', '0', 100, 'accepted'), run(11, 't1', '1', 110, 'accepted')],
+    });
+  }
+
+  function cellOf(machine: AwardMachine, teamId: string, problemId: string) {
+    return machine.snapshot.byTeam.get(teamId)!.cells.get(problemId)!;
+  }
+  function labelsOf(machine: AwardMachine, teamId: string) {
+    return machine.snapshot.byTeam.get(teamId)!.autoLabels;
+  }
+
+  it('never marks the visible-projection last solve when the final truth differs', () => {
+    const machine = staticFlagsFixture();
+    // Projection-wise t2 A is the latest visible accepted run of A (and the
+    // visible contest-last yes) — but the FINAL truth puts A's last solve on
+    // the hidden t3 A and the contest-last yes on the hidden t1 B.
+    expect(cellOf(machine, 't2', '0').isLastSolve).toBe(false);
+    expect(cellOf(machine, 't2', '0').isContestLastSolve).toBe(false);
+    expect(labelsOf(machine, 't2')).toEqual([]);
+    // The true contest-first yes is visible from the start.
+    expect(cellOf(machine, 't1', '0').isContestFirstSolve).toBe(true);
+    expect(labelsOf(machine, 't1')).toEqual([{ kind: 'contestFirstYes' }]);
+    expect(machine.snapshot.contestFirstYes).toEqual({ teamId: 't1', problemId: '0' });
+    // Hidden cells show nothing until revealed.
+    expect(cellOf(machine, 't3', '0').isLastSolve).toBe(false);
+    expect(machine.snapshot.contestLastYes).toBeNull();
+  });
+
+  it('shows each flag exactly when its true cell is revealed, and it never moves', () => {
+    const machine = staticFlagsFixture();
+
+    // t3 (bottom): reveal its hidden A solve → A's last-solve flag appears
+    // there immediately, and ONLY there.
+    expect(machine.advance()).toEqual({ type: 'focus', teamId: 't3' });
+    expect(machine.advance()).toMatchObject({ type: 'reveal', teamId: 't3', problemId: '0' });
+    expect(cellOf(machine, 't3', '0').isLastSolve).toBe(true);
+    expect(cellOf(machine, 't3', '0').isContestLastSolve).toBe(false); // true last is t1 B
+    expect(cellOf(machine, 't2', '0').isLastSolve).toBe(false); // still not moving
+    expect(labelsOf(machine, 't3')).toEqual([{ kind: 'lastToSolve', problemLabels: ['A'] }]);
+    expect(machine.snapshot.contestLastYes).toBeNull(); // t1 B still hidden
+
+    // t3 stays bottom (penalty 100 > 20) → finalize; then t2 finalizes.
+    expect(machine.advance()).toMatchObject({ type: 'finalize', teamId: 't3' });
+    machine.dismissSlide();
+    expect(machine.advance()).toEqual({ type: 'focus', teamId: 't2' });
+    expect(machine.advance()).toMatchObject({ type: 'finalize', teamId: 't2' });
+    machine.dismissSlide();
+
+    // No cell anywhere carries the contest-last flag before the true cell flips.
+    for (const standing of machine.snapshot.standings) {
+      for (const cell of standing.cells.values()) {
+        expect(cell.isContestLastSolve).toBe(false);
+      }
+    }
+
+    // t1's hidden B solve is the ceremony finale AND the true contest-last
+    // yes: the purple flag appears exactly on it when it flips.
+    expect(machine.advance()).toEqual({ type: 'focus', teamId: 't1' });
+    const finale = machine.advance();
+    expect(finale).toMatchObject({
+      type: 'reveal',
+      teamId: 't1',
+      problemId: '1',
+      effect: { gacha: true, finale: true },
+    });
+    expect(cellOf(machine, 't1', '1').isLastSolve).toBe(true);
+    expect(cellOf(machine, 't1', '1').isContestLastSolve).toBe(true);
+    expect(machine.snapshot.contestLastYes).toEqual({ teamId: 't1', problemId: '1' });
+    expect(labelsOf(machine, 't1')).toEqual([
+      { kind: 'contestFirstYes' },
+      { kind: 'lastToSolve', problemLabels: ['B'] },
+      { kind: 'contestLastYes' },
+    ]);
+  });
+});
+
+// ---------------------------------------------------------------------------
 // Gacha effect.
 // ---------------------------------------------------------------------------
 
@@ -585,8 +775,9 @@ describe('gacha effect', () => {
   });
 
   /**
-   * Spec §6: the requirement counts the cell's net runs — pre-freeze
-   * attempts included — not just the post-freeze queued reveals.
+   * Spec §6: the requirement counts the cell's FULL net attempts. With
+   * full-cell masking the pre-freeze runs are part of the replay itself, so
+   * the count is simply runs.length.
    */
   function preFreezeGachaFixture(preFreezeFails: number) {
     const revealed: Run[] = [];
@@ -611,22 +802,24 @@ describe('gacha effect', () => {
   it('counts pre-freeze net attempts toward the requirement (6 + 2 = 8 → gacha)', () => {
     const machine = preFreezeGachaFixture(6);
     const reveal = advanceUntilRevealOf(machine, 't1');
-    expect(reveal.runs).toHaveLength(2); // animation list stays post-freeze only
-    expect(reveal.preFreeze).toEqual({ attempts: 6, failedAttempts: 6 });
+    // The animation list IS the full net history (6 pre-freeze + 2 hidden).
+    expect(reveal.runs).toHaveLength(8);
+    expect(reveal.preFreeze).toEqual({ attempts: 0, failedAttempts: 0 });
     expect(reveal.effect).toEqual({ gacha: true, finale: false });
   });
 
   it('one attempt short across the freeze boundary (5 + 2 = 7) → no gacha', () => {
     const machine = preFreezeGachaFixture(5);
     const reveal = advanceUntilRevealOf(machine, 't1');
-    expect(reveal.preFreeze).toEqual({ attempts: 5, failedAttempts: 5 });
+    expect(reveal.runs).toHaveLength(7);
+    expect(reveal.preFreeze).toEqual({ attempts: 0, failedAttempts: 0 });
     expect(reveal.effect).toEqual({ gacha: false, finale: false });
   });
 
-  it('pre-freeze runs past the first accepted are not net and do not count', () => {
-    // A cell accepted pre-freeze is never revealed; its counts are moot. But
-    // ANOTHER cell's counts must be its own: t1 B has 1 pre-freeze fail while
-    // t1 A holds 7 pre-freeze runs — no cross-cell bleed (1 + 2 < 8).
+  it('does not bleed another cell’s pre-freeze attempts into the count', () => {
+    // t1 B has 1 pre-freeze fail while t1 A holds 7 pre-freeze runs with no
+    // hidden run — A stays revealed as-is and its attempts never join B's
+    // replay (1 + 2 < 8 → no gacha).
     const revealed: Run[] = [];
     for (let i = 0; i < 7; i++) revealed.push(run(1 + i, 't1', '0', 10 + i, 'failed'));
     revealed.push(run(8, 't1', '1', 20, 'failed'));
@@ -642,13 +835,17 @@ describe('gacha effect', () => {
       config: { gachaEffectRequirement: 8 },
       rng: () => 0.99,
     });
+    // Cell A has no hidden run → NOT masked, its 7 fails stay on the board.
+    const cellA = machine.snapshot.byTeam.get('t1')!.cells.get('0')!;
+    expect(cellA.verdict).toBe('failed');
+    expect(cellA.attempts).toBe(7);
     const reveal = advanceUntilRevealOf(machine, 't1');
     expect(reveal.problemId).toBe('1');
-    expect(reveal.preFreeze).toEqual({ attempts: 1, failedAttempts: 1 });
+    expect(reveal.runs).toHaveLength(3); // 1 pre-freeze fail + 2 hidden
     expect(reveal.effect).toEqual({ gacha: false, finale: false });
   });
 
-  it('remainingReveals === 1 forces the gacha condition even for one attempt', () => {
+  it('remainingReveals === 1 fires the gacha unconditionally, even for one attempt', () => {
     const contest = makeContest(['t1', 't2']);
     const yes = makeMachine({
       contest,
@@ -657,22 +854,17 @@ describe('gacha effect', () => {
     });
     expect(advanceUntilRevealOf(yes, 't1').effect).toEqual({ gacha: true, finale: true });
 
-    const noHit = makeMachine({
+    // Spec §6: the finale cell fires 100% REGARDLESS of the verdict — the No
+    // probability roll never runs (rng untouched).
+    const rng = vi.fn(() => 0.99); // would miss the 30% roll if it ran
+    const noFinale = makeMachine({
       contest,
       hidden: [run(10, 't1', '1', 100, 'failed')],
       config: { gachaEffectRequirement: 8, gachaEffectForNoRatio: 30 },
-      rng: () => 0.0,
+      rng,
     });
-    expect(advanceUntilRevealOf(noHit, 't1').effect).toEqual({ gacha: true, finale: true });
-
-    // The fake-out can also NOT fire — finale stays on regardless.
-    const noMiss = makeMachine({
-      contest,
-      hidden: [run(10, 't1', '1', 100, 'failed')],
-      config: { gachaEffectRequirement: 8, gachaEffectForNoRatio: 30 },
-      rng: () => 0.99,
-    });
-    expect(advanceUntilRevealOf(noMiss, 't1').effect).toEqual({ gacha: false, finale: true });
+    expect(advanceUntilRevealOf(noFinale, 't1').effect).toEqual({ gacha: true, finale: true });
+    expect(rng).not.toHaveBeenCalled();
   });
 });
 
@@ -759,7 +951,7 @@ describe('finalize/slide/dismiss cycle and end', () => {
     expect(machine.finished).toBe(true);
   });
 
-  it('an undismissed slide swallows advances until dismissSlide()', () => {
+  it('an advance during a visible slide is consumed as its dismissal (spec §6)', () => {
     const contest = makeContest(['t1']);
     const machine = makeMachine({ contest });
 
@@ -768,10 +960,11 @@ describe('finalize/slide/dismiss cycle and end', () => {
     expect(machine.currentSlideTeamId).toBe('t1');
     expect(machine.finished).toBe(true);
 
+    // The advance key closes the slide (presenter remotes have no Escape);
+    // the ceremony can be driven end-to-end with PageDown alone.
     expect(machine.advance()).toEqual({ type: 'slide-on' });
-    expect(machine.advance()).toEqual({ type: 'slide-on' });
-    machine.dismissSlide();
-    machine.dismissSlide(); // idempotent
+    expect(machine.currentSlideTeamId).toBeNull();
+    machine.dismissSlide(); // idempotent no-op after the consumed advance
     expect(machine.currentSlideTeamId).toBeNull();
     expect(machine.advance()).toEqual({ type: 'end' });
   });

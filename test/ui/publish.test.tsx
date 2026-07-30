@@ -164,29 +164,32 @@ describe('PublishView gate', () => {
 // ---------------------------------------------------------------------------
 
 describe('PublishView APAC stars', () => {
-  it('renders gold champion, bronze schoolmate, silver others, no star past cap', () => {
+  it('renders gold champion, silver everyone else (schoolmate included), no star past cap', () => {
     seedStore({ siteScore: 5 });
     render(<PublishView />);
     expect(starFill('x1')).toBe(FILL.gold); // champion
-    expect(starFill('x2')).toBe(FILL.bronze); // champion schoolmate
+    expect(starFill('x2')).toBe(FILL.silver); // champion schoolmate is silver too
     expect(starFill('y1')).toBe(FILL.silver);
     expect(starFill('y2')).toBe(FILL.silver);
     expect(starFill('z1')).toBe(FILL.silver);
   });
 
   it('promotes silver teams within the invited cutoff to gold (boundary ≤)', () => {
-    // cutoff 1, siteScore 2 → invited iff (rank − 1)/2 ≤ 1 ⇔ rank ≤ 3 → y1 only.
+    // cutoff 1, siteScore 2 → invited iff (filteredRank − 1)/2 ≤ 1
+    // ⇔ filteredRank ≤ 3 → x2 (fr 2) and y1 (fr 3).
     seedStore({ siteScore: 2, invitedCutoff: 1 });
     render(<PublishView />);
+    expect(starFill('x2')).toBe(FILL.gold); // champion schoolmate can qualify
     expect(starFill('y1')).toBe(FILL.gold);
     expect(starFill('y2')).toBe(FILL.silver);
-    expect(starFill('x2')).toBe(FILL.bronze); // bronze never promoted
+    expect(starFill('z1')).toBe(FILL.silver);
   });
 
   it('does not promote when the cutoff box is empty', () => {
     seedStore({ siteScore: 2, invitedCutoff: null });
     render(<PublishView />);
     expect(starFill('y1')).toBe(FILL.silver);
+    expect(starFill('x2')).toBe(FILL.silver);
   });
 
   it('shows no stars and no star slot when config.apac.enabled is false (spec §13)', () => {
@@ -223,14 +226,15 @@ describe('PublishView star spin', () => {
     });
     const cutoff = document.getElementById('publish-invited-cutoff') as HTMLInputElement;
     fireEvent.change(cutoff, { target: { value: '1' } });
-    // y1 (rank 3): silver → gold — must spin with the new tier.
-    const y1 = starOf('y1');
-    expect(y1?.querySelector('polygon')?.getAttribute('fill')).toBe(FILL.gold);
-    expect(y1?.classList.contains('kr-apac-star--spin')).toBe(true);
+    // x2 (fr 2) and y1 (fr 3): silver → gold — must spin with the new tier.
+    for (const teamId of ['x2', 'y1']) {
+      const star = starOf(teamId);
+      expect(star?.querySelector('polygon')?.getAttribute('fill')).toBe(FILL.gold);
+      expect(star?.classList.contains('kr-apac-star--spin')).toBe(true);
+    }
     // Unchanged tiers must not spin.
     expect(starOf('y2')?.classList.contains('kr-apac-star--spin')).toBe(false);
     expect(starOf('x1')?.classList.contains('kr-apac-star--spin')).toBe(false);
-    expect(starOf('x2')?.classList.contains('kr-apac-star--spin')).toBe(false);
   });
 
   it('spins again when the cutoff change demotes the star back to silver', () => {

@@ -18,9 +18,12 @@ import { AwardView } from '@ui/award/AwardView';
 import { humanizeRank, parseAwardsJson, type AwardEntry } from '@ui/award/awardsData';
 import {
   BUSY_HARD_TIMEOUT_MS,
+  FINALE_FLIP_MIN_MS,
+  FINALE_FLIP_MULTIPLIER,
   FINALE_HOLD_MS,
   GACHA_SHAKE_MS,
   accumulateDisplay,
+  finaleSlowFlipMs,
   matchAnimationSpeed,
   moveUpDurationSec,
 } from '@ui/award/revealDriver';
@@ -232,7 +235,20 @@ describe('moveUpDurationSec', () => {
   });
 });
 
-describe('accumulateDisplay with pre-freeze offsets', () => {
+describe('finaleSlowFlipMs', () => {
+  it('is 4~5x the matched slowFlip with a 3s floor (spec §7)', () => {
+    expect(FINALE_FLIP_MULTIPLIER).toBeGreaterThanOrEqual(4);
+    expect(FINALE_FLIP_MULTIPLIER).toBeLessThanOrEqual(5);
+    expect(FINALE_FLIP_MIN_MS).toBe(3000);
+    // Small slowFlip → the 3s floor wins.
+    expect(finaleSlowFlipMs(400)).toBe(3000);
+    // Large slowFlip → the multiplier wins.
+    expect(finaleSlowFlipMs(1000)).toBe(1000 * FINALE_FLIP_MULTIPLIER);
+    expect(finaleSlowFlipMs(1000)).toBeGreaterThanOrEqual(3000);
+  });
+});
+
+describe('accumulateDisplay (full-cell replay from zero)', () => {
   const RUN = { id: '1', teamId: 't', problemId: 'p', seq: 1 };
   const fail = (minute: number) => ({
     ...RUN,
@@ -247,34 +263,36 @@ describe('accumulateDisplay with pre-freeze offsets', () => {
     penaltyCounts: false,
   });
 
-  it('continues the true cumulative counters over pre-freeze attempts', () => {
-    // Cell with 2 pre-freeze penalized fails + hidden [F, F, A]:
-    // the frozen '?5' must continue '−3' → '−4' → '+4' with no jump.
+  it('counts the replay from zero: a masked cell restarts at −1, −2, … +N', () => {
+    // Spec §6 full-cell masking: the reveal step carries the WHOLE net
+    // history (pre-freeze fails included) in `runs`, so there is no offset —
+    // a cell frozen at '?3' replays '−1' → '−2' → '+2'.
     const runs = [fail(100), fail(101), yes(102)];
-    const preFreeze = { attempts: 2, failedAttempts: 2 };
-    expect(accumulateDisplay(runs, 0, preFreeze)).toMatchObject({
+    expect(accumulateDisplay(runs, 0)).toMatchObject({
       verdict: 'failed',
-      attempts: 3,
-      failedAttempts: 3,
+      attempts: 1,
+      failedAttempts: 1,
     });
-    expect(accumulateDisplay(runs, 1, preFreeze)).toMatchObject({
+    expect(accumulateDisplay(runs, 1)).toMatchObject({
       verdict: 'failed',
-      attempts: 4,
-      failedAttempts: 4,
+      attempts: 2,
+      failedAttempts: 2,
     });
-    expect(accumulateDisplay(runs, 2, preFreeze)).toMatchObject({
+    expect(accumulateDisplay(runs, 2)).toMatchObject({
       verdict: 'accepted',
-      attempts: 5,
-      failedAttempts: 4,
+      attempts: 3,
+      failedAttempts: 2,
       solvedMinute: 102,
     });
   });
 
-  it('defaults to zero offsets', () => {
-    expect(accumulateDisplay([yes(50)], 0)).toMatchObject({
+  it('ignores non-penalized fails in the failed counter', () => {
+    const compileError = { ...RUN, minute: 60, verdict: 'failed' as const, penaltyCounts: false };
+    expect(accumulateDisplay([compileError, yes(65)], 1)).toMatchObject({
       verdict: 'accepted',
-      attempts: 1,
+      attempts: 2,
       failedAttempts: 0,
+      solvedMinute: 65,
     });
   });
 });
@@ -433,6 +451,19 @@ describe('AwardSlide', () => {
 // ---------------------------------------------------------------------------
 
 describe('finale effect', () => {
+  /** Finale final flip in the fixture band (spec §7: ≥ 3s). */
+  const FINALE_FLIP = finaleSlowFlipMs(SLOW); // = 3000 (floor wins over 4.5×400)
+  /** jsdom completes flips via the 2× fallback timer. */
+  const FINALE_FLIP_2X = FINALE_FLIP * 2;
+
+  function finaleFlipEl(): HTMLElement {
+    const el = screen
+      .getByTestId('award-cell-2-1')
+      .querySelector<HTMLElement>('.problem-result');
+    expect(el).not.toBeNull();
+    return el!;
+  }
+
   async function driveToLastReveal(store: AppStore): Promise<void> {
     // Team 3: focus, reveal, finalize, dismiss slide.
     await pressKey('Enter');
@@ -447,31 +478,49 @@ describe('finale effect', () => {
     await pressKey('Enter'); // finale reveal starts
   }
 
-  it('applies finale classes during the last reveal and restores 5s after it', async () => {
+  it('applies dim/zoom/slow-flip during the last reveal and restores 5s after it', async () => {
     const store = await bootAwardStore(() => 0.99); // rng > ratio → no gacha fake-out
     renderAward(store);
     await driveToLastReveal(store);
 
-    // Finale overlay + zoomed cell are on during the sequence, but the
-    // rainbow is the finale VARIANT of the gacha effect (spec §7): the gacha
-    // roll missed (gacha:false), so no rainbow may play.
+    // Full-screen dim overlay + zoomed cell are on during the sequence; the
+    // row hosting the cell is lifted above the dim veil. The rainbow is the
+    // finale VARIANT of the gacha effect (spec §7): the gacha roll missed
+    // (gacha:false), so no rainbow may play.
     expect(screen.getByTestId('finale-dim')).toBeTruthy();
     expect(screen.queryByTestId('finale-rainbow')).toBeNull();
     expect(screen.getByTestId('award-cell-2-1').className).toContain('award-cell-finale');
+    expect(screen.getByTestId('award-row-2').className).toContain('award-row-finale');
 
-    // Single failed run → one slow flip (2× fallback in jsdom); the
-    // spotlight/zoom then holds for FINALE_HOLD_MS before restoring.
+    // The final flip runs at the VERY slow finale duration (4~5× slowFlip,
+    // ≥ 3s), not the plain slowFlip: the half-turn CSS variable carries it…
+    const flipEl = finaleFlipEl();
+    expect(flipEl.className).toContain('flip-run');
+    expect(flipEl.style.getPropertyValue('--flip-half')).toBe(`${FINALE_FLIP / 2}ms`);
+
+    // …and well past the NORMAL slowFlip fallback (2×SLOW) it is still
+    // mid-flip, with the dim/zoom still up.
     await advanceMs(SLOW * 2 + 50);
+    expect(finaleFlipEl().getAttribute('data-flip-phase')).toBe('out');
     expect(screen.getByTestId('finale-dim')).toBeTruthy();
-    expect(screen.queryByTestId('finale-rainbow')).toBeNull();
+    expect(screen.getByTestId('award-cell-2-1').className).toContain('award-cell-finale');
 
+    // Complete the finale flip (jsdom fallback at 2× the finale duration):
+    // the reveal is over, the spotlight/zoom holds for FINALE_HOLD_MS.
+    await advanceMs(FINALE_FLIP_2X - SLOW * 2 - 50 + 100);
+    expect(finaleFlipEl().className).not.toContain('flip-run');
+    expect(screen.getByTestId('finale-dim')).toBeTruthy();
+    expect(screen.getByTestId('award-cell-2-1').className).toContain('award-cell-finale');
+
+    // 5s after the reveal completed everything restores.
     await advanceMs(FINALE_HOLD_MS + 100);
     expect(screen.queryByTestId('finale-dim')).toBeNull();
     expect(screen.queryByTestId('finale-rainbow')).toBeNull();
     expect(screen.getByTestId('award-cell-2-1').className).not.toContain('award-cell-finale');
+    expect(screen.getByTestId('award-row-2').className).not.toContain('award-row-finale');
   });
 
-  it('combines gacha shake with the rainbow (no thin sparkle) on the finale cell', async () => {
+  it('keeps the gacha shake and rainbow running DURING the slow flip', async () => {
     const store = await bootAwardStore(() => 0.0); // rng < ratio → gacha fake-out on No
     renderAward(store);
     await driveToLastReveal(store);
@@ -485,13 +534,32 @@ describe('finale effect', () => {
     expect(screen.getByTestId('finale-rainbow')).toBeTruthy();
     expect(screen.queryByTestId('gacha-sparkle')).toBeNull();
 
-    // After shake + final flip the shake stops (cell back at rest) and the
-    // rainbow stops flowing with it ("진동이 멈출 때까지"); the spotlight/zoom
-    // keeps holding.
-    await advanceMs(GACHA_SHAKE_MS / 2 + SLOW * 2 + 100);
+    // Mid-FLIP the shake wrapper is NOT cancelled (spec §7: "flip이 도는
+    // 동안에도 진동이 계속"): the flip nests inside the shaking wrapper so
+    // both transforms compose, and the rainbow keeps flowing.
+    await advanceMs(GACHA_SHAKE_MS / 2 + 500); // 500ms into the finale flip
+    const midFlip = finaleFlipEl();
+    expect(midFlip.className).toContain('flip-run');
+    expect(midFlip.getAttribute('data-flip-phase')).toBe('out');
+    expect(midFlip.style.getPropertyValue('--flip-half')).toBe(`${FINALE_FLIP / 2}ms`);
+    const midCell = screen.getByTestId('award-cell-2-1');
+    expect(midCell.className).toContain('award-cell-gacha'); // shake persists
+    expect(midCell.className).toContain('award-cell-finale');
+    expect(midCell.contains(midFlip)).toBe(true); // flip nested in the wrapper
+    expect(screen.getByTestId('finale-rainbow')).toBeTruthy();
+
+    // After the flip the shake stops (cell back at rest) and the rainbow
+    // stops flowing with it ("진동이 멈출 때까지"); the spotlight/zoom holds.
+    await advanceMs(FINALE_FLIP_2X - 500 + 100);
     expect(screen.getByTestId('award-cell-2-1').className).not.toContain('award-cell-gacha');
     expect(screen.queryByTestId('finale-rainbow')).toBeNull();
     expect(screen.getByTestId('finale-dim')).toBeTruthy();
+    expect(screen.getByTestId('award-cell-2-1').className).toContain('award-cell-finale');
+
+    // …and 5s later the finale restores completely.
+    await advanceMs(FINALE_HOLD_MS + 100);
+    expect(screen.queryByTestId('finale-dim')).toBeNull();
+    expect(screen.getByTestId('award-cell-2-1').className).not.toContain('award-cell-finale');
   });
 });
 
@@ -547,10 +615,11 @@ describe('reveal spoiler prevention', () => {
 });
 
 // ---------------------------------------------------------------------------
-// Pre-freeze attempts: reveal counters + gacha trigger (spec §6 net runs)
+// Full-cell reveal replay (spec §6): a cell with hidden runs is masked
+// ENTIRELY — its pre-freeze fails replay too, counting from zero.
 // ---------------------------------------------------------------------------
 
-describe('reveal with pre-freeze attempts (r=5: 3 revealed fails on team 3 B)', () => {
+describe('full-cell replay with pre-freeze attempts (r=5: 3 revealed fails on team 3 B)', () => {
   function verdictOf(testId: string): string | null | undefined {
     return screen.getByTestId(testId).querySelector('.problem-result')?.getAttribute('data-verdict');
   }
@@ -558,42 +627,86 @@ describe('reveal with pre-freeze attempts (r=5: 3 revealed fails on team 3 B)', 
     return screen.getByTestId(testId).querySelector('.problem-attempts')?.textContent ?? '';
   }
 
-  it('continues the frozen counters and counts pre-freeze runs toward gacha', async () => {
-    // r=5: runs 3..5 (3 fails on team 3 B) are revealed pre-freeze; runs
-    // 6..10 (4 fails + Yes) stay hidden. Net attempts = 3 + 5 = 8 → the
-    // gacha requirement (8) is met even though only 5 runs are queued.
+  it('replays the whole net history from ?8 through −1…−7 to +7', async () => {
+    // r=5: runs 3..5 (3 fails on team 3 B) land pre-freeze, runs 6..10
+    // (4 fails + Yes) post-freeze. The cell is masked ENTIRELY: it shows the
+    // FULL attempt count '?8', and one advance replays all 8 net runs —
+    // 7 fast fail flips, then the gacha shake (8 ≥ requirement 8, final Yes
+    // → always), then the slow Yes flip.
     const store = await bootAwardStore(() => 0.99, '?award=true&r=5');
     renderAward(store);
 
     await pressKey('Enter'); // focus team 3
-    // Frozen cell shows '?8' (3 pre-freeze + 5 masked).
-    expect(attemptsOf('award-cell-3-1')).toBe('?8');
-
-    await pressKey('Enter'); // reveal
-    // Until the first flip midpoint the frozen display persists — no jump
-    // down to the hidden-only count ('?5').
+    // Masked cell shows pending with the full net attempt count.
     expect(verdictOf('award-cell-3-1')).toBe('pending');
     expect(attemptsOf('award-cell-3-1')).toBe('?8');
 
-    // First fast flip (fallback at 2×FAST): true cumulative '−4', not '−1'.
+    await pressKey('Enter'); // reveal
+    // Until the first flip midpoint the frozen display persists.
+    expect(verdictOf('award-cell-3-1')).toBe('pending');
+    expect(attemptsOf('award-cell-3-1')).toBe('?8');
+
+    // First fast flip (fallback at 2×FAST): the replay starts from zero —
+    // '−1', the first pre-freeze fail, NOT a continuation at '−4'.
     await advanceMs(FAST * 2 + 50);
     expect(verdictOf('award-cell-3-1')).toBe('failed');
-    expect(attemptsOf('award-cell-3-1')).toBe('−4');
+    expect(attemptsOf('award-cell-3-1')).toBe('−1');
 
-    // Second fast flip → '−5'.
+    // Second fast flip → '−2'.
     await advanceMs(FAST * 2);
-    expect(attemptsOf('award-cell-3-1')).toBe('−5');
+    expect(attemptsOf('award-cell-3-1')).toBe('−2');
 
-    // After all 4 fast flips the gacha shake fires (8 net attempts ≥ 8,
-    // final Yes → always) even though only 5 runs were queued post-freeze.
-    await advanceMs(2 * FAST * 2 + GACHA_SHAKE_MS / 2);
+    // After all 7 fast fail flips (pre-freeze AND hidden fails alike) the
+    // gacha shake fires before the final Yes.
+    await advanceMs(5 * FAST * 2 + GACHA_SHAKE_MS / 2);
     expect(attemptsOf('award-cell-3-1')).toBe('−7');
     expect(screen.getByTestId('award-cell-3-1').className).toContain('award-cell-gacha');
 
-    // Final slow flip: '+7' (7 penalized fails before the Yes), no jump.
+    // Final slow flip: '+7' (7 penalized fails before the Yes).
     await advanceMs(GACHA_SHAKE_MS / 2 + SLOW * 2 + 200);
     expect(verdictOf('award-cell-3-1')).toBe('accepted');
     expect(attemptsOf('award-cell-3-1')).toBe('+7');
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Static last-solve flags (spec §4): fixed on the FINAL data, shown per cell
+// only once revealed + accepted, never moving during the ceremony.
+// ---------------------------------------------------------------------------
+
+describe('static last-solve / contest-last flags during the ceremony', () => {
+  function resultClassOf(testId: string): string {
+    return screen.getByTestId(testId).querySelector('.problem-result')?.className ?? '';
+  }
+
+  it('keeps blue/purple fixed on the true cells and reveals them with the flip', async () => {
+    // Final truth of the fixture: contest-last yes = team 3 B (Yes @47);
+    // A's last solve = team 2 A (@20 > @10). The VISIBLE projection at boot
+    // would call team 2 A the contest-last yes — it must NOT be purple.
+    const store = await bootAwardStore();
+    renderAward(store);
+
+    expect(resultClassOf('award-cell-2-0')).toContain('last-solve'); // blue (A's true last)
+    expect(resultClassOf('award-cell-2-0')).not.toContain('contest-last-solve');
+    expect(resultClassOf('award-cell-1-0')).toContain('contest-first-solve'); // true first yes
+    // The masked true contest-last cell shows nothing yet.
+    expect(resultClassOf('award-cell-3-1')).toContain('pending');
+    // Auto labels derived from the fixed flags: absent while hidden.
+    expect(screen.queryByText('got last yes of this contest!')).toBeNull();
+    expect(within(screen.getByTestId('award-row-2')).getByText('A last to solve!')).toBeTruthy();
+
+    // Reveal team 3 B (7 fails + Yes): when the sequence completes, the
+    // purple contest-last cell appears exactly there — and team 2 A stays blue.
+    await pressKey('Enter'); // focus team 3
+    await pressKey('Enter'); // reveal
+    expect(resultClassOf('award-cell-3-1')).not.toContain('contest-last-solve'); // no early leak
+    await finishSequence();
+
+    expect(resultClassOf('award-cell-3-1')).toContain('contest-last-solve');
+    expect(resultClassOf('award-cell-2-0')).not.toContain('contest-last-solve');
+    const row3 = screen.getByTestId('award-row-3');
+    expect(within(row3).getByText('got last yes of this contest!')).toBeTruthy();
+    expect(within(row3).getByText('B last to solve!')).toBeTruthy();
   });
 });
 

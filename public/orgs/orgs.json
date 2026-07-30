@@ -1,155 +1,203 @@
 {
   "Kongju National University": {
-    "country": "KR"
+    "country": "KR",
+    "logo": "kongju-national-university.png"
   },
   "Incheon National University": {
-    "country": "KR"
+    "country": "KR",
+    "logo": "incheon-national-university.svg"
   },
   "Ulsan National Institute of Science and Technology": {
-    "country": "KR"
+    "country": "KR",
+    "logo": "ulsan-national-institute-of-science-and-technology.jpg"
   },
   "Seoul National University": {
-    "country": "KR"
+    "country": "KR",
+    "logo": "seoul-national-university.svg"
   },
   "National Cheng-Chi University": {
-    "country": "TW"
+    "country": "TW",
+    "logo": "national-cheng-chi-university.svg"
   },
   "KAIST": {
-    "country": "KR"
+    "country": "KR",
+    "logo": "kaist.svg"
   },
   "Hanyang University": {
-    "country": "KR"
+    "country": "KR",
+    "logo": "hanyang-university.svg"
   },
   "Kyoto University": {
-    "country": "JP"
+    "country": "JP",
+    "logo": "kyoto-university.svg"
   },
   "Yonsei University": {
-    "country": "KR"
+    "country": "KR",
+    "logo": "yonsei-university.svg"
   },
   "Dankook University": {
-    "country": "KR"
+    "country": "KR",
+    "logo": "dankook-university.svg"
   },
   "Ajou University": {
-    "country": "KR"
+    "country": "KR",
+    "logo": "ajou-university.png"
   },
   "SungKyunKwan University": {
-    "country": "KR"
+    "country": "KR",
+    "logo": "sungkyunkwan-university.svg"
   },
   "Inha University": {
-    "country": "KR"
+    "country": "KR",
+    "logo": "inha-university.svg"
   },
   "Kookmin University": {
-    "country": "KR"
+    "country": "KR",
+    "logo": "kookmin-university.jpg"
   },
   "Korea University": {
-    "country": "KR"
+    "country": "KR",
+    "logo": "korea-university.svg"
   },
   "Pukyong National University": {
-    "country": "KR"
+    "country": "KR",
+    "logo": "pukyong-national-university.png"
   },
   "Institute of Science Tokyo": {
-    "country": "JP"
+    "country": "JP",
+    "logo": "institute-of-science-tokyo.svg"
   },
   "Dongguk University": {
-    "country": "KR"
+    "country": "KR",
+    "logo": "dongguk-university.svg"
   },
   "Sejong University": {
-    "country": "KR"
+    "country": "KR",
+    "logo": "sejong-university.svg"
   },
   "Sogang University": {
-    "country": "KR"
+    "country": "KR",
+    "logo": "sogang-university.png"
   },
   "MyongJi University": {
-    "country": "KR"
+    "country": "KR",
+    "logo": "myongji-university.svg"
   },
   "Sookmyung Women's University": {
-    "country": "KR"
+    "country": "KR",
+    "logo": "sookmyung-womens-university.svg"
   },
   "Chungnam National University": {
-    "country": "KR"
+    "country": "KR",
+    "logo": "chungnam-national-university.svg"
   },
   "Kangwon National University": {
-    "country": "KR"
+    "country": "KR",
+    "logo": "kangwon-national-university.svg"
   },
   "Korea Aerospace University": {
     "country": "KR"
   },
   "Chonnam National University": {
-    "country": "KR"
+    "country": "KR",
+    "logo": "chonnam-national-university.svg"
   },
   "Dong-Eui University": {
-    "country": "KR"
+    "country": "KR",
+    "logo": "dong-eui-university.jpg"
   },
   "Konkuk University": {
-    "country": "KR"
+    "country": "KR",
+    "logo": "konkuk-university.svg"
   },
   "Jeonbuk National University": {
-    "country": "KR"
+    "country": "KR",
+    "logo": "jeonbuk-national-university.png"
   },
   "Daegu Gyungbook Institute of Science and Technology": {
-    "country": "KR"
+    "country": "KR",
+    "logo": "daegu-gyungbook-institute-of-science-and-technology.png"
   },
   "Ewha Womans University": {
-    "country": "KR"
+    "country": "KR",
+    "logo": "ewha-womans-university.svg"
   },
   "Pohang University of Science and Technology": {
-    "country": "KR"
+    "country": "KR",
+    "logo": "pohang-university-of-science-and-technology.svg"
   },
   "Jeju National University": {
     "country": "KR"
   },
   "Korea National University of Education": {
-    "country": "KR"
+    "country": "KR",
+    "logo": "korea-national-university-of-education.png"
   },
   "Kyungpook National University": {
-    "country": "KR"
+    "country": "KR",
+    "logo": "kyungpook-national-university.jpg"
   },
   "Chosun University": {
-    "country": "KR"
+    "country": "KR",
+    "logo": "chosun-university.png"
   },
   "University of Seoul": {
-    "country": "KR"
+    "country": "KR",
+    "logo": "university-of-seoul.svg"
   },
   "Sangmyung University": {
     "country": "KR"
   },
   "Handong Global University": {
-    "country": "KR"
+    "country": "KR",
+    "logo": "handong-global-university.png"
   },
   "Kyonggi University": {
-    "country": "KR"
+    "country": "KR",
+    "logo": "kyonggi-university.svg"
   },
   "Hongik University": {
-    "country": "KR"
+    "country": "KR",
+    "logo": "hongik-university.svg"
   },
   "Gachon University": {
-    "country": "KR"
+    "country": "KR",
+    "logo": "gachon-university.jpg"
   },
   "Pusan National University": {
-    "country": "KR"
+    "country": "KR",
+    "logo": "pusan-national-university.svg"
   },
   "Soongsil University": {
-    "country": "KR"
+    "country": "KR",
+    "logo": "soongsil-university.png"
   },
   "The University of Tokyo": {
-    "country": "JP"
+    "country": "JP",
+    "logo": "the-university-of-tokyo.svg"
   },
   "Chung-Ang University": {
-    "country": "KR"
+    "country": "KR",
+    "logo": "chung-ang-university.png"
   },
   "National Taiwan University": {
-    "country": "TW"
+    "country": "TW",
+    "logo": "national-taiwan-university.svg"
   },
   "Kyungsung University": {
-    "country": "KR"
+    "country": "KR",
+    "logo": "kyungsung-university.jpg"
   },
   "National Taiwan Normal University": {
-    "country": "TW"
+    "country": "TW",
+    "logo": "national-taiwan-normal-university.svg"
   },
   "The Catholic University of Korea": {
-    "country": "KR"
+    "country": "KR",
+    "logo": "the-catholic-university-of-korea.svg"
   },
   "Kyung Hee University": {
-    "country": "KR"
+    "country": "KR",
+    "logo": "kyung-hee-university.png"
   }
 }

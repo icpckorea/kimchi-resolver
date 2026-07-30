@@ -1,9 +1,10 @@
 /*
  * Global page styles: minimal reset, Open Sans-ish system font stack, page
- * background and the wrapper layout mirroring the original spotboard —
- * fixed 2.6em header offset, centered 1024px board, and a right-hand gutter
- * for the 16em events dashboard on viewports ≥ 1300px (chrome.css hides the
- * dashboard below that).
+ * background and the wrapper layout — fixed 2.6em header offset, a
+ * full-viewport-width board (spec §7: no 1024px centering; row height scales
+ * so ~20 teams fit, see scoreboard.css), and a right-hand gutter for the 16em
+ * events dashboard on viewports ≥ 1300px (chrome.css hides the dashboard
+ * below that).
  */
 
 *,
@@ -54,9 +55,11 @@ svg {
 
 /* ---- wrapper layout ------------------------------------------------------ */
 
-/* Content clears the fixed 2.6em header (chrome.css) plus breathing room. */
+/* Content clears the fixed 2.6em header (chrome.css) plus breathing room.
+ * Keep these paddings in sync with the 4.15rem allowance in the ~20-row
+ * board scale rule (scoreboard.css). */
 .app-main {
-  padding: 3.4rem 0.75rem 2.5rem;
+  padding: 3.4rem 0.75rem 0.75rem;
 }
 
 /* Award mode has no header — the ceremony board starts near the top. */
@@ -64,10 +67,10 @@ svg {
   padding-top: 0.75rem;
 }
 
-/* Board width mirrors the original 1024px wrapper, centered. */
+/* Board fills the viewport width (spec §7) — only .app-main's small side
+ * padding (and the ≥1300px dashboard gutter) insets it. */
 .board-wrap {
-  max-width: 64rem; /* 1024px */
-  margin: 0 auto;
+  width: 100%;
   background: #fff;
   border-radius: 4px;
   box-shadow: 0 1px 6px rgba(0, 0, 0, 0.14);

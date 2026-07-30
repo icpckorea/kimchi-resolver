@@ -1,12 +1,25 @@
 /**
  * Award ceremony state machine (spec §6). Pure, DOM-free, framework-free.
  *
- * Frozen projection: post-freeze runs ("hiddenRuns") are applied to the
- * visible run set with their verdict masked as 'pending' at construction.
- * Their real results are kept in per-(team, problem) reveal queues and get
- * swapped into the visible set when the corresponding cell is revealed —
- * "two projections of the same run list", replacing the original's
- * strategy monkey-patch.
+ * Frozen projection (full-cell masking): a cell with ANY post-freeze
+ * ("hidden") run is masked ENTIRELY — its pre-freeze net runs are masked as
+ * 'pending' too, so the visible board shows the cell as pending with the
+ * FULL net attempt count. The cell's whole net history (pre-freeze runs
+ * first, then the hidden ones, truncated after the first accepted) sits in a
+ * per-(team, problem) reveal queue; one advance() swaps every real verdict
+ * back into the visible set and hands the caller the complete run list to
+ * replay from zero (e.g. 5 pre-freeze fails + 3 hidden = 8 flips). Cells
+ * without hidden runs stay revealed as-is. "Two projections of the same run
+ * list", replacing the original's strategy monkey-patch.
+ *
+ * Static last-solve (spec §4): isLastSolve / isContestLastSolve /
+ * isContestFirstSolve — and the auto labels derived from them — are computed
+ * ONCE at construction from the FINAL full run set (revealed + hidden real
+ * verdicts). The visible snapshot is post-processed against that truth:
+ * a cell shows a flag only when it is revealed AND accepted, and the flags
+ * never migrate between cells while the ceremony progresses. The finale
+ * purple cell therefore appears exactly on the true contest-last-yes cell
+ * the moment it flips.
  *
  * One advance() call = one user keypress = one state transition:
  *   slide-on → (focus | blink | reveal | finalize | end)
@@ -17,6 +30,7 @@
  *   - foreign teams last (re-planned: unified bottom-up over the ICPC rank).
  */
 import type {
+  AutoLabel,
   AwardConfigInput,
   AwardMachine,
   AwardStepResult,
@@ -30,9 +44,9 @@ import type {
 
 export interface CreateAwardMachineOptions {
   contest: Contest;
-  /** Runs up to the freeze cutoff; applied with their real verdicts. */
+  /** Runs up to the freeze cutoff; visible unless their cell is masked. */
   revealedRuns: Run[];
-  /** Post-freeze runs; applied masked as pending, revealed cell by cell. */
+  /** Post-freeze runs; they mask their whole cell as pending until revealed. */
   hiddenRuns: Run[];
   config: AwardConfigInput;
   /** Injected RNG for the gacha "No" probability roll ([0, 1)). */
@@ -44,6 +58,11 @@ const CELL_SEP = '\u0000';
 
 function cellKey(teamId: string, problemId: string): string {
   return teamId + CELL_SEP + problemId;
+}
+
+interface FinalCellRef {
+  teamId: string;
+  problemId: string;
 }
 
 export function createAwardMachine(opts: CreateAwardMachineOptions): AwardMachine {
@@ -67,52 +86,212 @@ export function createAwardMachine(opts: CreateAwardMachineOptions): AwardMachin
   });
 
   // -------------------------------------------------------------------------
-  // Frozen projection.
+  // Frozen projection — pass 1: pre-freeze net runs per cell.
+  // Net = seq order, truncated after the first accepted run. A cell accepted
+  // pre-freeze is never masked (mirrors the feeder rule "skip runs on an
+  // accepted cell"); a masked cell therefore has ONLY net pre-freeze runs.
   // -------------------------------------------------------------------------
   const acceptedCells = new Set<string>();
-  /**
-   * cell key → net pre-freeze runs (counted up to and including the first
-   * accepted run, in seq order). Cells accepted pre-freeze never get a
-   * reveal queue, but the counts of still-open cells feed the gacha
-   * requirement and the reveal display offsets (spec §6: "그 셀의 시도
-   * 횟수(net runs)" includes pre-freeze attempts).
-   */
-  const preFreezeNet = new Map<string, { attempts: number; failedAttempts: number }>();
+  const preFreezeNetRuns = new Map<string, Run[]>();
   for (const run of [...opts.revealedRuns].sort((a, b) => a.seq - b.seq)) {
     const key = cellKey(run.teamId, run.problemId);
     if (acceptedCells.has(key)) continue; // past the first accepted → not a net run
-    let counts = preFreezeNet.get(key);
-    if (counts === undefined) {
-      counts = { attempts: 0, failedAttempts: 0 };
-      preFreezeNet.set(key, counts);
+    let list = preFreezeNetRuns.get(key);
+    if (list === undefined) {
+      list = [];
+      preFreezeNetRuns.set(key, list);
     }
-    counts.attempts += 1;
-    if (run.verdict === 'failed' && run.penaltyCounts) counts.failedAttempts += 1;
+    list.push(run);
     if (run.verdict === 'accepted') acceptedCells.add(key);
   }
 
-  const visibleRuns: Run[] = opts.revealedRuns.slice();
-  /** hidden run id → index of its masked copy inside visibleRuns. */
-  const maskedIndexByRunId = new Map<string, number>();
-  /** cell key → queued real runs, ascending seq. Deleted when popped. */
-  const queues = new Map<string, Run[]>();
-
-  const sortedHidden = [...opts.hiddenRuns].sort((a, b) => a.seq - b.seq);
-  for (const run of sortedHidden) {
+  // -------------------------------------------------------------------------
+  // Pass 2: hidden runs per cell (skipping cells accepted pre-freeze and
+  // excluded/unknown teams). Every cell present here is a MASKED cell.
+  // -------------------------------------------------------------------------
+  const hiddenByCell = new Map<string, Run[]>();
+  for (const run of [...opts.hiddenRuns].sort((a, b) => a.seq - b.seq)) {
     const key = cellKey(run.teamId, run.problemId);
-    // A cell already accepted before the freeze has nothing to reveal
-    // (mirrors the feeder rule "skip runs on an accepted cell").
     if (acceptedCells.has(key)) continue;
     if (!contest.teams.has(run.teamId)) continue; // excluded/unknown team
+    const list = hiddenByCell.get(key);
+    if (list !== undefined) list.push(run);
+    else hiddenByCell.set(key, [run]);
+  }
+
+  // -------------------------------------------------------------------------
+  // Pass 3: reveal queues = each masked cell's FULL net history — pre-freeze
+  // net runs followed by the hidden runs, truncated after the first accepted
+  // (only the hidden part can contain one). Hidden runs past that truncation
+  // are dropped entirely: they are not net, not displayed, not replayed.
+  // The queue is also the reveal's animation list, so the gacha requirement
+  // "full net attempts" is simply queue.length.
+  // -------------------------------------------------------------------------
+  const queues = new Map<string, Run[]>();
+  for (const [key, hidden] of hiddenByCell) {
+    const history: Run[] = [];
+    for (const run of [...(preFreezeNetRuns.get(key) ?? []), ...hidden]) {
+      history.push(run);
+      if (run.verdict === 'accepted') break;
+    }
+    queues.set(key, history);
+  }
+
+  // -------------------------------------------------------------------------
+  // Pass 4: visible projection. Revealed runs keep their real verdicts unless
+  // their cell is masked; every queued run (pre-freeze AND hidden) gets a
+  // masked 'pending' copy so the board shows the cell as pending with the
+  // full net attempt count. Reveal swaps the real runs back in by index.
+  // -------------------------------------------------------------------------
+  const maskedRunIds = new Set<string>();
+  const queuedHiddenRuns: Run[] = [];
+  for (const queue of queues.values()) {
+    for (const run of queue) maskedRunIds.add(run.id);
+  }
+  const hiddenIds = new Set(opts.hiddenRuns.map((run) => run.id));
+  for (const queue of queues.values()) {
+    for (const run of queue) {
+      if (hiddenIds.has(run.id)) queuedHiddenRuns.push(run);
+    }
+  }
+
+  const visibleRuns: Run[] = [];
+  /** masked run id → index of its 'pending' copy inside visibleRuns. */
+  const maskedIndexByRunId = new Map<string, number>();
+  for (const run of opts.revealedRuns) {
+    if (maskedRunIds.has(run.id)) {
+      maskedIndexByRunId.set(run.id, visibleRuns.length);
+      visibleRuns.push({ ...run, verdict: 'pending' });
+    } else {
+      visibleRuns.push(run);
+    }
+  }
+  for (const run of queuedHiddenRuns) {
     maskedIndexByRunId.set(run.id, visibleRuns.length);
     visibleRuns.push({ ...run, verdict: 'pending' });
-    const queue = queues.get(key);
-    if (queue !== undefined) queue.push(run);
-    else queues.set(key, [run]);
   }
 
   /** remainingReveals = number of CELLS with a queued reveal. */
   let pendingCellCount = queues.size;
+
+  // -------------------------------------------------------------------------
+  // Final-truth flags (spec §4, award mode): last solve per problem, contest
+  // first/last yes — computed ONCE from the full real run set (revealed +
+  // hidden), independent of the injected computeStandings. Per cell the
+  // accepting run is the first accepted in seq order (net truncation); per
+  // problem the last solve is the max (minute, then seq) accepting run;
+  // contest first/last are the global min/max.
+  // -------------------------------------------------------------------------
+  const finalLastSolveCells = new Set<string>();
+  let finalContestFirst: FinalCellRef | null = null;
+  let finalContestLast: FinalCellRef | null = null;
+  {
+    const allRunsByCell = new Map<string, Run[]>();
+    for (const run of [...opts.revealedRuns, ...opts.hiddenRuns]) {
+      if (!contest.teams.has(run.teamId)) continue;
+      if (!priority.has(run.problemId)) continue; // unknown problem
+      const key = cellKey(run.teamId, run.problemId);
+      const list = allRunsByCell.get(key);
+      if (list !== undefined) list.push(run);
+      else allRunsByCell.set(key, [run]);
+    }
+    interface Accepting extends FinalCellRef {
+      minute: number;
+      seq: number;
+    }
+    const lastPerProblem = new Map<string, Accepting>();
+    let first: Accepting | null = null;
+    let last: Accepting | null = null;
+    for (const [, runs] of allRunsByCell) {
+      runs.sort((a, b) => a.seq - b.seq);
+      const acc = runs.find((r) => r.verdict === 'accepted');
+      if (acc === undefined) continue;
+      const cur: Accepting = {
+        teamId: acc.teamId,
+        problemId: acc.problemId,
+        minute: acc.minute,
+        seq: acc.seq,
+      };
+      const problemLast = lastPerProblem.get(cur.problemId);
+      if (
+        problemLast === undefined ||
+        cur.minute > problemLast.minute ||
+        (cur.minute === problemLast.minute && cur.seq > problemLast.seq)
+      ) {
+        lastPerProblem.set(cur.problemId, cur);
+      }
+      if (first === null || cur.minute < first.minute || (cur.minute === first.minute && cur.seq < first.seq)) {
+        first = cur;
+      }
+      if (last === null || cur.minute > last.minute || (cur.minute === last.minute && cur.seq > last.seq)) {
+        last = cur;
+      }
+    }
+    for (const acc of lastPerProblem.values()) {
+      finalLastSolveCells.add(cellKey(acc.teamId, acc.problemId));
+    }
+    if (first !== null) finalContestFirst = { teamId: first.teamId, problemId: first.problemId };
+    if (last !== null) finalContestLast = { teamId: last.teamId, problemId: last.problemId };
+  }
+  const finalContestFirstKey =
+    finalContestFirst !== null ? cellKey(finalContestFirst.teamId, finalContestFirst.problemId) : null;
+  const finalContestLastKey =
+    finalContestLast !== null ? cellKey(finalContestLast.teamId, finalContestLast.problemId) : null;
+
+  /**
+   * Overwrite the visible snapshot's last-solve family of flags (and the
+   * labels derived from them) with the construction-time final truth, gated
+   * per cell on "revealed AND accepted". The projection-derived values would
+   * migrate between cells as reveals land; the fixed ones never move.
+   */
+  function applyFinalTruth(snap: Snapshot): Snapshot {
+    for (const standing of snap.standings) {
+      const teamId = standing.team.id;
+      let hasContestFirst = false;
+      let hasContestLast = false;
+      const lastSolveLabels: string[] = [];
+      for (const problem of contest.problems) {
+        const cell = standing.cells.get(problem.id);
+        if (cell === undefined) continue;
+        const key = cellKey(teamId, problem.id);
+        const accepted = cell.verdict === 'accepted';
+        cell.isLastSolve = accepted && finalLastSolveCells.has(key);
+        cell.isContestFirstSolve = accepted && key === finalContestFirstKey;
+        cell.isContestLastSolve = accepted && key === finalContestLastKey;
+        if (cell.isLastSolve) lastSolveLabels.push(problem.label);
+        if (cell.isContestFirstSolve) hasContestFirst = true;
+        if (cell.isContestLastSolve) hasContestLast = true;
+      }
+      // Rebuild the affected auto labels, preserving the spec §4 table order:
+      // triedNTimes, contestFirstYes, firstToSolve, lastToSolve, contestLastYes.
+      const rebuilt: AutoLabel[] = [];
+      const tried = standing.autoLabels.find((l) => l.kind === 'triedNTimes');
+      if (tried !== undefined) rebuilt.push(tried);
+      if (hasContestFirst) rebuilt.push({ kind: 'contestFirstYes' });
+      const firstToSolve = standing.autoLabels.find((l) => l.kind === 'firstToSolve');
+      if (firstToSolve !== undefined) rebuilt.push(firstToSolve);
+      if (lastSolveLabels.length > 0) {
+        rebuilt.push({ kind: 'lastToSolve', problemLabels: lastSolveLabels });
+      }
+      if (hasContestLast) rebuilt.push({ kind: 'contestLastYes' });
+      standing.autoLabels = rebuilt;
+    }
+    const firstStanding =
+      finalContestFirst !== null ? snap.byTeam.get(finalContestFirst.teamId) : undefined;
+    snap.contestFirstYes =
+      finalContestFirst !== null &&
+      firstStanding?.cells.get(finalContestFirst.problemId)?.verdict === 'accepted'
+        ? { ...finalContestFirst }
+        : null;
+    const lastStanding =
+      finalContestLast !== null ? snap.byTeam.get(finalContestLast.teamId) : undefined;
+    snap.contestLastYes =
+      finalContestLast !== null &&
+      lastStanding?.cells.get(finalContestLast.problemId)?.verdict === 'accepted'
+        ? { ...finalContestLast }
+        : null;
+    return snap;
+  }
 
   // -------------------------------------------------------------------------
   // Machine state.
@@ -129,7 +308,9 @@ export function createAwardMachine(opts: CreateAwardMachineOptions): AwardMachin
 
   let cachedSnapshot: Snapshot | null = null;
   function snapshot(): Snapshot {
-    if (cachedSnapshot === null) cachedSnapshot = computeStandings(contest, visibleRuns);
+    if (cachedSnapshot === null) {
+      cachedSnapshot = applyFinalTruth(computeStandings(contest, visibleRuns));
+    }
     return cachedSnapshot;
   }
 
@@ -166,8 +347,13 @@ export function createAwardMachine(opts: CreateAwardMachineOptions): AwardMachin
   }
 
   function advanceInternal(suppressEffects: boolean): AwardStepResult {
-    // A visible slide swallows the keypress until dismissed.
-    if (slideTeamId !== null) return { type: 'slide-on' };
+    // A visible slide CONSUMES the keypress as its dismissal (spec §6: a
+    // presenter remote has no Escape, so the advance key must close the
+    // slide; the NEXT press advances — the two-step structure stays).
+    if (slideTeamId !== null) {
+      slideTeamId = null;
+      return { type: 'slide-on' };
+    }
 
     const index = bottomNonFinalizedIndex();
     if (index < 0) return { type: 'end' }; // reachable — original bug not ported
@@ -203,7 +389,10 @@ export function createAwardMachine(opts: CreateAwardMachineOptions): AwardMachin
       }
     }
 
-    // Reveal: pop EVERY queued run of the cell in one transition.
+    // Reveal: swap the cell's ENTIRE net history back to real verdicts in one
+    // transition. The queue already IS the net-truncated full history —
+    // pre-freeze fails first, then the hidden runs — so the caller replays
+    // the whole cell from zero attempts.
     const queued = queues.get(key)!;
     queues.delete(key);
     const remainingBefore = pendingCellCount;
@@ -215,25 +404,21 @@ export function createAwardMachine(opts: CreateAwardMachineOptions): AwardMachin
     }
     cachedSnapshot = null;
 
-    // Animation list = net runs (truncate after the first accepted).
-    const runs: Run[] = [];
-    for (const real of queued) {
-      runs.push(real);
-      if (real.verdict === 'accepted') break;
-    }
+    const runs = queued;
     const finalVerdict = runs[runs.length - 1].verdict;
 
-    const preFreeze = preFreezeNet.get(key) ?? { attempts: 0, failedAttempts: 0 };
     const isFinale = remainingBefore === 1;
     let gacha = false;
-    // The gacha requirement counts the cell's FULL net attempts (spec §6):
-    // pre-freeze runs on the cell plus the queued (net-truncated) reveals.
-    if (
-      !suppressEffects &&
-      (preFreeze.attempts + runs.length >= config.gachaEffectRequirement || isFinale)
-    ) {
-      // Yes → always; No → probability roll (fake-out), deterministic via injected rng.
-      gacha = finalVerdict === 'accepted' ? true : rng() < config.gachaEffectForNoRatio / 100;
+    // The gacha requirement counts the cell's FULL net attempts (spec §6),
+    // which with full-cell masking is simply the replay length.
+    if (!suppressEffects && (runs.length >= config.gachaEffectRequirement || isFinale)) {
+      // Finale cell → always, regardless of verdict (spec §6/§7); otherwise
+      // Yes → always; No → probability roll (fake-out), deterministic via
+      // injected rng (never called when the outcome is already certain).
+      gacha =
+        isFinale ||
+        finalVerdict === 'accepted' ||
+        rng() < config.gachaEffectForNoRatio / 100;
     }
 
     return {
@@ -241,7 +426,9 @@ export function createAwardMachine(opts: CreateAwardMachineOptions): AwardMachin
       teamId,
       problemId,
       runs,
-      preFreeze: { ...preFreeze },
+      // Frozen contract field: the replay now always starts from zero — the
+      // full history is inside `runs`, so there is no display offset left.
+      preFreeze: { attempts: 0, failedAttempts: 0 },
       effect: { gacha, finale: suppressEffects ? false : isFinale },
     };
   }

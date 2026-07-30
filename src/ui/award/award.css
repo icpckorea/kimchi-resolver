@@ -167,6 +167,15 @@
   );
 }
 
+/* The row hosting the finale cell must itself rise above the fixed dim
+ * veil: the row is a stacking context (focused z-index, framer-motion
+ * transforms), so the CELL's z-index alone can never escape it and the
+ * whole row — cell included — would be dimmed. Lift the row, keep the
+ * board behind it dark. */
+.award-view .team-row.award-row-finale {
+  z-index: 45; /* dim veil is 40; the cell is 50 within this row */
+}
+
 .award-cell-finale {
   position: relative;
   z-index: 50; /* above the dim veil */

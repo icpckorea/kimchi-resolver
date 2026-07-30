@@ -46,6 +46,15 @@ describe('Balloon', () => {
     expect(highlight?.getAttribute('fill')).toBe('#fff');
   });
 
+  it('has no string/tail — body and knot nub only', () => {
+    const { container } = render(<Balloon color="red" />);
+    const svg = getSvg(container);
+    const paths = Array.from(svg.querySelectorAll('path'));
+    expect(paths).toHaveLength(2); // knot nub + teardrop body
+    // every path is a filled shape; a string would be a fill="none" stroke path
+    expect(svg.querySelector('path[fill="none"]')).toBeNull();
+  });
+
   it('accepts hex colors, size and className', () => {
     const { container } = render(<Balloon color="#123456" size={30} className="cell-balloon" />);
     const svg = getSvg(container);
@@ -82,6 +91,23 @@ describe('FlagIcon', () => {
     const svg = getSvg(render(<FlagIcon country={code} />).container);
     expect(svg.getAttribute('data-country')).toBe(code);
     expect(svg.getAttribute('viewBox')).toBe('0 0 36 24');
+  });
+
+  it('draws a full taegeukgi for KR: rotated taegeuk + four trigrams', () => {
+    const svg = getSvg(render(<FlagIcon country="KR" />).container);
+    // taegeuk group rotated onto the flag diagonal
+    const taegeuk = svg.querySelector('g[transform="rotate(-56.31 18 12)"]');
+    expect(taegeuk).not.toBeNull();
+    // red half + blue half + red head disc, interlocked along the divider
+    expect(taegeuk?.querySelector('path[fill="#cd2e3a"]')).not.toBeNull();
+    expect(taegeuk?.querySelector('path[fill="#0047a0"]')).not.toBeNull();
+    expect(taegeuk?.querySelector('circle[fill="#cd2e3a"]')).not.toBeNull();
+    // trigram bars: 건 ☰ 3 rects + 감 ☵ 5 + 리 ☲ 4 + 곤 ☷ 6 = 18 black bars
+    const bars = svg.querySelectorAll('g[fill="#000"] rect');
+    expect(bars).toHaveLength(18);
+    // four trigram groups, one per diagonal
+    const trigramGroups = svg.querySelectorAll('g[fill="#000"] > g[transform]');
+    expect(trigramGroups).toHaveLength(4);
   });
 
   it('is case-insensitive', () => {

@@ -141,8 +141,9 @@ export function PublishView({ manualLabels = null }: PublishViewProps) {
           <h2 className="publish-gate-title">site score를 입력하세요</h2>
           <p className="publish-gate-hint">
             publish 모드는 site score 값이 필요합니다. 위 입력란에 site score를 입력하면 최종
-            순위표와 APAC 별 판정이 표시됩니다. invited score cutoff 값을 입력하면 초청권 팀의
-            별이 금색으로 표시됩니다.
+            순위표와 APAC 별 판정이 표시됩니다. 별의 의미: 동색 = 학내 3등 이내, 은색 = APAC
+            championship 초대 가능, 금색 = APAC championship 진출. invited score cutoff 값을
+            입력하면 진출이 확정된 팀의 별이 금색으로 바뀝니다.
           </p>
         </section>
       ) : snapshot === null || contest === null ? (

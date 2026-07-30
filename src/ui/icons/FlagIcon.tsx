@@ -8,19 +8,65 @@ export interface FlagIconProps extends IconProps {
 
 /* ---- flag bodies (viewBox 36×24, clipped to rounded rect) ------------------ */
 
+/*
+ * Taegeukgi (official construction, scaled to the 36×24 field):
+ * - Taegeuk diameter = 1/2 of the flag height → r = 6, centered at (18, 12).
+ * - The dividing S-curve lies on the ↘ diagonal of the field: a vertical
+ *   divider rotated by -(90° - atan(2/3)) = -56.31°. Red (yang) sits above
+ *   with its head bulging upper-left; blue (um) below, head lower-right.
+ * - Each trigram: bar length 6 (1/2 taegeuk diameter), bar thickness 1,
+ *   gaps 0.5 (total height 4 = 2/3 of the length), inner edge 3 away from
+ *   the circle (radial 9..13), rotated so the bars face the center.
+ */
+const TAEGEUK_TILT = -56.31;
+
+type TrigramBar = 's' | 'b'; // solid | broken
+
+/** One trigram: three bars stacked outward along a flag diagonal. */
+function trigram(angle: number, bars: readonly TrigramBar[]): ReactNode {
+  // Bar top edges, outermost first (radial distance 13 / 11.5 / 10 from center).
+  const rows = [-1, 0.5, 2];
+  return (
+    <g key={angle} transform={`rotate(${angle} 18 12)`}>
+      {bars.map((bar, i) =>
+        bar === 's' ? (
+          <rect key={i} x="15" y={rows[i]} width="6" height="1" />
+        ) : (
+          <g key={i}>
+            <rect x="15" y={rows[i]} width="2.75" height="1" />
+            <rect x="18.25" y={rows[i]} width="2.75" height="1" />
+          </g>
+        ),
+      )}
+    </g>
+  );
+}
+
 const KR = (
   <g>
     <rect width="36" height="24" fill="#fff" />
-    <circle cx="18" cy="12" r="6" fill="#0047a0" />
-    {/* taegeuk: red upper lobe with the classic S-curve (trigrams omitted) */}
-    <path d="M12 12a6 6 0 0 1 12 0 3 3 0 0 1-6 0 3 3 0 0 0-6 0Z" fill="#cd2e3a" />
+    {/* taegeuk: halves split along the rotated divider, interlocked by the
+        small semicircle (blue tail, lower-right) + head disc (red, upper-left) */}
+    <g transform={`rotate(${TAEGEUK_TILT} 18 12)`}>
+      <path d="M18 6a6 6 0 0 1 0 12Z" fill="#cd2e3a" />
+      <path d="M18 6a6 6 0 0 0 0 12 3 3 0 0 0 0-6Z" fill="#0047a0" />
+      <circle cx="18" cy="9" r="3" fill="#cd2e3a" />
+    </g>
+    {/* trigrams: 건 ☰ top-left, 감 ☵ top-right, 리 ☲ bottom-left, 곤 ☷ bottom-right */}
+    <g fill="#000">
+      {trigram(-56.31, ['s', 's', 's'])}
+      {trigram(56.31, ['b', 's', 'b'])}
+      {trigram(-123.69, ['s', 'b', 's'])}
+      {trigram(123.69, ['b', 'b', 'b'])}
+    </g>
   </g>
 );
 
 const JP = (
   <g>
     <rect width="36" height="24" fill="#fff" />
-    <circle cx="18" cy="12" r="7" fill="#bc002d" />
+    {/* official sun disc: diameter 3/5 of the flag height */}
+    <circle cx="18" cy="12" r="7.2" fill="#bc002d" />
   </g>
 );
 
@@ -28,9 +74,10 @@ const TW = (
   <g>
     <rect width="36" height="24" fill="#fe0000" />
     <rect width="18" height="12" fill="#000095" />
-    {/* white sun, 12 rays simplified as a 12-point star + ringed disc */}
-    <polygon points={starPoints(9, 6, 4.5, 3.1, 12)} fill="#fff" />
-    <circle cx="9" cy="6" r="2.6" fill="#fff" stroke="#000095" strokeWidth="0.6" />
+    {/* white sun: 12 thin rays + blue ring + white core */}
+    <polygon points={starPoints(9, 6, 4.6, 2.55, 12)} fill="#fff" />
+    <circle cx="9" cy="6" r="2.85" fill="#000095" />
+    <circle cx="9" cy="6" r="2.25" fill="#fff" />
   </g>
 );
 

@@ -27,6 +27,13 @@ export interface ApacStarInfo {
   spinning?: boolean;
 }
 
+/** APAC star semantics per tier (spec §13) — tooltip text. */
+const APAC_STAR_TITLES: Record<ApacStarTier, string> = {
+  bronze: '학내 3등 이내',
+  silver: 'APAC championship 초대 가능',
+  gold: 'APAC championship 진출',
+};
+
 /** Spring tuned to the original rank move-up feel (~100-200ms per row). */
 const ROW_SPRING: Transition = { type: 'spring', stiffness: 420, damping: 40, mass: 0.9 };
 
@@ -215,7 +222,7 @@ export function TeamRow({
               spinning={apacStar.spinning}
               size={20}
               className="team-apac-star"
-              title={`APAC ${apacStar.tier} star`}
+              title={APAC_STAR_TITLES[apacStar.tier]}
             />
           ) : null}
         </div>

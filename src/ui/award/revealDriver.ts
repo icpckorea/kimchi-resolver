@@ -26,6 +26,18 @@ export type RevealStep = Extract<AwardStepResult, { type: 'reveal' }>;
 export const GACHA_SHAKE_MS = 1500;
 /** Finale overlay/zoom restore delay after the reveal completes (spec §7). */
 export const FINALE_HOLD_MS = 5000;
+/** Finale final-flip slowdown vs the matched slowFlip (spec §7: 4~5×). */
+export const FINALE_FLIP_MULTIPLIER = 4.5;
+/** Finale final-flip floor (spec §7: 약 3초 이상). */
+export const FINALE_FLIP_MIN_MS = 3000;
+
+/**
+ * The VERY slow finale flip duration (spec §7): 4~5× the matched slowFlip,
+ * never under 3s — the last cell of the whole ceremony deserves the drama.
+ */
+export function finaleSlowFlipMs(slowFlipMs: number): number {
+  return Math.max(FINALE_FLIP_MIN_MS, Math.round(slowFlipMs * FINALE_FLIP_MULTIPLIER));
+}
 /** Safety margin added to the expected duration for the hard busy deadline. */
 export const BUSY_HARD_TIMEOUT_MS = 4000;
 
@@ -67,10 +79,13 @@ export interface RevealDisplay {
 }
 
 /**
- * Cumulative display state after runs[0..upto] have been shown. `preFreeze`
- * carries the cell's net pre-freeze counts (spec §6): the counters shown
- * mid-reveal are the TRUE cumulative totals, so a cell frozen at '?5' with 2
- * earlier penalized fails continues '−3', '−4', … without jumping.
+ * Cumulative display state after runs[0..upto] have been shown.
+ *
+ * Full-cell reveal replay (spec §6): a masked cell's reveal step carries its
+ * ENTIRE net history (pre-freeze fails included) in `runs`, so the counters
+ * replay from zero — a cell frozen at '?8' counts '−1', '−2', … '+7'. The
+ * `preFreeze` offset parameter remains for the frozen step contract, but the
+ * machine now always emits zero offsets (the old partial-replay mechanism).
  */
 export function accumulateDisplay(
   runs: readonly Run[],
@@ -112,7 +127,8 @@ export interface RevealDriver {
 
 /** Worst-case playback length: gacha + flips at the 2× fallback duration. */
 function estimateDurationMs(step: RevealStep, speed: AnimationSpeed): number {
-  const flips = (step.runs.length - 1) * speed.fastFlip + speed.slowFlip;
+  const finalFlip = step.effect.finale ? finaleSlowFlipMs(speed.slowFlip) : speed.slowFlip;
+  const flips = (step.runs.length - 1) * speed.fastFlip + finalFlip;
   return (step.effect.gacha ? GACHA_SHAKE_MS : 0) + flips * 2;
 }
 

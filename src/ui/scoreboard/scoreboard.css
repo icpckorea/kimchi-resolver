@@ -6,10 +6,24 @@
  */
 
 .scoreboard {
-  /* Original board: 10px base with 2em rows. */
+  /* Original board: 10px base with 2em rows. (Mobile keeps this base; the
+   * desktop base below scales it to the viewport.) */
   font-size: 0.625rem;
   background: #fff;
   color: #1c1c1c;
+}
+
+/* Desktop board scale (spec §7): full-width board with ~20 team rows filling
+ * the viewport height below the fixed header. A .team-row is 2em tall at a
+ * 2em font, i.e. 4× this base font-size, so base = available height / 20 / 4.
+ * 4.15rem = .app-main's 3.4rem top (header + gap) + 0.75rem bottom padding
+ * (index.css). At 1024×768 this yields a ~8.8px base → ~35px rows → header +
+ * 20 rows fill the screen exactly. ≥769px only — the ≤768px mobile compact
+ * layout (§14) keeps the fixed base above. */
+@media (min-width: 769px) {
+  .scoreboard {
+    font-size: clamp(6px, calc((100vh - 4.15rem) / 80), 14px);
+  }
 }
 
 .scoreboard--empty {

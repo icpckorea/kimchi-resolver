@@ -38,6 +38,7 @@ import { parseAwardsJson, type AwardEntry } from './awardsData';
 import {
   GACHA_SHAKE_MS,
   accumulateDisplay,
+  finaleSlowFlipMs,
   matchAnimationSpeed,
   moveUpDurationSec,
   useRevealDriver,
@@ -343,6 +344,12 @@ function AwardRow({
   const team = standing.team;
   const identity = maskIdentity(team, stage, hideName);
   const finalized = stage === 'finalized';
+  // Finale row: lifted ABOVE the full-screen dim veil (the row is a stacking
+  // context — focused z-index + framer-motion transforms — so the cell's own
+  // z-index alone could never escape it). Stays lifted through the 5s hold
+  // because `active` persists until the driver restores.
+  const finaleRow =
+    active !== null && active.step.effect.finale && active.step.teamId === team.id;
   const medalist = finalized && entry !== undefined;
   const MedalIcon =
     entry !== undefined
@@ -359,6 +366,7 @@ function AwardRow({
         identity.masked && 'award-team-hidden',
         focused && 'award-row-focused',
         finalized && 'award-row-finalized',
+        finaleRow && 'award-row-finale',
       )}
       data-testid={`award-row-${team.id}`}
       data-team-id={team.id}
@@ -521,7 +529,10 @@ function RevealingCell({
   const [activeFlip, setActiveFlip] = useState<'fast' | 'slow' | null>(null);
 
   const fastCtl = useCellFlip(speed.fastFlip);
-  const slowCtl = useCellFlip(speed.slowFlip);
+  // Finale: the final flip runs VERY slowly (spec §7 — 4~5× slowFlip, >= 3s).
+  const slowCtl = useCellFlip(
+    step.effect.finale ? finaleSlowFlipMs(speed.slowFlip) : speed.slowFlip,
+  );
   const fastRef = useRef(fastCtl);
   fastRef.current = fastCtl;
   const slowRef = useRef(slowCtl);
