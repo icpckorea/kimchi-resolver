@@ -27,6 +27,8 @@
 | 아이콘 | 국기·왕관은 이모지 금지, SVG 애셋 사용 (Windows 국기 이모지 미지원) |
 | 칭호 라벨 | awards.json v2의 `labels`(수동) + 스냅샷 파생 자동 칭호 5종을 팀 행 배지로 표시. 시상식에서 수동 칭호는 finalize 시점에 공개 |
 | 피날레 연출 | 대회 첫 Yes 셀 sparkle, 시상식 최종 공개 셀 스포트라이트+확대(5초 후 복원) |
+| APAC 표시 | `apac` 플래그: 교내 3위까지 별 아이콘(동→은→금 단계 변경, 회전 애니메이션). 14장 참조 |
+| publish 모드 | 공지용 static scoreboard 모드 신설. site score 입력 필수, invited cutoff 입력으로 금색 별 판정 |
 | 셀 색 확장 | 문제별 마지막 solve = 파랑, 대회 전체 마지막 Yes = 보라 (accepted run 기준) |
 | 애셋 현대화 | 원본 PNG 아이콘 전면 SVG 교체. 풍선은 SVG 1장 + 문제 color 동적 틴팅 |
 
@@ -194,6 +196,8 @@ FeedSource(어댑터) → parse → diff → 표시 대기 큐 → tick 소비 �
   "useFollowedTeamSticky": true,
   "excludeTeams": [],
   "foreign": { "ids": [], "groups": [] },
+  "apac": { "enabled": false },
+  "publish": { "enabled": false, "siteScore": null, "invitedScoreCutoff": null },
   "award": {
     "mode": false,
     "hideName": true,
@@ -211,13 +215,13 @@ FeedSource(어댑터) → parse → diff → 표시 대기 큐 → tick 소비 �
 
 스키마는 zod로 검증하고 오류 시 어떤 키가 잘못됐는지 SystemMessage로 표시. 모든 키에 기본값 존재(부분 config 허용).
 
-URL 파라미터 (`URLSearchParams`로 파싱, config보다 우선): `r`, `time`, `award`, `award_rank_begin`, `animation`, `q`(검색어, 원본과 달리 부분 일치), `t`(follow 팀 id).
+URL 파라미터 (`URLSearchParams`로 파싱, config보다 우선): `r`, `time`, `award`, `award_rank_begin`, `animation`, `q`(검색어, 원본과 달리 부분 일치), `t`(follow 팀 id), `publish`, `site_score`, `invited_cutoff` (13장).
 
 원본 대비 의도적 삭제: `auto_rundiff`(항상 client diff), predicate 함수 config(선언적 필드로 대체), `environment`(Vite 빌드로 불필요).
 
 ## 10. 테스트
 
-1. **core 유닛 테스트** (vitest): penalty 공식, net runs 절단, 4단계 tie-break, rank gap(1,2,2,2,5), 이중 랭킹(foreign 제외), 왕관, first solve, **문제별 last solve·대회 전체 첫/마지막 Yes(동분 tie-break 포함, award 공개 중 이동)**, **자동 칭호 5종(조건 경계: 10회 시도, 복수 문제 묶음)**, verdict 정규화(빈 문자열/Pending/무벌점 판정), diff 규칙 전체, feeder 큐, award 전이 전체(focus→blink→reveal→finalize→slide, revealOrder, rankBegin, **finalize 시 칭호 공개**, **피날레 스포트라이트 트리거(remainingReveals === 1)**, 마지막 팀 종료 — 원본의 도달 불가 'end' 버그 미이식 확인).
+1. **core 유닛 테스트** (vitest): penalty 공식, net runs 절단, 4단계 tie-break, rank gap(1,2,2,2,5), 이중 랭킹(foreign 제외), 왕관, first solve, **문제별 last solve·대회 전체 첫/마지막 Yes(동분 tie-break 포함, award 공개 중 이동)**, **자동 칭호 5종(조건 경계: 10회 시도, 복수 문제 묶음)**, verdict 정규화(빈 문자열/Pending/무벌점 판정), diff 규칙 전체, feeder 큐, award 전이 전체(focus→blink→reveal→finalize→slide, revealOrder, rankBegin, **finalize 시 칭호 공개**, **피날레 스포트라이트 트리거(remainingReveals === 1)**, **APAC 별 규칙(동→은/금 전이, 교내 3위 경계, invited cutoff 판정)**, 마지막 팀 종료 — 원본의 도달 불가 'end' 버그 미이식 확인).
 2. **골든 테스트**: 2025 runs.json 1,227건 전체 반영 → 최종 standings 스냅샷 고정.
 3. **어댑터 테스트**: 같은 대회를 spotboard/Contest API 두 포맷으로 넣어 동일 standings 산출 확인. Contest API 픽스처는 스펙 예제 기반으로 제작.
 4. **UI**: 핵심 컴포넌트 렌더 테스트(Testing Library). e2e(Playwright)는 범위 외.
@@ -233,7 +237,37 @@ URL 파라미터 (`URLSearchParams`로 파싱, config보다 우선): `r`, `time`
 
 분석 문서 2장의 버그는 전부 **미이식**(수정): noMoreUpdate 파싱, Pending penalty 비대칭, ProblemSummary 중복 집계, award 종료 TypeError, revealOrder id 0 버그, discard off-by-one, notify `cancel()`, dashboard trim/sentinel. 동작 차이가 사용자 관점에서 보이는 것은 noMoreUpdate(필드 부재 시)와 Pending penalty 두 건이며, 모두 "올바른 쪽"으로 통일한다.
 
-## 13. 범위 외 (명시)
+## 13. APAC 진출 표시 (`apac` 플래그)와 publish 모드
+
+목적: [ICPC APAC Championship 2025-26 규칙](https://icpc.jp/apac/2025-26/rules/) 기준으로 APAC 진출 가능성이 있는 팀을 시각적으로 인지시킨다. 규칙 요점: 학교당 최대 3팀 진출 가능(교내 4위 이하 제거), 팀 score = `(rank − 1) / site score` (작을수록 상위), score 순 병합 리스트에서 초청.
+
+**전제**: 대회가 종료된 상황(award 모드 또는 publish 모드)에서만 동작. `config.apac.enabled`로 on/off.
+
+**별 아이콘 규칙** (별 부여·색상 변경 시 항상 별이 한 바퀴 회전하는 애니메이션 포함):
+
+1. **award 모드, 최종 순위 미공개 상태**: 모든 학교의 교내 1~3위(현재 스냅샷의 ICPC 랭킹 기준) 팀의 랭킹 칸 옆에 **동색 별**. 공개가 진행되어 교내 순위가 바뀌면 별도 이동(회전 애니메이션 재생).
+2. **award 모드에서 최종 순위 전부 공개 완료 시, 또는 publish 모드**:
+   - 대회 전체 1등 팀의 별을 **금색**으로 변경.
+   - 1등 팀이 속하지 않은 모든 학교의 교내 1~3위 별을 **은색**으로 변경. (1등 팀 학교의 나머지 팀은 동색 유지.)
+3. **publish 모드의 invited 판정**: 은색 별 팀 중 `(ICPC 최종 rank − 1) / siteScore ≤ invited score cutoff`인 팀의 별을 **금색**으로 변경.
+
+**publish 모드** (신설, 세 번째 앱 모드):
+
+- 용도: 대회 종료 후 공지용 static scoreboard. 폴링·autoplay·애니메이션 진행 없음, 전체 run 반영된 최종 순위표 + 칭호/별 표시.
+- 진입: `?publish=true` (또는 `config.publish.enabled`). **site score 값이 입력되어야 전환 완료** — URL `site_score=<number>` 또는 화면의 site score 입력 필드. 값이 없으면 안내 메시지와 입력 폼만 표시.
+- 화면에 **invited score cutoff 입력 상자** 존재. 값 입력/변경 시 3번 규칙을 즉시 재평가해 해당 팀의 은색 별을 금색으로 (회전 애니메이션).
+- 모드 배타 규칙: publish는 award와 동시 활성 불가 (publish 우선).
+
+config 추가:
+
+```jsonc
+"apac": { "enabled": false },
+"publish": { "enabled": false, "siteScore": null, "invitedScoreCutoff": null }
+```
+
+URL 파라미터 추가: `publish`, `site_score`, `invited_cutoff` (config보다 우선).
+
+## 14. 범위 외 (명시)
 
 - Contest API event-feed(NDJSON) 스트리밍 — 폴링으로 충분, 후순위.
 - PageUp 등 시상식 되돌리기(undo).
