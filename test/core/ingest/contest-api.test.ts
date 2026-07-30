@@ -873,6 +873,21 @@ describe('fetchRuns: team-filtered judgements diagnosis (P0-1)', () => {
     expect(result.warnings.some((w) => w.includes(FILTER_HINT))).toBe(false);
   });
 
+  it('stays quiet in the first minutes, when only the earliest run is judged', async () => {
+    // The opening of a real contest: three runs from three teams, the first one
+    // judged, the rest still in the queue. That is the same shape as a filtered
+    // feed, so only the traffic volume tells them apart — and this warning
+    // accuses the operator's account of being broken, so it must not fire here.
+    const routes = routesWith('/judgements', [
+      { id: 'j1', submission_id: 's1', judgement_type_id: 'AC', valid: true, end_contest_time: '0:05:40.000' },
+    ]);
+    routes[`${ROOT}/submissions`] = ccsSubmissions.slice(0, 3); // t1, t2, t1
+    const { source } = makeSource({}, routes);
+    await source.loadContest();
+    const result = await source.fetchRuns(null);
+    expect(result.warnings.some((w) => w.includes(FILTER_HINT))).toBe(false);
+  });
+
   it('stays quiet when only one team has submitted at all', async () => {
     const routes = routesWith('/judgements', []);
     routes[`${ROOT}/submissions`] = ccsSubmissions.filter((s) => s.team_id === 't1');

@@ -101,7 +101,13 @@ FeedSource(어댑터) → parse → diff → 표시 대기 큐 → tick 소비 �
 
 - **FeedSource 인터페이스**: `loadContest(): Promise<Contest>`, `fetchRuns(cursor): Promise<{ runs, contestTimeSec, noMoreUpdate, cursor }>`.
 - **spotboard 어댑터**: `contest.json` 1회 + `runs.json?from=<timestamp>` 폴링. 항상 client-side diff (원본의 `auto_rundiff=false` = changed_runs.json 모드는 삭제 — diff가 상위 호환). `noMoreUpdate`는 필드 부재 시 false (원본 버그 수정). `submissionTime` 문자열 방어 파싱.
-- **Contest API 어댑터**: `/contests/{id}`, `/problems`, `/teams`, `/organizations`, `/judgement-types` 1회 + `/submissions`, `/judgements` 폴링. submission=run, `contest_time`("H:MM:SS.mmm") → 분 내림 변환. organizations의 `country`로 팀 countryCode 자동 채움. event-feed(NDJSON 스트림)는 범위 외(후순위 확장). 브라우저 직결 시 DOMjudge/CDS에 CORS 설정 또는 리버스 프록시 필요 — 운영 문서에 명시.
+- **Contest API 어댑터**: `/contests/{id}`, `/problems`, `/teams`, `/organizations`, `/judgement-types` 1회 + `/submissions`, `/judgements` 폴링. submission=run, `contest_time`("H:MM:SS.mmm") → 분 내림 변환. organizations의 `country`로 팀 countryCode 자동 채움. event-feed(NDJSON 스트림)는 범위 외(후순위 확장). 브라우저 직결 시 DOMjudge/CDS에 CORS 설정 또는 리버스 프록시 필요.
+
+  DOMjudge 9.0.0의 OpenAPI 문서와 컨트롤러 소스로 검증한 사항 (관측된 응답이 아니라 스키마와 PHP 소스 기준). 운영 절차는 `docs/operations.md` 참조:
+  - **freeze는 judgements를 가리지 않는다.** `JudgementController`에는 freeze 처리가 전혀 없고 필터링은 role 기준뿐이다. 따라서 `api_reader` 토큰을 가진 배포본은 대회 진행 중에도 frozen submission의 실제 verdict를 읽는다. 이 배포본은 대회 중 공개하면 안 된다. `r=`/`time=`은 부팅 리플레이만 제한하므로 freeze가 아니다.
+  - **`api_reader` 계정 필수.** `/submissions`는 무인증으로도 열리지만 `/judgements`는 role-gated이고 `api_reader` 미만에서는 호출자 팀의 row만 남도록 필터링된다. 권한이 모자란 토큰은 판정 없는 보드(전 셀 pending)를 만든다.
+  - **어느 엔드포인트에도 pagination이 없다.** 매 폴링마다 전체 목록을 다시 읽는다.
+  - **submissions는 `submitid` 순으로 정렬되어 돌아온다.** 그래서 어댑터가 부여하는 first-seen `seq`는 폴링과 새로고침에 걸쳐 안정적이다. 단 이 `seq`는 submission id가 아니라 1-based ordinal이므로, contest-api 소스에서는 freeze 컷오프에 `r=` 대신 `time=`을 쓴다.
 - **diff 규칙** (원본 보존): 미지 id → 수용. 큐 대기 중이거나 반영된 동일 id run과 비교해 이미 accepted면 거부, time/result 변경 시만 수용. 해당 셀이 이미 accepted면 skip. exclude 팀 run은 이 단계 전에 폐기.
 - **fetch와 display 분리** (원본 보존): fetch는 큐 적재만. `autoPlayDelay`(기본 100ms) tick이 큐에서 1건씩 꺼내 애니메이션과 함께 반영. 대기 수는 update 버튼 badge. play/pause 상태는 store에 (원본은 CSS class였음).
 - **폴링**: `autoRefreshInterval`(기본 10s). 수동 새로고침 시 타이머 리셋(원본 동일). WebSocket(`source.eventsWs`)은 메시지 수신 시 즉시 폴링 1회 트리거하는 초인종. 미연결/오류는 조용히 무시하되 system message로 1회 알림.
