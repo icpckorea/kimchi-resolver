@@ -1,0 +1,507 @@
+{
+    "title": "2025 ICPC Asia Seoul Regional Contest",
+    "systemName": "DOMjudge",
+    "systemVersion": "",
+    "problems": [
+        {
+            "id": 2229881430,
+            "title": "Adventurer Dabi",
+            "name": "A",
+            "color": "lightblue"
+        },
+        {
+            "id": 2263435862,
+            "title": "Badge Relay",
+            "name": "B",
+            "color": "black"
+        },
+        {
+            "id": 2296990294,
+            "title": "Bay",
+            "name": "C",
+            "color": "red"
+        },
+        {
+            "id": 2330544726,
+            "title": "Bookshelf",
+            "name": "D",
+            "color": "white"
+        },
+        {
+            "id": 2364099158,
+            "title": "Clean Arrangements",
+            "name": "E",
+            "color": "aqua"
+        },
+        {
+            "id": 2397653590,
+            "title": "CPEquivalence",
+            "name": "F",
+            "color": "pink"
+        },
+        {
+            "id": 2431208022,
+            "title": "Extraterrestrial Creatures",
+            "name": "G",
+            "color": "lavender"
+        },
+        {
+            "id": 2464762454,
+            "title": "Fair Problemset",
+            "name": "H",
+            "color": "lime"
+        },
+        {
+            "id": 2498316886,
+            "title": "Magic Door",
+            "name": "I",
+            "color": "green"
+        },
+        {
+            "id": 2531871318,
+            "title": "Mex Culpa",
+            "name": "J",
+            "color": "orange"
+        },
+        {
+            "id": 2565425750,
+            "title": "Quadrants",
+            "name": "K",
+            "color": "fuchsia"
+        },
+        {
+            "id": 2598980182,
+            "title": "Segments",
+            "name": "L",
+            "color": "blue"
+        },
+        {
+            "id": 2632534615,
+            "title": "Triple Fairness",
+            "name": "M",
+            "color": "yellow"
+        }
+    ],
+    "teams": [
+        {
+            "id": 1,
+            "name": "KimChangKimchi",
+            "group": "Kongju National University"
+        },
+        {
+            "id": 2,
+            "name": "BEXCOTour",
+            "group": "Incheon National University"
+        },
+        {
+            "id": 3,
+            "name": "Greenbelt",
+            "group": "Ulsan National Institute of Science and Technology"
+        },
+        {
+            "id": 4,
+            "name": "ThirdHighSchool",
+            "group": "Seoul National University"
+        },
+        {
+            "id": 5,
+            "name": "REREREAD",
+            "group": "National Cheng-Chi University"
+        },
+        {
+            "id": 6,
+            "name": "Preforce",
+            "group": "KAIST"
+        },
+        {
+            "id": 7,
+            "name": "Seoulved AC",
+            "group": "Hanyang University"
+        },
+        {
+            "id": 8,
+            "name": "DaiMonge",
+            "group": "Kyoto University"
+        },
+        {
+            "id": 9,
+            "name": "SEVERANCE",
+            "group": "Yonsei University"
+        },
+        {
+            "id": 10,
+            "name": "TwoMinuteSearch",
+            "group": "Dankook University"
+        },
+        {
+            "id": 11,
+            "name": "Marttians",
+            "group": "Ulsan National Institute of Science and Technology"
+        },
+        {
+            "id": 12,
+            "name": "HwangGyoseon",
+            "group": "Ajou University"
+        },
+        {
+            "id": 13,
+            "name": "junhoLover",
+            "group": "SungKyunKwan University"
+        },
+        {
+            "id": 14,
+            "name": "UmJongNo",
+            "group": "KAIST"
+        },
+        {
+            "id": 15,
+            "name": "JKK 22",
+            "group": "Inha University"
+        },
+        {
+            "id": 16,
+            "name": "541",
+            "group": "Kookmin University"
+        },
+        {
+            "id": 17,
+            "name": "SungSimDang",
+            "group": "KAIST"
+        },
+        {
+            "id": 18,
+            "name": "ProofByAC",
+            "group": "Korea University"
+        },
+        {
+            "id": 19,
+            "name": "Three Sigma",
+            "group": "Ulsan National Institute of Science and Technology"
+        },
+        {
+            "id": 20,
+            "name": "kim hu ha",
+            "group": "Pukyong National University"
+        },
+        {
+            "id": 21,
+            "name": "AMATSUKAZE",
+            "group": "Institute of Science Tokyo"
+        },
+        {
+            "id": 22,
+            "name": "CAPS",
+            "group": "Dongguk University"
+        },
+        {
+            "id": 23,
+            "name": "TBNTB",
+            "group": "Sejong University"
+        },
+        {
+            "id": 24,
+            "name": "goraani",
+            "group": "Sogang University"
+        },
+        {
+            "id": 25,
+            "name": "ATRI",
+            "group": "MyongJi University"
+        },
+        {
+            "id": 26,
+            "name": "kumayuC",
+            "group": "Korea University"
+        },
+        {
+            "id": 27,
+            "name": "Team ALGOS",
+            "group": "Sookmyung Women's University"
+        },
+        {
+            "id": 28,
+            "name": "Just use CRT",
+            "group": "Seoul National University"
+        },
+        {
+            "id": 29,
+            "name": "finimage",
+            "group": "Korea University"
+        },
+        {
+            "id": 30,
+            "name": "Endgame",
+            "group": "Yonsei University"
+        },
+        {
+            "id": 31,
+            "name": "ANA",
+            "group": "Chungnam National University"
+        },
+        {
+            "id": 32,
+            "name": "clopa",
+            "group": "KAIST"
+        },
+        {
+            "id": 33,
+            "name": "AlLerGy",
+            "group": "Kangwon National University"
+        },
+        {
+            "id": 34,
+            "name": "TeamKoala",
+            "group": "Korea Aerospace University"
+        },
+        {
+            "id": 35,
+            "name": "PIMM",
+            "group": "Chonnam National University"
+        },
+        {
+            "id": 36,
+            "name": "I am Who",
+            "group": "Dong-Eui University"
+        },
+        {
+            "id": 37,
+            "name": "isSnakeCase",
+            "group": "Konkuk University"
+        },
+        {
+            "id": 38,
+            "name": "Ssalhur",
+            "group": "Seoul National University"
+        },
+        {
+            "id": 39,
+            "name": "Fox is cute",
+            "group": "KAIST"
+        },
+        {
+            "id": 40,
+            "name": "2 3 5 8 14",
+            "group": "Jeonbuk National University"
+        },
+        {
+            "id": 41,
+            "name": "AwesomeTeamNameV2",
+            "group": "Daegu Gyungbook Institute of Science and Technology"
+        },
+        {
+            "id": 42,
+            "name": "Painful Solving",
+            "group": "KAIST"
+        },
+        {
+            "id": 43,
+            "name": "hambugihambook",
+            "group": "Ewha Womans University"
+        },
+        {
+            "id": 44,
+            "name": "Rock kokiri Paper",
+            "group": "KAIST"
+        },
+        {
+            "id": 45,
+            "name": "Delusion",
+            "group": "Pohang University of Science and Technology"
+        },
+        {
+            "id": 46,
+            "name": "SMALLSHOT",
+            "group": "KAIST"
+        },
+        {
+            "id": 47,
+            "name": "LeeMinGyu",
+            "group": "Seoul National University"
+        },
+        {
+            "id": 48,
+            "name": "La Mer",
+            "group": "Jeju National University"
+        },
+        {
+            "id": 49,
+            "name": "Sportsmen",
+            "group": "KAIST"
+        },
+        {
+            "id": 50,
+            "name": "3Blue1Nutella",
+            "group": "Yonsei University"
+        },
+        {
+            "id": 51,
+            "name": "TempleRun",
+            "group": "Seoul National University"
+        },
+        {
+            "id": 52,
+            "name": "CatBoost",
+            "group": "Korea National University of Education"
+        },
+        {
+            "id": 53,
+            "name": "1Che0ngDam",
+            "group": "Kyungpook National University"
+        },
+        {
+            "id": 54,
+            "name": "GEESE CROSSING",
+            "group": "KAIST"
+        },
+        {
+            "id": 55,
+            "name": "Tenko Shibuki",
+            "group": "Chosun University"
+        },
+        {
+            "id": 56,
+            "name": "GeongongiIsMae",
+            "group": "University of Seoul"
+        },
+        {
+            "id": 57,
+            "name": "MSG",
+            "group": "Sangmyung University"
+        },
+        {
+            "id": 58,
+            "name": "ConSpirito",
+            "group": "Pohang University of Science and Technology"
+        },
+        {
+            "id": 59,
+            "name": "GENGFaker",
+            "group": "Seoul National University"
+        },
+        {
+            "id": 60,
+            "name": "NJG",
+            "group": "Hanyang University"
+        },
+        {
+            "id": 61,
+            "name": "floorsum",
+            "group": "Seoul National University"
+        },
+        {
+            "id": 62,
+            "name": "goldttalkak",
+            "group": "Seoul National University"
+        },
+        {
+            "id": 63,
+            "name": "1st",
+            "group": "Handong Global University"
+        },
+        {
+            "id": 64,
+            "name": "20s",
+            "group": "Seoul National University"
+        },
+        {
+            "id": 65,
+            "name": "Solutio",
+            "group": "Kyonggi University"
+        },
+        {
+            "id": 66,
+            "name": "HahahahahaHiarc",
+            "group": "Hongik University"
+        },
+        {
+            "id": 67,
+            "name": "stoi",
+            "group": "Gachon University"
+        },
+        {
+            "id": 68,
+            "name": "Entropi",
+            "group": "KAIST"
+        },
+        {
+            "id": 69,
+            "name": "Just Reboot JungSangHwa",
+            "group": "Pusan National University"
+        },
+        {
+            "id": 70,
+            "name": "NaNiGaSuKi",
+            "group": "Soongsil University"
+        },
+        {
+            "id": 71,
+            "name": "kimchijeon",
+            "group": "Seoul National University"
+        },
+        {
+            "id": 72,
+            "name": "Magical Fish",
+            "group": "The University of Tokyo"
+        },
+        {
+            "id": 73,
+            "name": "Make ChAOS Great Again",
+            "group": "Chung-Ang University"
+        },
+        {
+            "id": 74,
+            "name": "Kpop Ssal Hunters",
+            "group": "Yonsei University"
+        },
+        {
+            "id": 75,
+            "name": "DidYouCheckEERTREE",
+            "group": "Seoul National University"
+        },
+        {
+            "id": 76,
+            "name": "UNAHAREMIKU",
+            "group": "Seoul National University"
+        },
+        {
+            "id": 77,
+            "name": "revoNTUlet",
+            "group": "National Taiwan University"
+        },
+        {
+            "id": 78,
+            "name": "RASP",
+            "group": "Kyungsung University"
+        },
+        {
+            "id": 79,
+            "name": "CPG",
+            "group": "Seoul National University"
+        },
+        {
+            "id": 80,
+            "name": "NTNU_2beatdown",
+            "group": "National Taiwan Normal University"
+        },
+        {
+            "id": 81,
+            "name": "OlympicJeongSin",
+            "group": "The Catholic University of Korea"
+        },
+        {
+            "id": 82,
+            "name": "Memoria",
+            "group": "Kyung Hee University"
+        },
+        {
+            "id": 83,
+            "name": "junhaLover",
+            "group": "SungKyunKwan University"
+        },
+        {
+            "id": 84,
+            "name": "Busan Tourism",
+            "group": "KAIST"
+        }
+    ]
+}
