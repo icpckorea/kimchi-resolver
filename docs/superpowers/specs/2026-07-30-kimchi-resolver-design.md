@@ -131,7 +131,7 @@ FeedSource(어댑터) → parse → diff → 표시 대기 큐 → tick 소비 �
   `rank`는 문자열("대상") 또는 숫자(→ "3rd Place" 렌더). `labels`는 칭호 배지 목록 — 절대 성적 외의 창의적 수상 사유("E를 마지막으로 푼 팀!")를 포함해 자유 문자열. spectator 모드에서는 awards.json이 로드되어 있으면 배지를 즉시 표시하고, award 모드에서는 finalize 전까지 숨긴다(스포일러 방지).
 - **`award.rankBegin`**: 애니메이션 없이 `advance()`를 반복하는 순수 계산으로 즉시 fast-forward (원본의 DOM 리플레이 + setTimeout 제거).
 - **`award.hideName`**: 미공개 팀은 "Team {id}" / "Unknown" 표시.
-- **키 매핑**: Enter(13)/ArrowRight/Semicolon/**PageDown** → `advance()`, Escape → `dismissSlide()`, PageUp → 무동작. `KeyboardEvent.key` 기준.
+- **키 매핑**: Enter/ArrowRight/Semicolon/**PageDown** → `advance()`, Escape → `dismissSlide()`, PageUp → 무동작. `KeyboardEvent.key` 기준. **슬라이드가 떠 있는 동안 advance 키를 누르면 그 입력은 슬라이드 닫기로 소비된다** (프로젝터 리모컨에 Esc가 없음 — PageDown만으로 시상식 전체 진행 가능해야 함). 닫기 1회 + 다음 진행 1회의 2단계 구조는 유지되어 오조작 방지 효과는 그대로.
 - **animationSpeeds**: `[{ minSolved, fastFlip, slowFlip, moveUpMsPerRow }]` — solved 수가 `minSolved` 이상인 첫 항목 매칭 (원본의 "내림차순 정렬 필수" 함정 제거, 스키마 검증으로 정렬 무관).
 - **가차 이펙트**: 셀 공개 시 그 셀의 시도 횟수(net runs)가 `gachaEffectRequirement`(기본 8) 이상이거나 시상식 최종 공개(`remainingReveals === 1`)인 경우 —
   - 최종 결과가 **Yes**면 마지막 flip 직전에 무조건 가차 이펙트 발동.
@@ -160,7 +160,13 @@ FeedSource(어댑터) → parse → diff → 표시 대기 큐 → tick 소비 �
 
   우선순위(중복 시): 보라 > 파랑 > 연두 > 초록. 판정은 accepted run만 대상(4장 파생값).
 - **대회 첫 Yes 반짝임**: contest-first solve 셀은 연두 위에 추가 sparkle/shimmer 애니메이션(CSS keyframe, 은은한 반복 광택)을 얹는다.
-- **시상식 피날레 스포트라이트**: award 모드에서 전체 공개 대기 큐의 마지막 셀(대회의 최종 오픈)을 공개할 때 — 화면을 어둡게(오버레이) 하고 해당 셀을 스포트라이트 + **확대(scale ≈ 1.9)** 한 상태에서, **아주 느린 flip**(일반 slowFlip의 4~5배, 약 3초 이상)을 재생한다. **flip이 도는 동안에도 진동(가차 shake)이 계속되고** 무지개 오버레이가 흐른다. 최종 공개 5초 후 오버레이·확대를 원래대로 되돌린다. state machine이 남은 공개 수를 알고 있으므로 `remainingReveals === 1`일 때 트리거되는 파생 상태로 구현.
+- **시상식 피날레 시퀀스** (`remainingReveals === 1`인 마지막 공개 셀, 순서 고정):
+  1. 셀이 **반짝인다** (blink/sparkle 예열).
+  2. 그 셀 쪽으로 화면을 **확대**(scale ≈ 1.9)하고, **무지개 오버레이가 흐르며 진동(shake)** 시작. 주변은 어둡게, 해당 셀에 **스포트라이트**.
+  3. **흔들리면서 아주 천천히 flip** — 셀에 여러 시도가 있으면 중간 flip들도 느리게 재생.
+  4. **마지막(판정 확정) flip은 일반 flip의 약 3배 느린 속도**로 재생.
+  5. flip 완료 후 **진동을 멈춘다**. 결과가 **Yes면 축포(confetti) 효과** 재생.
+  6. 화면 확대·스포트라이트·무지개 오버레이를 종료하고 원상 복귀 (5단계 종료 후 약 5초 뒤).
 - **가차 이펙트 연출** (발동 조건은 6장): 마지막 flip 직전, 셀이 상하좌우로 약간씩 진동하며 미세한 각도로 회전 진동하고 반짝이는 sparkle을 재생. 공개(flip) 후에는 셀이 정확히 제자리로 복귀하고 진동·반짝임이 멈춘다. **시상식 최종 공개 셀인 경우 얇은 sparkle 대신 셀 전체를 덮는 무지개 그라데이션이 연속으로 흐르는(hue가 순환하며 이동) 오버레이를 재생** — 진동이 멈출 때까지 계속 흐르고, 피날레 스포트라이트와 중첩 적용.
 - **애셋 현대화**: 원본 PNG 아이콘(헤더 버튼, 메달/수상 아이콘, 국기)을 전부 SVG로 교체 — 헤더·별은 MIT 아이콘 세트(예: Lucide), 국기는 MIT SVG 국기 세트(예: flag-icons/circle-flags)에서 필요한 국가만 번들, 메달류는 SVG로 제작/선별. 이모지 사용 금지.
 - **풍선 SVG 틴팅**: 풍선은 PNG 19장 대신 SVG 1장. 본체 fill을 CSS 변수(`--balloon-color`)로 받아 문제의 `color` 값(named color, hex 모두)을 그대로 주입. 외곽선·하이라이트는 고정이라 white/ivory 같은 밝은 색도 식별 가능. 임의 색상 코드 지원으로 "풍선 색상표에 없는 색" 문제가 사라진다. **꼬리(끈) 없이 풍선 본체만** 그린다.
