@@ -17,7 +17,7 @@ import { applyUrlOverrides, defaultConfig, type ResolvedConfig } from '@core/con
 import { appStore } from '@store/appStore';
 import { Scoreboard } from '@ui/scoreboard/Scoreboard';
 import { LIVE_FLIP_MS } from '@ui/scoreboard/TeamRow';
-import { Badges, autoLabelText } from '@ui/scoreboard/Badges';
+import { BOARD_MAX_BADGES, Badges, autoLabelText } from '@ui/scoreboard/Badges';
 import { ProblemCell } from '@ui/scoreboard/ProblemCell';
 import { useCellFlip } from '@ui/scoreboard/useCellFlip';
 import { solvedSpineColor, hsv2rgb, ordinalSuffix } from '@ui/scoreboard/util';
@@ -297,9 +297,63 @@ describe('Badges', () => {
     });
     const t1 = container.querySelector('[data-team-id="t1"]') as HTMLElement;
     expect(t1.textContent).toContain('got first yes of this contest!');
-    expect(t1.textContent).toContain('got last yes of this contest!');
     const t2 = container.querySelector('[data-team-id="t2"]') as HTMLElement;
     expect(t2.textContent).toContain('동상 수상자');
+  });
+
+  // -- spec §7 badge layout --------------------------------------------------
+
+  it('gives badges their own column so the name block is never covered', () => {
+    const { contest, snapshot } = priorityFixture();
+    // t1 carries four auto labels (contest-first/last yes + first solve of A
+    // and B) — worst case for a name-line layout.
+    const { container } = renderBoard(contest, snapshot, cfg(), {
+      manualLabels: new Map([['t1', ['금상 수상자', '심사위원 특별상']]]),
+    });
+    const row = container.querySelector('[data-team-id="t1"]') as HTMLElement;
+    const title = row.querySelector('.team-title') as HTMLElement;
+    const col = row.querySelector('.team-badge-col') as HTMLElement;
+
+    // Badges live outside the name block entirely — a separate row column.
+    expect(col).not.toBeNull();
+    expect(title.querySelector('.team-badges')).toBeNull();
+    expect(title.contains(col)).toBe(false);
+    expect(col.parentElement).toBe(title.parentElement);
+    // ...and the name/group are rendered in full, not clipped by a badge.
+    expect((title.querySelector('.team-name') as HTMLElement).textContent).toBe('Alpha');
+    expect((title.querySelector('.team-group') as HTMLElement).textContent).toBe('KAIST');
+  });
+
+  it('hides the badges that do not fit behind a +N chip (spectator/publish)', () => {
+    const { contest, snapshot } = priorityFixture();
+    const { container } = renderBoard(contest, snapshot, cfg(), {
+      manualLabels: new Map([['t1', ['금상 수상자']]]),
+    });
+    const col = container.querySelector(
+      '[data-team-id="t1"] .team-badge-col',
+    ) as HTMLElement;
+    const shown = Array.from(col.querySelectorAll('.team-badge:not(.team-badge--overflow)'));
+    expect(shown).toHaveLength(BOARD_MAX_BADGES);
+
+    const overflow = col.querySelector('.team-badge--overflow') as HTMLElement;
+    expect(overflow).not.toBeNull();
+    // t1: 4 auto labels + 1 manual = 5, two of which fit.
+    expect(overflow.textContent).toBe(`+${5 - BOARD_MAX_BADGES}`);
+    // The hidden texts stay reachable as the chip's tooltip.
+    expect(overflow.title).toContain('금상 수상자');
+    expect(col.textContent).not.toContain('금상 수상자');
+  });
+
+  it('shows every badge (no +N) when they all fit', () => {
+    const { container } = render(
+      <Badges
+        autoLabels={[{ kind: 'contestFirstYes' }]}
+        manualLabels={['금상 수상자']}
+        maxVisible={BOARD_MAX_BADGES}
+      />,
+    );
+    expect(container.querySelectorAll('.team-badge')).toHaveLength(2);
+    expect(container.querySelector('.team-badge--overflow')).toBeNull();
   });
 });
 

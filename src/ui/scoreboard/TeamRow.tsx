@@ -1,7 +1,7 @@
 /**
  * One scoreboard row (spec §7):
  * [solved-count color spine][ICPC rank][domestic rank][APAC star slot]
- * [flag][school logo][team name + badges / group][balloons][cells][penalty]
+ * [flag][school logo][team name / group][badge column][balloons][cells][penalty]
  *
  * Row reordering animates via framer-motion layout (FLIP) with a spring that
  * mimics the original move-up feel; config.animation=false renders with
@@ -14,7 +14,7 @@ import type { CellState, OrgsIndex, Problem, TeamStanding } from '@core/types';
 import type { ResolvedConfig } from '@core/config';
 import { ApacStar, FlagIcon, type ApacStarTier } from '@ui/icons';
 
-import { Badges } from './Badges';
+import { BOARD_MAX_BADGES, Badges } from './Badges';
 import { Balloons } from './Balloons';
 import { ProblemCell } from './ProblemCell';
 import { useCellFlip } from './useCellFlip';
@@ -237,13 +237,22 @@ export function TeamRow({
       <div className="team-title">
         <div className="team-name-line">
           <span className="team-name">{team.name}</span>
-          {/* Badges move into the detail modal on mobile (spec §14). */}
-          {!mobile ? (
-            <Badges autoLabels={standing.autoLabels} manualLabels={manualLabels} />
-          ) : null}
         </div>
         {config.showTeamGroup ? <div className="team-group">{team.group}</div> : null}
       </div>
+
+      {/* Badges live in their own fixed-width column so they can never cover
+       * or shrink the name block (spec §7). Mobile moves them into the detail
+       * modal instead. */}
+      {!mobile ? (
+        <div className="team-badge-col">
+          <Badges
+            autoLabels={standing.autoLabels}
+            manualLabels={manualLabels}
+            maxVisible={BOARD_MAX_BADGES}
+          />
+        </div>
+      ) : null}
 
       {/* Balloons are fully hidden on mobile (spec §14). */}
       {!mobile && config.showBalloons ? (

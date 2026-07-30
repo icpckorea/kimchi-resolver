@@ -150,6 +150,27 @@
 }
 
 /* ------------------------------------------------------------------ */
+/* Finale step 1: pre-heat blink (board still at rest, no zoom yet)     */
+/* ------------------------------------------------------------------ */
+
+.award-cell-preheat {
+  animation: award-preheat-pulse 0.42s ease-in-out infinite;
+  z-index: 2;
+}
+
+@keyframes award-preheat-pulse {
+  0%,
+  100% {
+    filter: brightness(1);
+    transform: scale(1);
+  }
+  50% {
+    filter: brightness(2.3) saturate(1.4);
+    transform: scale(1.12);
+  }
+}
+
+/* ------------------------------------------------------------------ */
 /* Finale: dim + spotlight + zoom + flowing rainbow (spec §7)          */
 /* ------------------------------------------------------------------ */
 
@@ -239,6 +260,69 @@
   }
   100% {
     background-position: 300% 50%;
+  }
+}
+
+/* ------------------------------------------------------------------ */
+/* Finale step 5: confetti burst (hand-rolled DOM particles, no deps)  */
+/* ------------------------------------------------------------------ */
+
+.award-confetti {
+  position: fixed;
+  inset: 0;
+  z-index: 60; /* above the dim veil (40) and the finale row (45/50) */
+  pointer-events: none;
+  overflow: hidden;
+  font-size: 1.4em; /* particle sizes are em-based */
+}
+
+.award-confetti-piece {
+  position: absolute;
+  left: var(--burst-x, 50%);
+  top: var(--burst-y, 45%);
+  display: block;
+  opacity: 0;
+  will-change: transform, opacity;
+  animation-name: award-confetti-fly;
+  animation-timing-function: cubic-bezier(0.15, 0.65, 0.4, 1);
+  animation-fill-mode: forwards;
+  animation-iteration-count: 1;
+}
+
+/* Up-and-out on the first half, gravity on the second. */
+@keyframes award-confetti-fly {
+  0% {
+    opacity: 1;
+    transform: translate(-50%, -50%) rotate(0deg) scale(0.6);
+  }
+  12% {
+    transform: translate(
+        calc(-50% + var(--dx) * 0.18),
+        calc(-50% + var(--dy) * 0.18 - var(--rise) * 0.45)
+      )
+      rotate(calc(var(--rot) * 0.15)) scale(1);
+  }
+  55% {
+    opacity: 1;
+    transform: translate(calc(-50% + var(--dx) * 0.7), calc(-50% + var(--dy) * 0.7 - var(--rise)))
+      rotate(calc(var(--rot) * 0.6)) scale(1);
+  }
+  100% {
+    opacity: 0;
+    transform: translate(calc(-50% + var(--dx)), calc(-50% + var(--dy) + 45vh))
+      rotate(var(--rot)) scale(0.85);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .award-confetti-piece,
+  .award-cell-preheat,
+  .award-cell-gacha,
+  .award-rainbow-overlay {
+    animation: none;
+  }
+  .award-confetti {
+    display: none;
   }
 }
 

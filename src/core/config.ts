@@ -67,6 +67,17 @@ const awardSchema = z
     /** Percent [0, 100]. */
     gachaEffectForNoRatio: z.number().min(0).max(100).default(30),
     /**
+     * Finale (spec §7 step 4): the last verdict flip of the whole ceremony
+     * runs at the matched band's slowFlip × this factor.
+     */
+    finaleFlipSlowdown: z.number().positive().default(3),
+    /**
+     * Finale (spec §7 step 3): the finale cell's intermediate flips run at
+     * slowFlip × this factor (they are slow too, just not as slow as the
+     * verdict flip).
+     */
+    finaleIntermediateFlipSlowdown: z.number().positive().default(2),
+    /**
      * Normalized to minSolved-descending so matching is order-independent
      * (spec §6: the original's "must be sorted descending" trap is removed).
      */

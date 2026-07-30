@@ -82,6 +82,12 @@
   letter-spacing: -0.05em;
   color: transparent; /* count only visible on band-first rows and hover */
   user-select: none;
+  /* The row's 1px bottom divider would otherwise paint a hairline straight
+   * across the colour band. As a stretched flex item, a negative bottom
+   * margin grows the spine 1px into that strip, so a same-solved group reads
+   * as ONE unbroken band (spec §7). The band's last row is clipped back
+   * below so the divider still closes the group. */
+  margin-bottom: -1px;
 }
 
 .solved-count.spine-first {
@@ -90,8 +96,11 @@
   border-top-right-radius: 0.3em;
 }
 
+/* Band end: stop at the content box again so the row divider closes the group
+ * and two adjacent bands stay visually separated. */
 .solved-count.spine-last {
   border-bottom-right-radius: 0.3em;
+  margin-bottom: 0;
 }
 
 .team-row:hover .solved-count {
@@ -195,21 +204,42 @@
   text-overflow: ellipsis;
 }
 
+/* Badge column (spec §7): a fixed-width slot of its own, so a badge can never
+ * overlap or shrink the name block. The widened full-width board (§7) spends
+ * its extra room here and on .team-title. BOARD_MAX_BADGES in Badges.tsx is
+ * tuned to this width — two badges plus a `+N` chip. */
+.team-badge-col {
+  /* One badge line, measured at the ROW font size. .team-badge is 0.45em of
+   * that, so its own height below is 1.6em (1.6 × 0.45 = 0.72). Both the
+   * carousel viewport and the rise wrapper inherit the row font size, so this
+   * custom property resolves identically on them. */
+  --kr-badge-line: 0.72em;
+  flex: none;
+  width: 16em;
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  overflow: hidden;
+  padding-right: 0.4em;
+}
+
 .team-badges {
   display: inline-flex;
-  gap: 0.5em;
-  margin-left: 0.6em;
+  gap: 0.4em;
   min-width: 0;
+  max-width: 100%;
   overflow: hidden;
 }
 
 .team-badge {
-  flex: none;
+  flex: 0 1 auto;
   font-size: 0.45em;
   line-height: 1.5;
   padding: 0 0.7em;
   border-radius: 1em;
   white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
   background: #f2ecff;
   border: 1px solid #cdbcf3;
   color: #4c3391;
@@ -219,6 +249,83 @@
   background: #fff4d6;
   border-color: #eccf7a;
   color: #7a5b12;
+}
+
+/* "+N": the badges that did not fit the column (spectator / publish). */
+.team-badge--overflow {
+  flex: none;
+  background: #eee;
+  border-color: #ccc;
+  color: #555;
+  font-weight: 600;
+}
+
+/* ---- award badge carousel (spec §7) ---------------------------------------
+ * 2+ labels cycle bottom→top, one visible at a time, ~2.5s each, pure CSS.
+ * The viewport is exactly one badge line tall, so only one badge can show.
+ * `--kr-badge-count` / `--kr-badge-cycle` / `--kr-badge-steps` are set inline
+ * by Badges.tsx because they depend on the badge count. */
+
+/* The viewport is exactly one badge line tall — only one badge can ever be
+ * on screen, whatever the animation is doing. */
+.team-badges--carousel {
+  display: block;
+  width: 100%;
+  height: var(--kr-badge-line, 0.72em);
+  overflow: hidden;
+}
+
+/* Slides the window down by one badge line and back up, once per step (must
+ * match CAROUSEL_STEP_SECONDS): the incoming badge rises from the bottom. */
+.team-badges__rise {
+  display: block;
+  animation: kr-badge-rise 2.5s ease-in-out infinite;
+}
+
+/* Jumps exactly one badge per step (translateY(-100%) over `steps(n)` of a
+ * track that is n badges tall), wrapping to the first badge at cycle end. */
+.team-badges__track {
+  display: block;
+  animation: kr-badge-cycle var(--kr-badge-cycle) var(--kr-badge-steps) infinite;
+}
+
+.team-badges--carousel .team-badge {
+  display: block;
+  box-sizing: border-box;
+  height: 1.6em; /* = --kr-badge-line at this badge's 0.45em font size */
+  line-height: 1.5;
+  max-width: 100%;
+  width: fit-content;
+}
+
+@keyframes kr-badge-cycle {
+  from {
+    transform: translateY(0);
+  }
+  to {
+    transform: translateY(-100%);
+  }
+}
+
+@keyframes kr-badge-rise {
+  0% {
+    transform: translateY(var(--kr-badge-line, 0.72em));
+  }
+  16% {
+    transform: translateY(0);
+  }
+  100% {
+    transform: translateY(0);
+  }
+}
+
+/* Reduced motion: Badges.tsx already renders a single static badge; belt and
+ * braces in case the media query is unavailable to JS. */
+@media (prefers-reduced-motion: reduce) {
+  .team-badges__rise,
+  .team-badges__track {
+    animation: none;
+  }
 }
 
 /* ---- balloons -------------------------------------------------------------- */
@@ -421,6 +528,11 @@
     display: none;
   }
 
+  /* Less horizontal room: the badge column gives its share back to the name. */
+  .team-badge-col {
+    width: 9em;
+  }
+
   .problem-result {
     width: 2em;
   }
@@ -567,7 +679,9 @@
 }
 
 .team-detail-modal .team-badge {
+  flex: none;
   font-size: 0.72rem;
+  overflow: visible;
 }
 
 /* Full problem cell grid — same ProblemCell color rules as the board. */

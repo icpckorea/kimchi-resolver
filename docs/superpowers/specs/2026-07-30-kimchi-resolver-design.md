@@ -274,7 +274,16 @@ URL 파라미터 (`URLSearchParams`로 파싱, config보다 우선): `r`, `time`
 2. **award 모드에서 최종 순위 전부 공개 완료 시, 또는 publish 모드**:
    - 대회 전체 1등 팀(챔피언)의 별을 **금색**으로 변경 (World Finals 직행 = APAC 진출 확정).
    - 챔피언 학교를 **제외한** 모든 학교의 교내 1~3위 별을 **은색**으로 변경 — 초청 후보. **챔피언 학교의 2·3위는 동색 유지** (WF는 학교당 1팀이므로 초청 대상 아님).
-3. **publish 모드의 invited 판정**: **필터링된 순위**(교내 3위 이내 팀 전원을 ICPC 순위 순으로 나열한 리스트에서의 1-based 위치 — 챔피언과 챔피언 학교 팀도 **순위 슬롯은 차지**)를 사용해 `(filteredRank − 1) / siteScore ≤ invited score cutoff`인 **은색 별** 팀을 **금색**으로 변경 (동색인 챔피언 학교 팀은 promotion 대상 아님). raw ICPC 순위를 쓰지 않는 이유: APAC 규칙 D3은 학교당 4위 이하 팀을 제거한 순위로 score를 계산한다 (검증: 2025-26 Seoul, siteScore 68.98, bound 0.1838에서 JustRebootJungsanghwa(부산대)가 필터링 13위 → score 0.1740 ≤ 0.1838로 qualify — icpcapac.solved.ac/2026과 일치).
+3. **publish 모드의 invited 판정**: `(filteredRank − 1) / siteScore ≤ invited score cutoff`인 **은색 별** 팀을 **금색**으로 변경.
+
+   **filteredRank 산출 규칙** (icpcapac.solved.ac/2026의 2025-26 Seoul 58줄을 팀명·점수 4자리까지 완전 재현하도록 검증됨):
+   1. **이미 초청된 팀이 있는 학교는 그 사이트 리스트에서 통째로 제외**한다. 초청 경로는 무관 — 이 리저널 우승(챔피언)이든 다른 리저널 초청이든 동일. 초청된 팀 본인은 참고용으로 표시하되 **순위 슬롯을 차지하지 않는다**. (검증: 서울대는 Just use CRT 한 줄만 순번 `-`로 표시되고 나머지 서울대 팀은 리스트에 없음. NTU는 Manila·Jakarta 초청 팀 보유로 0줄.)
+   2. **0솔브 팀 제외** (공표 리스트의 마지막 순번 58위가 1솔브).
+   3. 남은 팀 중 **학교당 상위 3팀**만 ICPC 순위 순으로 나열하고, 그 1-based 위치가 filteredRank. 외국 팀도 정상적으로 슬롯을 차지한다(3팀 캡은 사이트별 적용 — Science Tokyo가 Seoul·Yokohama 양쪽 리스트에 동시 등장).
+
+   검증 사례: Just Reboot JungSangHwa(부산대)가 filteredRank 13 → `(13−1)/68.98 = 0.1740 ≤ 0.1838` qualify.
+
+   **교차 사이트 입력**: "다른 리저널에서 이미 초청됨"은 contest.json·orgs.json에서 유도 불가능한 외부 정보이므로 config로 받는다 — `publish.alreadyInvited: { teamIds: [], groups: [] }`. 이 리저널 챔피언은 자동으로 초청 처리(규칙 B1)되므로 별도 입력이 필요 없다. 입력이 비어 있으면 챔피언 학교만 제외되며, 그 경우 다른 사이트에서 초청된 학교가 남아 순위가 실제보다 밀릴 수 있다는 점을 UI에 안내한다.
 
 **publish 모드** (신설, 세 번째 앱 모드):
 

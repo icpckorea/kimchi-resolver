@@ -62,6 +62,8 @@ Runtime configuration lives in `public/config.json` (served as `config.json` nex
 | `award.focusBlinking` | `{ "minSolved": 7, "maxRank": 10 }` | blink stage condition, or null |
 | `award.gachaEffectRequirement` | `8` | attempts that trigger the gacha effect |
 | `award.gachaEffectForNoRatio` | `30` | gacha probability (%) for a final "No" |
+| `award.finaleFlipSlowdown` | `3` | finale verdict flip = matched `slowFlip` × this |
+| `award.finaleIntermediateFlipSlowdown` | `2` | finale intermediate flips = `slowFlip` × this |
 | `award.animationSpeeds` | see spec §9 | flip/move speeds per solved count |
 
 ### APAC stars
@@ -72,7 +74,13 @@ With `apac.enabled`, award and publish modes mark APAC Championship advancement 
 - silver star — APAC championship 초대 가능
 - gold star — APAC championship 진출
 
-During the ceremony every schoolRank ≤ 3 team wears bronze. Once the final standings are known (ceremony fully revealed, or publish mode), the champion turns gold and every other schoolRank ≤ 3 team — the champion's schoolmates included — turns silver. In publish mode a silver team is promoted to gold when `(filteredRank − 1) / siteScore ≤ invitedScoreCutoff`, where `filteredRank` is the team's 1-based position in the candidate list (all schoolRank ≤ 3 teams in ICPC standing order, champion included).
+During the ceremony every schoolRank ≤ 3 team wears bronze. Once the final standings are known (ceremony fully revealed, or publish mode):
+
+- the champion (icpcRank 1) turns gold — World Finals direct entry;
+- the champion's other schoolmates with schoolRank ≤ 3 **keep bronze**, because the World Finals takes one team per school, so they are not invitation candidates;
+- every other school's schoolRank ≤ 3 teams turn silver.
+
+In publish mode a silver team is promoted to gold when `(filteredRank − 1) / siteScore ≤ invitedScoreCutoff`. `filteredRank` is the team's 1-based position in the candidate list — all schoolRank ≤ 3 teams in ICPC standing order, the champion and the champion's schoolmates included, since they still occupy rank slots. Bronze teams are never promoted.
 
 ### URL parameters
 

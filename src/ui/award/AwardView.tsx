@@ -7,12 +7,15 @@
  * - finalized teams styled distinctly with their awards.json medal icon,
  * - keyboard driving (Enter / ArrowRight / ';' / PageDown advance, Escape
  *   dismiss, PageUp explicit no-op) with a busy latch during reveal
- *   sequences (hard-timeout so it can never stick),
+ *   sequences (hard-timeout so it can never stick). While a slide is up an
+ *   advance key is consumed as its dismissal, so PageDown alone drives the
+ *   whole ceremony (projector remotes have no Escape; spec §6),
  * - reveal playback via the scoreboard's useCellFlip (fast flips for
  *   intermediate fails, slow for the final result per animationSpeeds),
- * - gacha shake+sparkle, finale spotlight/zoom + flowing rainbow (5s
- *   restore), full-screen AwardSlide on finalize; clicking a finalized
- *   medalist's name re-shows its slide.
+ * - gacha shake+sparkle, the 6-step finale sequence (pre-heat blink → zoom +
+ *   spotlight + rainbow + shake → slow flips → slower verdict flip → shake
+ *   stops, confetti on Yes → ~5s restore), full-screen AwardSlide on
+ *   finalize; clicking a finalized medalist's name re-shows its slide.
  *
  * Board rows are composed from the shared scoreboard building blocks
  * (ProblemCell, useCellFlip, Badges, Balloons, util) — the award skin needs
@@ -36,16 +39,18 @@ import '@ui/scoreboard/scoreboard.css';
 import { AwardSlide, type AwardSlideOther } from './AwardSlide';
 import { parseAwardsJson, type AwardEntry } from './awardsData';
 import {
+  FINALE_PREHEAT_MS,
+  FINALE_ZOOM_MS,
   GACHA_SHAKE_MS,
   accumulateDisplay,
-  finaleSlowFlipMs,
   matchAnimationSpeed,
   moveUpDurationSec,
   useRevealDriver,
   type ActiveReveal,
+  type FinalePhase,
   type RevealDisplay,
 } from './revealDriver';
-import { FinaleDim, RainbowOverlay, SparkleOverlay } from './effects';
+import { ConfettiBurst, FinaleDim, RainbowOverlay, SparkleOverlay } from './effects';
 import './award.css';
 
 const ADVANCE_KEYS = new Set(['Enter', 'ArrowRight', ';', 'PageDown']);
@@ -88,7 +93,10 @@ export function AwardView({ store = appStore, awards, apacStars = null }: AwardV
   const config = useStore(store, (s) => s.config);
   const contest = useStore(store, (s) => s.contest);
 
-  const driver = useRevealDriver(config.award.animationSpeeds);
+  const driver = useRevealDriver(config.award.animationSpeeds, {
+    flip: config.award.finaleFlipSlowdown,
+    intermediateFlip: config.award.finaleIntermediateFlipSlowdown,
+  });
 
   // -- awards.json ----------------------------------------------------------
   const [awardsByTeam, setAwardsByTeam] = useState<Map<string, AwardEntry>>(
@@ -164,9 +172,17 @@ export function AwardView({ store = appStore, awards, apacStars = null }: AwardV
     // Busy latch: ignore keys while a reveal sequence is playing. The
     // driver's hard wall-clock deadline guarantees it can never stick.
     if (driver.isBusy()) return;
-    setReshownTeamId(null);
+    // A re-shown slide (clicking a finalized medalist) lives only in the UI —
+    // the machine knows nothing about it, so the advance key is consumed here
+    // (spec §6: an advance key closes a visible slide, the NEXT press
+    // advances). Machine-raised slides are consumed inside advance() itself,
+    // which returns 'slide-on' without touching the ceremony.
+    if (reshownTeamId !== null) {
+      setReshownTeamId(null);
+      return;
+    }
     handleStep(store.getState().awardAdvance());
-  }, [driver, handleStep, store]);
+  }, [driver, handleStep, reshownTeamId, store]);
 
   const dismissSlide = useCallback(() => {
     setReshownTeamId(null);
@@ -186,6 +202,9 @@ export function AwardView({ store = appStore, awards, apacStars = null }: AwardV
         return;
       }
       if (ADVANCE_KEYS.has(event.key)) {
+        // Also the slide-dismiss key: `advance` consumes the press whenever a
+        // slide is on screen (spec §6 — the ceremony must run on PageDown
+        // alone), and the two-step "close, then advance" guard is preserved.
         event.preventDefault();
         advance();
       }
@@ -216,6 +235,13 @@ export function AwardView({ store = appStore, awards, apacStars = null }: AwardV
     prevIndexRef.current = order;
   }, [snapshot]);
 
+  // -- finale sequence phase (spec §7, 6 fixed steps) -----------------------
+  // RevealingCell drives its own playback, so it reports the phase upward:
+  // the dim/spotlight (step 2) must NOT be on during the pre-heat (step 1),
+  // and the confetti (step 5) is a full-screen layer that cannot live inside
+  // the zoomed (transformed) cell.
+  const [finalePhase, setFinalePhase] = useState<FinalePhase | null>(null);
+
   // -- finale spotlight position --------------------------------------------
   const [finalePos, setFinalePos] = useState<{ x: number; y: number } | null>(null);
   const finaleCellRef = useCallback((el: HTMLElement | null) => {
@@ -240,7 +266,16 @@ export function AwardView({ store = appStore, awards, apacStars = null }: AwardV
       return team !== undefined ? { name: team.name, group: team.group } : { name: other };
     }) ?? [];
 
-  const finaleActive = driver.active !== null && driver.active.step.effect.finale;
+  const finaleStep = driver.active !== null && driver.active.step.effect.finale
+    ? driver.active.step
+    : null;
+  // Step 2 onward: zoom + spotlight + dim (the pre-heat keeps the board plain).
+  const finaleZoomed = finaleStep !== null && finalePhase !== null && finalePhase !== 'preheat';
+  // Step 5: confetti burst, Yes verdict only.
+  const finaleConfetti =
+    finaleStep !== null &&
+    finalePhase === 'settled' &&
+    finaleStep.runs[finaleStep.runs.length - 1].verdict === 'accepted';
 
   return (
     <div className="scoreboard award-view" data-testid="award-view">
@@ -256,6 +291,16 @@ export function AwardView({ store = appStore, awards, apacStars = null }: AwardV
               Math.abs((prevIndexRef.current.get(standing.team.id) ?? index) - index),
               matchAnimationSpeed(config.award.animationSpeeds, standing.solved),
             )}
+            // solved 스파인 밴드 (spec §7): the colour band runs CONTINUOUSLY
+            // through a same-solved group and only the group's first row shows
+            // the number — award mode included.
+            spineFirst={
+              index === 0 || snapshot.standings[index - 1].solved !== standing.solved
+            }
+            spineLast={
+              index === snapshot.standings.length - 1 ||
+              snapshot.standings[index + 1].solved !== standing.solved
+            }
             hideName={config.award.hideName}
             showFirstSolve={config.showFirstSolve}
             showBalloons={config.showBalloons}
@@ -265,7 +310,9 @@ export function AwardView({ store = appStore, awards, apacStars = null }: AwardV
             apacStar={apacStars?.get(standing.team.id) ?? null}
             blinkCell={blinkCell}
             active={driver.active}
+            finaleZoomed={finaleZoomed}
             onSequenceEnd={handleSequenceEnd}
+            onFinalePhase={setFinalePhase}
             entry={awardsByTeam.get(standing.team.id)}
             finaleCellRef={finaleCellRef}
             setRowRef={(teamId, el) => {
@@ -273,12 +320,19 @@ export function AwardView({ store = appStore, awards, apacStars = null }: AwardV
               else rowRefs.current.set(teamId, el);
             }}
             onMedalistClick={(teamId) => {
+              // A machine slide already owns the screen; queueing a re-show
+              // behind it would pop up an unexpected second slide after its
+              // dismissal (and swallow another keypress).
+              if (machine.currentSlideTeamId !== null) return;
               if (awardsByTeam.has(teamId)) setReshownTeamId(teamId);
             }}
           />
         ))}
       </div>
-      {finaleActive ? <FinaleDim x={finalePos?.x ?? null} y={finalePos?.y ?? null} /> : null}
+      {finaleZoomed ? <FinaleDim x={finalePos?.x ?? null} y={finalePos?.y ?? null} /> : null}
+      {finaleConfetti ? (
+        <ConfettiBurst x={finalePos?.x ?? null} y={finalePos?.y ?? null} />
+      ) : null}
       {slideTeamId !== null && slideEntry !== undefined && slideTeam !== undefined ? (
         <AwardSlide
           entry={slideEntry}
@@ -304,6 +358,9 @@ interface AwardRowProps {
   focused: boolean;
   /** Layout-move duration from the team's animation speed band (spec §6). */
   moveDurationSec: number;
+  /** First/last row of a same-solved band (rounded corner + visible count). */
+  spineFirst: boolean;
+  spineLast: boolean;
   hideName: boolean;
   showFirstSolve: boolean;
   showBalloons: boolean;
@@ -313,7 +370,10 @@ interface AwardRowProps {
   apacStar: ApacStarInfo | null;
   blinkCell: { teamId: string; problemId: string } | null;
   active: ActiveReveal | null;
+  /** Finale reached step 2+ (zoom/spotlight up) — lifts the hosting row. */
+  finaleZoomed: boolean;
   onSequenceEnd: () => void;
+  onFinalePhase: (phase: FinalePhase | null) => void;
   entry: AwardEntry | undefined;
   finaleCellRef: (el: HTMLElement | null) => void;
   setRowRef: (teamId: string, el: HTMLElement | null) => void;
@@ -326,6 +386,8 @@ function AwardRow({
   stage,
   focused,
   moveDurationSec,
+  spineFirst,
+  spineLast,
   hideName,
   showFirstSolve,
   showBalloons,
@@ -335,7 +397,9 @@ function AwardRow({
   apacStar,
   blinkCell,
   active,
+  finaleZoomed,
   onSequenceEnd,
+  onFinalePhase,
   entry,
   finaleCellRef,
   setRowRef,
@@ -346,10 +410,10 @@ function AwardRow({
   const finalized = stage === 'finalized';
   // Finale row: lifted ABOVE the full-screen dim veil (the row is a stacking
   // context — focused z-index + framer-motion transforms — so the cell's own
-  // z-index alone could never escape it). Stays lifted through the 5s hold
-  // because `active` persists until the driver restores.
-  const finaleRow =
-    active !== null && active.step.effect.finale && active.step.teamId === team.id;
+  // z-index alone could never escape it). Lifted from step 2 (the pre-heat
+  // has no veil) and stays lifted through the 5s hold, because `active`
+  // persists until the driver restores.
+  const finaleRow = finaleZoomed && active !== null && active.step.teamId === team.id;
   const medalist = finalized && entry !== undefined;
   const MedalIcon =
     entry !== undefined
@@ -374,7 +438,7 @@ function AwardRow({
       ref={(el: HTMLElement | null) => setRowRef(team.id, el)}
     >
       <div
-        className="solved-count spine-first spine-last"
+        className={cls('solved-count', spineFirst && 'spine-first', spineLast && 'spine-last')}
         style={{ backgroundColor: solvedSpineColor(standing.solved, problemCount) }}
       >
         {standing.solved}
@@ -429,13 +493,19 @@ function AwardRow({
           >
             {identity.name}
           </span>
-          <Badges
-            autoLabels={standing.autoLabels}
-            // Manual labels are spoilers until finalize (spec §6).
-            manualLabels={finalized && entry !== undefined ? entry.labels : []}
-          />
         </div>
         {showTeamGroup ? <div className="team-group">{identity.group}</div> : null}
+      </div>
+
+      {/* Dedicated badge column (spec §7): never covers the name. In award
+       * mode 2+ labels cycle bottom→top, one at a time. */}
+      <div className="team-badge-col">
+        <Badges
+          autoLabels={standing.autoLabels}
+          // Manual labels are spoilers until finalize (spec §6).
+          manualLabels={finalized && entry !== undefined ? entry.labels : []}
+          carousel
+        />
       </div>
 
       {showBalloons ? <Balloons standing={standing} problems={problems} /> : null}
@@ -456,6 +526,7 @@ function AwardRow({
                 showFirstSolve={showFirstSolve}
                 active={active}
                 onSequenceEnd={onSequenceEnd}
+                onFinalePhase={onFinalePhase}
                 finaleCellRef={finaleCellRef}
                 testId={`award-cell-${team.id}-${problem.id}`}
               />
@@ -496,6 +567,8 @@ interface RevealingCellProps {
   showFirstSolve: boolean;
   active: ActiveReveal;
   onSequenceEnd: () => void;
+  /** Reports the finale phase upward (null for a normal reveal / teardown). */
+  onFinalePhase: (phase: FinalePhase | null) => void;
   finaleCellRef: (el: HTMLElement | null) => void;
   testId: string;
 }
@@ -510,10 +583,12 @@ function RevealingCell({
   showFirstSolve,
   active,
   onSequenceEnd,
+  onFinalePhase,
   finaleCellRef,
   testId,
 }: RevealingCellProps) {
-  const { step, speed } = active;
+  const { step, flip } = active;
+  const finale = step.effect.finale;
   const [display, setDisplay] = useState<RevealDisplay>(() => ({
     // Until the first flip midpoint the cell still shows its frozen pending
     // state — exactly what the board displayed before the keypress ('?N'
@@ -527,29 +602,52 @@ function RevealingCell({
   const [shaking, setShaking] = useState(false);
   const [done, setDone] = useState(false);
   const [activeFlip, setActiveFlip] = useState<'fast' | 'slow' | null>(null);
+  /** Null for a normal reveal; the finale walks preheat → … → settled. */
+  const [phase, setPhase] = useState<FinalePhase | null>(finale ? 'preheat' : null);
 
-  const fastCtl = useCellFlip(speed.fastFlip);
-  // Finale: the final flip runs VERY slowly (spec §7 — 4~5× slowFlip, >= 3s).
-  const slowCtl = useCellFlip(
-    step.effect.finale ? finaleSlowFlipMs(speed.slowFlip) : speed.slowFlip,
-  );
+  // Flip durations come from the driver: a normal reveal uses the matched
+  // band, the finale uses the slowed-down variants (spec §7 steps 3 and 4).
+  const fastCtl = useCellFlip(flip.fast);
+  const slowCtl = useCellFlip(flip.slow);
   const fastRef = useRef(fastCtl);
   fastRef.current = fastCtl;
   const slowRef = useRef(slowCtl);
   slowRef.current = slowCtl;
   const endRef = useRef(onSequenceEnd);
   endRef.current = onSequenceEnd;
+  const phaseRef = useRef(onFinalePhase);
+  phaseRef.current = onFinalePhase;
 
   // The playback sequence — mount-only; the component is keyed per reveal.
   useEffect(() => {
     let cancelled = false;
+    /** Set locally AND report upward (dim/confetti live outside the cell). */
+    const goto = (next: FinalePhase): void => {
+      setPhase(next);
+      phaseRef.current(next);
+    };
     void (async () => {
+      // ---- Finale steps 1-2 (spec §7): pre-heat, then zoom + spotlight +
+      // rainbow + shake, both BEFORE any flip starts.
+      if (finale) {
+        goto('preheat');
+        await delay(FINALE_PREHEAT_MS);
+        if (cancelled) return;
+        goto('spotlight');
+        setShaking(true);
+        await delay(FINALE_ZOOM_MS);
+        if (cancelled) return;
+        goto('flip');
+      }
+
       const runs = step.runs;
       const lastIndex = runs.length - 1;
       for (let i = 0; i <= lastIndex; i++) {
         if (cancelled) return;
         const isFinal = i === lastIndex;
-        if (isFinal && step.effect.gacha) {
+        // Non-finale gacha: the shake leads into the last flip. The finale is
+        // already shaking since step 2 — flips run WHILE it shakes (step 3).
+        if (isFinal && step.effect.gacha && !finale) {
           setShaking(true);
           await delay(GACHA_SHAKE_MS);
           if (cancelled) return;
@@ -564,14 +662,18 @@ function RevealingCell({
         });
       }
       if (cancelled) return;
-      // Shake stops and the cell returns exactly to rest after the flip.
+      // ---- Step 5: the shake stops, the cell returns exactly to rest, and a
+      // Yes verdict fires the confetti (AwardView renders it full-screen).
       setShaking(false);
       setActiveFlip(null);
       setDone(true);
+      if (finale) goto('settled');
+      // ---- Step 6: the driver holds the zoom/spotlight/overlay for ~5s.
       endRef.current();
     })();
     return () => {
       cancelled = true;
+      phaseRef.current(null);
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
@@ -594,15 +696,19 @@ function RevealingCell({
   const flipProps =
     activeFlip === 'fast' ? fastCtl.props : activeFlip === 'slow' ? slowCtl.props : undefined;
 
+  const preheating = phase === 'preheat';
+
   return (
     <span
       className={cls(
         'award-cell-fx',
         shaking && 'award-cell-gacha',
-        step.effect.finale && 'award-cell-finale',
+        // Step 1 blinks in place; the zoom only arrives with step 2.
+        preheating && 'award-cell-preheat',
+        finale && !preheating && 'award-cell-finale',
       )}
       data-testid={testId}
-      ref={step.effect.finale ? finaleCellRef : undefined}
+      ref={finale ? finaleCellRef : undefined}
     >
       <ProblemCell
         problem={problem}
@@ -610,11 +716,12 @@ function RevealingCell({
         showFirstSolve={showFirstSolve}
         flip={flipProps}
       />
-      {shaking && !step.effect.finale ? <SparkleOverlay /> : null}
+      {/* Sparkles: the finale's step-1 pre-heat, and the plain gacha shake. */}
+      {preheating || (shaking && !finale) ? <SparkleOverlay /> : null}
       {/* The rainbow is the finale VARIANT of the gacha effect (spec §7):
-          it plays only while the gacha shake runs ("진동이 멈출 때까지") —
-          never when the gacha roll missed. Spotlight/zoom stays finale-only. */}
-      {shaking && step.effect.finale ? <RainbowOverlay /> : null}
+          it flows from step 2 until the shake stops after the verdict flip
+          ("진동이 멈출 때까지"), overlaid on the spotlight. */}
+      {shaking && finale ? <RainbowOverlay /> : null}
     </span>
   );
 }

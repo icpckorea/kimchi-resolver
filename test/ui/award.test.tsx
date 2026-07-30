@@ -10,22 +10,27 @@
  * All timeline math below uses that worst case.
  */
 import { StrictMode } from 'react';
+import { readFileSync } from 'node:fs';
+import { resolve } from 'node:path';
 import { act, cleanup, fireEvent, render, screen, within } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { createAppStore, type AppStore } from '@store/appStore';
 import { AwardView } from '@ui/award/AwardView';
+import { Badges } from '@ui/scoreboard/Badges';
 import { humanizeRank, parseAwardsJson, type AwardEntry } from '@ui/award/awardsData';
 import {
   BUSY_HARD_TIMEOUT_MS,
-  FINALE_FLIP_MIN_MS,
-  FINALE_FLIP_MULTIPLIER,
   FINALE_HOLD_MS,
+  FINALE_PREHEAT_MS,
+  FINALE_ZOOM_MS,
   GACHA_SHAKE_MS,
   accumulateDisplay,
-  finaleSlowFlipMs,
+  finaleFlipMs,
   matchAnimationSpeed,
   moveUpDurationSec,
+  revealFlipDurations,
+  type RevealStep,
 } from '@ui/award/revealDriver';
 
 // ---------------------------------------------------------------------------
@@ -34,6 +39,9 @@ import {
 
 const FAST = 100;
 const SLOW = 400;
+/** Finale slowdown factors used by the fixture config (spec §7 defaults). */
+const FINALE_SLOWDOWN = 3;
+const FINALE_MID_SLOWDOWN = 2;
 
 /** Worst-case duration of team 3's reveal (7 fast fails + gacha + slow Yes). */
 const T3_SEQUENCE_MS = 7 * FAST * 2 + GACHA_SHAKE_MS + SLOW * 2;
@@ -45,6 +53,8 @@ const configJson = {
     focusBlinking: null,
     gachaEffectRequirement: 8,
     gachaEffectForNoRatio: 30,
+    finaleFlipSlowdown: FINALE_SLOWDOWN,
+    finaleIntermediateFlipSlowdown: FINALE_MID_SLOWDOWN,
     animationSpeeds: [{ minSolved: 0, fastFlip: FAST, slowFlip: SLOW, moveUpMsPerRow: 100 }],
   },
 };
@@ -67,23 +77,32 @@ const contestJson = {
 // Freeze cutoff r=2: runs 3+ stay hidden (pending) for the ceremony.
 // Team 3 has 8 net runs on B (7 fails + Yes) → deterministic gacha trigger
 // (gachaEffectRequirement = 8, final Yes → gacha always fires).
-// Team 2's single hidden No on B is the LAST reveal → finale.
-const runsJson = {
-  time: { contestTime: 18000, noMoreUpdate: true, timestamp: 0 },
-  runs: [
-    { id: 1, team: 1, problem: 0, result: 'Yes', submissionTime: 10 },
-    { id: 2, team: 2, problem: 0, result: 'Yes', submissionTime: 20 },
-    ...Array.from({ length: 7 }, (_, i) => ({
-      id: 3 + i,
-      team: 3,
-      problem: 1,
-      result: 'No - Wrong Answer',
-      submissionTime: 40 + i,
-    })),
-    { id: 10, team: 3, problem: 1, result: 'Yes', submissionTime: 47 },
-    { id: 11, team: 2, problem: 1, result: 'No - Wrong Answer', submissionTime: 60 },
-  ],
-};
+// Team 2's two hidden runs on B are the LAST reveal → finale (2 runs, so the
+// finale plays one INTERMEDIATE flip before the verdict flip).
+function makeRunsJson(team2FinalVerdict: 'Yes' | 'No - Wrong Answer') {
+  return {
+    time: { contestTime: 18000, noMoreUpdate: true, timestamp: 0 },
+    runs: [
+      { id: 1, team: 1, problem: 0, result: 'Yes', submissionTime: 10 },
+      { id: 2, team: 2, problem: 0, result: 'Yes', submissionTime: 20 },
+      ...Array.from({ length: 7 }, (_, i) => ({
+        id: 3 + i,
+        team: 3,
+        problem: 1,
+        result: 'No - Wrong Answer',
+        submissionTime: 40 + i,
+      })),
+      { id: 10, team: 3, problem: 1, result: 'Yes', submissionTime: 47 },
+      { id: 11, team: 2, problem: 1, result: 'No - Wrong Answer', submissionTime: 60 },
+      { id: 12, team: 2, problem: 1, result: team2FinalVerdict, submissionTime: 61 },
+    ],
+  };
+}
+
+const runsJson = makeRunsJson('No - Wrong Answer');
+
+/** Per-test runs payload (the confetti case needs a Yes finale verdict). */
+let runsOverride: ReturnType<typeof makeRunsJson> | null = null;
 
 const awardsFixture: AwardEntry[] = [
   { teamId: '3', rank: 3, icon: 'medal_bronze', labels: ['Bronze!'], others: [] },
@@ -107,7 +126,7 @@ const fetchImpl: typeof fetch = async (input) => {
   const url = String(input);
   if (url.includes('config.json')) return jsonResponse(configJson);
   if (url.includes('contest.json')) return jsonResponse(contestJson);
-  if (url.includes('runs.json')) return jsonResponse(runsJson);
+  if (url.includes('runs.json')) return jsonResponse(runsOverride ?? runsJson);
   return new Response('not found', { status: 404, statusText: 'Not Found' });
 };
 
@@ -116,8 +135,9 @@ const noopScheduler = { setInterval: () => 0, clearInterval: () => {} };
 async function bootAwardStore(
   rng: () => number = () => 0.99,
   search = '?award=true&r=2',
+  fetcher: typeof fetch = fetchImpl,
 ): Promise<AppStore> {
-  const store = createAppStore({ fetchImpl, scheduler: noopScheduler, rng });
+  const store = createAppStore({ fetchImpl: fetcher, scheduler: noopScheduler, rng });
   await store.getState().boot(search);
   expect(store.getState().status).toBe('ready');
   expect(store.getState().mode).toBe('award');
@@ -155,6 +175,8 @@ beforeEach(() => {
 
 afterEach(() => {
   cleanup();
+  runsOverride = null;
+  vi.unstubAllGlobals();
   vi.useRealTimers();
 });
 
@@ -235,16 +257,38 @@ describe('moveUpDurationSec', () => {
   });
 });
 
-describe('finaleSlowFlipMs', () => {
-  it('is 4~5x the matched slowFlip with a 3s floor (spec §7)', () => {
-    expect(FINALE_FLIP_MULTIPLIER).toBeGreaterThanOrEqual(4);
-    expect(FINALE_FLIP_MULTIPLIER).toBeLessThanOrEqual(5);
-    expect(FINALE_FLIP_MIN_MS).toBe(3000);
-    // Small slowFlip → the 3s floor wins.
-    expect(finaleSlowFlipMs(400)).toBe(3000);
-    // Large slowFlip → the multiplier wins.
-    expect(finaleSlowFlipMs(1000)).toBe(1000 * FINALE_FLIP_MULTIPLIER);
-    expect(finaleSlowFlipMs(1000)).toBeGreaterThanOrEqual(3000);
+describe('finale flip durations (config-driven, spec §7)', () => {
+  const speed = { minSolved: 0, fastFlip: 300, slowFlip: 700, moveUpMsPerRow: 100 };
+  const slowdowns = { flip: 3, intermediateFlip: 2 };
+  const stepOf = (finale: boolean) =>
+    ({ effect: { gacha: true, finale } }) as unknown as RevealStep;
+
+  it('scales the matched slowFlip by the configured factors', () => {
+    expect(finaleFlipMs(700, 3)).toBe(2100);
+    expect(finaleFlipMs(800, 2)).toBe(1600);
+    // Fractional factors round to whole milliseconds; never zero.
+    expect(finaleFlipMs(700, 1.5)).toBe(1050);
+    expect(finaleFlipMs(1, 0.1)).toBe(1);
+  });
+
+  it('applies the slowdowns ONLY to the finale reveal', () => {
+    // Normal reveal: the matched band verbatim.
+    expect(revealFlipDurations(stepOf(false), speed, slowdowns)).toEqual({
+      fast: 300,
+      slow: 700,
+    });
+    // Finale: intermediate flips are slowFlip × 2, the verdict flip × 3 —
+    // both derived from slowFlip, so fastFlip never leaks into the finale.
+    expect(revealFlipDurations(stepOf(true), speed, slowdowns)).toEqual({
+      fast: 1400,
+      slow: 2100,
+    });
+  });
+
+  it('honours custom config factors', () => {
+    expect(
+      revealFlipDurations(stepOf(true), speed, { flip: 5, intermediateFlip: 1 }),
+    ).toEqual({ fast: 700, slow: 3500 });
   });
 });
 
@@ -330,6 +374,78 @@ describe('AwardView keyboard', () => {
     // PageDown → focus the next bottom team (team 2).
     await pressKey('PageDown');
     expect(stageOf(store, '2')).toBe('focused');
+  });
+
+  it('lets an advance key close a visible slide, consuming that press', async () => {
+    const store = await bootAwardStore();
+    renderAward(store);
+
+    await pressKey('PageDown'); // focus team 3
+    await pressKey('PageDown'); // reveal team 3 cell B
+    await finishSequence();
+    await pressKey('PageDown'); // finalize team 3 → slide
+    expect(screen.getByTestId('award-slide')).toBeTruthy();
+
+    // Projector remotes have no Escape (spec §6): the advance key closes the
+    // slide and is CONSUMED — team 2 must not be focused by this press.
+    await pressKey('PageDown');
+    expect(screen.queryByTestId('award-slide')).toBeNull();
+    expect(store.getState().awardMachine?.currentSlideTeamId).toBeNull();
+    expect(stageOf(store, '2')).toBe('hidden'); // two-step guard: no skipped reveal
+
+    // The NEXT press proceeds normally.
+    await pressKey('PageDown');
+    expect(stageOf(store, '2')).toBe('focused');
+  });
+
+  it('closes a re-shown medalist slide with an advance key without advancing', async () => {
+    const store = await bootAwardStore();
+    renderAward(store);
+
+    await pressKey('PageDown'); // focus team 3
+    await pressKey('PageDown'); // reveal
+    await finishSequence();
+    await pressKey('PageDown'); // finalize team 3 → slide
+    await pressKey('PageDown'); // close it
+    await act(async () => {
+      fireEvent.click(screen.getByText('Gamma Team')); // re-show the slide
+    });
+    expect(screen.getByTestId('award-slide')).toBeTruthy();
+
+    // The re-shown slide lives only in the UI, but the rule is the same.
+    await pressKey('Enter');
+    expect(screen.queryByTestId('award-slide')).toBeNull();
+    expect(stageOf(store, '2')).toBe('hidden');
+
+    await pressKey('Enter');
+    expect(stageOf(store, '2')).toBe('focused');
+  });
+
+  it('drives the whole ceremony with PageDown alone (no Escape needed)', async () => {
+    const store = await bootAwardStore();
+    renderAward(store);
+
+    // Bounded loop: every press either steps the machine or closes a slide.
+    for (let i = 0; i < 40 && store.getState().awardMachine?.finished !== true; i++) {
+      await pressKey('PageDown');
+      await finishSequence();
+      // The finale runs its longer 6-step sequence and keeps the spotlight for
+      // FINALE_HOLD_MS; drain generously so the board is at rest between
+      // presses regardless of the finale timing constants.
+      await advanceMs(FINALE_HOLD_MS * 3);
+    }
+
+    expect(store.getState().awardMachine?.finished).toBe(true);
+    expect(stageOf(store, '1')).toBe('finalized');
+    expect(stageOf(store, '2')).toBe('finalized');
+    expect(stageOf(store, '3')).toBe('finalized');
+
+    // Team 1 has no awards.json entry → its slide auto-dismisses; two more
+    // presses (dismiss team 2's slide is already done above) reach 'end'.
+    await pressKey('PageDown');
+    await pressKey('PageDown');
+    expect(store.getState().awardMachine?.currentSlideTeamId).toBeNull();
+    expect(screen.queryByTestId('award-slide')).toBeNull();
   });
 });
 
@@ -447,14 +563,112 @@ describe('AwardSlide', () => {
 });
 
 // ---------------------------------------------------------------------------
+// Badge column / award carousel (spec §7)
+// ---------------------------------------------------------------------------
+
+describe('award badge carousel', () => {
+  const scoreboardCss = readFileSync(
+    resolve(__dirname, '../../src/ui/scoreboard/scoreboard.css'),
+    'utf8',
+  );
+
+  /** Finalize team 3 (bronze, 'Bronze!' label) and dismiss its slide. */
+  async function finalizeTeam3(): Promise<HTMLElement> {
+    await pressKey('Enter'); // focus 3
+    await pressKey('Enter'); // reveal
+    await finishSequence();
+    await pressKey('Enter'); // finalize → slide
+    await pressKey('Escape');
+    return screen.getByTestId('award-row-3');
+  }
+
+  it('cycles 2+ labels one at a time in a vertical carousel', async () => {
+    const store = await bootAwardStore();
+    renderAward(store);
+    const row = await finalizeTeam3();
+
+    // Badges sit in their own column, never inside the name block.
+    const col = row.querySelector('.team-badge-col') as HTMLElement;
+    expect(col).not.toBeNull();
+    expect((row.querySelector('.team-title') as HTMLElement).querySelector('.team-badges'))
+      .toBeNull();
+
+    const carousel = col.querySelector('.team-badges--carousel') as HTMLElement;
+    expect(carousel).not.toBeNull();
+
+    const badges = Array.from(carousel.querySelectorAll('.team-badge'));
+    const count = badges.length;
+    expect(count).toBeGreaterThanOrEqual(2);
+    // Auto labels plus the manual one revealed at finalize.
+    expect(badges.map((el) => el.textContent)).toContain('Bronze!');
+
+    // One track holding every badge, stepped one badge per ~2.5s by CSS.
+    const track = carousel.querySelector('.team-badges__track') as HTMLElement;
+    expect(track).not.toBeNull();
+    expect(track.children).toHaveLength(count);
+    expect(carousel.dataset.carouselCount).toBe(String(count));
+    expect(carousel.style.getPropertyValue('--kr-badge-count')).toBe(String(count));
+    expect(carousel.style.getPropertyValue('--kr-badge-cycle')).toBe(`${count * 2.5}s`);
+    expect(carousel.style.getPropertyValue('--kr-badge-steps')).toBe(`steps(${count}, end)`);
+
+    // "One at a time" is enforced by the CSS window: the viewport is exactly
+    // one badge line tall and clips the rest (jsdom runs no animations).
+    expect(scoreboardCss).toMatch(
+      /\.team-badges--carousel\s*\{[^}]*height:\s*var\(--kr-badge-line[^}]*overflow:\s*hidden/,
+    );
+    expect(scoreboardCss).toContain('@keyframes kr-badge-cycle');
+  });
+
+  it('keeps a single label static — no carousel', () => {
+    const { container } = render(
+      <Badges autoLabels={[{ kind: 'contestFirstYes' }]} carousel />,
+    );
+    expect(container.querySelector('.team-badges--carousel')).toBeNull();
+    expect(container.querySelectorAll('.team-badge')).toHaveLength(1);
+  });
+
+  it('falls back to the first badge when the viewer prefers reduced motion', async () => {
+    vi.stubGlobal('matchMedia', (query: string) => ({
+      matches: /prefers-reduced-motion/.test(query),
+      media: query,
+      onchange: null,
+      addEventListener: () => {},
+      removeEventListener: () => {},
+      addListener: () => {},
+      removeListener: () => {},
+      dispatchEvent: () => false,
+    }));
+
+    const store = await bootAwardStore();
+    renderAward(store);
+    const row = await finalizeTeam3();
+    const col = row.querySelector('.team-badge-col') as HTMLElement;
+
+    expect(col.querySelector('.team-badges--carousel')).toBeNull();
+    expect(col.querySelectorAll('.team-badge')).toHaveLength(1);
+  });
+});
+
+// ---------------------------------------------------------------------------
 // Finale effect
 // ---------------------------------------------------------------------------
 
-describe('finale effect', () => {
-  /** Finale final flip in the fixture band (spec §7: ≥ 3s). */
-  const FINALE_FLIP = finaleSlowFlipMs(SLOW); // = 3000 (floor wins over 4.5×400)
+describe('finale 6-step sequence (spec §7)', () => {
+  /** Verdict flip: slowFlip × finaleFlipSlowdown (400 × 3 = 1200). */
+  const FINALE_FLIP = finaleFlipMs(SLOW, FINALE_SLOWDOWN);
+  /** Intermediate flips: slowFlip × finaleIntermediateFlipSlowdown (800). */
+  const FINALE_MID_FLIP = finaleFlipMs(SLOW, FINALE_MID_SLOWDOWN);
   /** jsdom completes flips via the 2× fallback timer. */
   const FINALE_FLIP_2X = FINALE_FLIP * 2;
+  const FINALE_MID_FLIP_2X = FINALE_MID_FLIP * 2;
+
+  function cellEl(): HTMLElement {
+    return screen.getByTestId('award-cell-2-1');
+  }
+
+  function attemptsOfCell(): string {
+    return cellEl().querySelector('.problem-attempts')?.textContent ?? '';
+  }
 
   function finaleFlipEl(): HTMLElement {
     const el = screen
@@ -478,88 +692,106 @@ describe('finale effect', () => {
     await pressKey('Enter'); // finale reveal starts
   }
 
-  it('applies dim/zoom/slow-flip during the last reveal and restores 5s after it', async () => {
-    const store = await bootAwardStore(() => 0.99); // rng > ratio → no gacha fake-out
+  it('plays steps 1-6 in the fixed order and restores ~5s after the flip', async () => {
+    // rng > ratio: the No roll would MISS, but the finale cell fires the
+    // gacha 100% regardless of the verdict (spec §6), so the rainbow plays.
+    const store = await bootAwardStore(() => 0.99);
     renderAward(store);
     await driveToLastReveal(store);
 
-    // Full-screen dim overlay + zoomed cell are on during the sequence; the
-    // row hosting the cell is lifted above the dim veil. The rainbow is the
-    // finale VARIANT of the gacha effect (spec §7): the gacha roll missed
-    // (gacha:false), so no rainbow may play.
-    expect(screen.getByTestId('finale-dim')).toBeTruthy();
+    // ---- Step 1: the cell blinks/sparkles. The board is still NORMAL — no
+    // zoom, no dim, no shake, no flip yet.
+    expect(cellEl().className).toContain('award-cell-preheat');
+    expect(screen.getByTestId('gacha-sparkle')).toBeTruthy();
+    expect(cellEl().className).not.toContain('award-cell-finale');
+    expect(cellEl().className).not.toContain('award-cell-gacha');
+    expect(screen.queryByTestId('finale-dim')).toBeNull();
     expect(screen.queryByTestId('finale-rainbow')).toBeNull();
-    expect(screen.getByTestId('award-cell-2-1').className).toContain('award-cell-finale');
+    expect(screen.getByTestId('award-row-2').className).not.toContain('award-row-finale');
+    expect(finaleFlipEl().className).not.toContain('flip-run');
+
+    // ---- Step 2: zoom toward the cell + spotlight/dim, rainbow flowing and
+    // the shake started — all BEFORE the first flip.
+    await advanceMs(FINALE_PREHEAT_MS + 50);
+    expect(cellEl().className).toContain('award-cell-finale'); // zoom
+    expect(cellEl().className).toContain('award-cell-gacha'); // shake
+    expect(cellEl().className).not.toContain('award-cell-preheat');
+    expect(screen.getByTestId('finale-dim')).toBeTruthy();
+    expect(screen.getByTestId('finale-rainbow')).toBeTruthy();
+    expect(screen.queryByTestId('gacha-sparkle')).toBeNull(); // rainbow instead
     expect(screen.getByTestId('award-row-2').className).toContain('award-row-finale');
+    expect(finaleFlipEl().className).not.toContain('flip-run'); // still no flip
 
-    // The final flip runs at the VERY slow finale duration (4~5× slowFlip,
-    // ≥ 3s), not the plain slowFlip: the half-turn CSS variable carries it…
-    const flipEl = finaleFlipEl();
-    expect(flipEl.className).toContain('flip-run');
-    expect(flipEl.style.getPropertyValue('--flip-half')).toBe(`${FINALE_FLIP / 2}ms`);
+    // ---- Step 3: the INTERMEDIATE flip runs slowly (slowFlip ×
+    // finaleIntermediateFlipSlowdown) while the cell keeps shaking.
+    await advanceMs(FINALE_ZOOM_MS);
+    const midFlip = finaleFlipEl();
+    expect(midFlip.className).toContain('flip-run');
+    expect(midFlip.style.getPropertyValue('--flip-half')).toBe(`${FINALE_MID_FLIP / 2}ms`);
+    expect(cellEl().className).toContain('award-cell-gacha'); // shake persists
+    expect(cellEl().contains(midFlip)).toBe(true); // flip nested in the wrapper
+    expect(screen.getByTestId('finale-rainbow')).toBeTruthy();
 
-    // …and well past the NORMAL slowFlip fallback (2×SLOW) it is still
-    // mid-flip, with the dim/zoom still up.
+    // ---- Step 4: the verdict flip is slower still (slowFlip ×
+    // finaleFlipSlowdown), and the shake/rainbow keep going through it.
+    await advanceMs(FINALE_MID_FLIP_2X + 50);
+    expect(attemptsOfCell()).toBe('−1'); // the intermediate No is on screen
+    const verdictFlip = finaleFlipEl();
+    expect(verdictFlip.className).toContain('flip-run');
+    expect(verdictFlip.style.getPropertyValue('--flip-half')).toBe(`${FINALE_FLIP / 2}ms`);
+    expect(FINALE_FLIP).toBeGreaterThan(FINALE_MID_FLIP);
+
+    // Well past the NORMAL slowFlip fallback (2×SLOW) it is still mid-flip,
+    // shaking, with the dim/zoom up.
     await advanceMs(SLOW * 2 + 50);
     expect(finaleFlipEl().getAttribute('data-flip-phase')).toBe('out');
+    expect(cellEl().className).toContain('award-cell-gacha');
     expect(screen.getByTestId('finale-dim')).toBeTruthy();
-    expect(screen.getByTestId('award-cell-2-1').className).toContain('award-cell-finale');
 
-    // Complete the finale flip (jsdom fallback at 2× the finale duration):
-    // the reveal is over, the spotlight/zoom holds for FINALE_HOLD_MS.
-    await advanceMs(FINALE_FLIP_2X - SLOW * 2 - 50 + 100);
+    // ---- Step 5: the flip completes → the shake stops and the cell returns
+    // exactly to rest; the rainbow stops with it. The verdict is a No here,
+    // so NO confetti. Zoom/spotlight hold on.
+    await advanceMs(FINALE_FLIP_2X);
     expect(finaleFlipEl().className).not.toContain('flip-run');
+    expect(cellEl().className).not.toContain('award-cell-gacha');
+    expect(screen.queryByTestId('finale-rainbow')).toBeNull();
+    expect(screen.queryByTestId('finale-confetti')).toBeNull();
     expect(screen.getByTestId('finale-dim')).toBeTruthy();
-    expect(screen.getByTestId('award-cell-2-1').className).toContain('award-cell-finale');
+    expect(cellEl().className).toContain('award-cell-finale');
 
-    // 5s after the reveal completed everything restores.
+    // ---- Step 6: ~5s later the zoom/spotlight/overlay end and everything
+    // restores.
     await advanceMs(FINALE_HOLD_MS + 100);
     expect(screen.queryByTestId('finale-dim')).toBeNull();
     expect(screen.queryByTestId('finale-rainbow')).toBeNull();
-    expect(screen.getByTestId('award-cell-2-1').className).not.toContain('award-cell-finale');
+    expect(cellEl().className).not.toContain('award-cell-finale');
+    expect(cellEl().className).not.toContain('award-cell-preheat');
     expect(screen.getByTestId('award-row-2').className).not.toContain('award-row-finale');
   });
 
-  it('keeps the gacha shake and rainbow running DURING the slow flip', async () => {
-    const store = await bootAwardStore(() => 0.0); // rng < ratio → gacha fake-out on No
+  it('fires the confetti burst on a Yes verdict, and clears it on restore', async () => {
+    runsOverride = makeRunsJson('Yes'); // team 2's finale cell ends in a Yes
+    const store = await bootAwardStore(() => 0.99);
     renderAward(store);
     await driveToLastReveal(store);
 
-    // Gacha shake phase precedes the final flip; the finale cell gets the
-    // full-cell rainbow INSTEAD of the thin sparkle overlay (spec §7).
-    await advanceMs(GACHA_SHAKE_MS / 2);
-    const cell = screen.getByTestId('award-cell-2-1');
-    expect(cell.className).toContain('award-cell-gacha');
-    expect(cell.className).toContain('award-cell-finale');
-    expect(screen.getByTestId('finale-rainbow')).toBeTruthy();
-    expect(screen.queryByTestId('gacha-sparkle')).toBeNull();
+    // Nothing yet: confetti belongs to step 5, after the verdict flip.
+    await advanceMs(FINALE_PREHEAT_MS + FINALE_ZOOM_MS + FINALE_MID_FLIP_2X + 50);
+    expect(screen.queryByTestId('finale-confetti')).toBeNull();
+    await advanceMs(FINALE_FLIP); // still mid verdict flip
+    expect(screen.queryByTestId('finale-confetti')).toBeNull();
 
-    // Mid-FLIP the shake wrapper is NOT cancelled (spec §7: "flip이 도는
-    // 동안에도 진동이 계속"): the flip nests inside the shaking wrapper so
-    // both transforms compose, and the rainbow keeps flowing.
-    await advanceMs(GACHA_SHAKE_MS / 2 + 500); // 500ms into the finale flip
-    const midFlip = finaleFlipEl();
-    expect(midFlip.className).toContain('flip-run');
-    expect(midFlip.getAttribute('data-flip-phase')).toBe('out');
-    expect(midFlip.style.getPropertyValue('--flip-half')).toBe(`${FINALE_FLIP / 2}ms`);
-    const midCell = screen.getByTestId('award-cell-2-1');
-    expect(midCell.className).toContain('award-cell-gacha'); // shake persists
-    expect(midCell.className).toContain('award-cell-finale');
-    expect(midCell.contains(midFlip)).toBe(true); // flip nested in the wrapper
-    expect(screen.getByTestId('finale-rainbow')).toBeTruthy();
+    // Flip done → burst. Hand-rolled DOM particles, no new dependency.
+    await advanceMs(FINALE_FLIP + 100);
+    const confetti = screen.getByTestId('finale-confetti');
+    expect(confetti.querySelectorAll('.award-confetti-piece').length).toBeGreaterThan(20);
+    expect(cellEl().className).not.toContain('award-cell-gacha'); // shake stopped
+    expect(screen.getByTestId('finale-dim')).toBeTruthy(); // spotlight holds
 
-    // After the flip the shake stops (cell back at rest) and the rainbow
-    // stops flowing with it ("진동이 멈출 때까지"); the spotlight/zoom holds.
-    await advanceMs(FINALE_FLIP_2X - 500 + 100);
-    expect(screen.getByTestId('award-cell-2-1').className).not.toContain('award-cell-gacha');
-    expect(screen.queryByTestId('finale-rainbow')).toBeNull();
-    expect(screen.getByTestId('finale-dim')).toBeTruthy();
-    expect(screen.getByTestId('award-cell-2-1').className).toContain('award-cell-finale');
-
-    // …and 5s later the finale restores completely.
+    // Step 6 clears the confetti with the rest of the finale.
     await advanceMs(FINALE_HOLD_MS + 100);
+    expect(screen.queryByTestId('finale-confetti')).toBeNull();
     expect(screen.queryByTestId('finale-dim')).toBeNull();
-    expect(screen.getByTestId('award-cell-2-1').className).not.toContain('award-cell-finale');
   });
 });
 
@@ -741,6 +973,96 @@ describe('StrictMode reveal playback', () => {
         .querySelector('.problem-result')
         ?.getAttribute('data-verdict'),
     ).toBe('accepted');
+  });
+});
+
+// ---------------------------------------------------------------------------
+// solved spine bands (spec §7): the colour band is CONTINUOUS across a
+// same-solved group and only its first row shows the number — award mode too.
+// ---------------------------------------------------------------------------
+
+describe('solved spine bands in award mode', () => {
+  // 5 teams: t1/t2/t3 solve A (1 solved, penalties 10/20/30) → a three-row
+  // band; t4/t5 solve nothing → a two-row band. t5's B run stays hidden so
+  // the ceremony still has something to reveal.
+  const spineContest = {
+    ...contestJson,
+    teams: [1, 2, 3, 4, 5].map((id) => ({ id, name: `Team ${id}`, group: 'Univ One' })),
+  };
+  const spineRuns = {
+    time: { contestTime: 18000, noMoreUpdate: true, timestamp: 0 },
+    runs: [
+      { id: 1, team: 1, problem: 0, result: 'Yes', submissionTime: 10 },
+      { id: 2, team: 2, problem: 0, result: 'Yes', submissionTime: 20 },
+      { id: 3, team: 3, problem: 0, result: 'Yes', submissionTime: 30 },
+      { id: 4, team: 5, problem: 1, result: 'No - Wrong Answer', submissionTime: 40 },
+    ],
+  };
+  const spineFetch: typeof fetch = async (input) => {
+    const url = String(input);
+    if (url.includes('config.json')) return jsonResponse(configJson);
+    if (url.includes('contest.json')) return jsonResponse(spineContest);
+    if (url.includes('runs.json')) return jsonResponse(spineRuns);
+    return new Response('not found', { status: 404, statusText: 'Not Found' });
+  };
+
+  function spineClassOf(teamId: string): string {
+    return screen.getByTestId(`award-row-${teamId}`).querySelector('.solved-count')!.className;
+  }
+
+  it('marks only the band edges: a middle row has neither spine class', async () => {
+    const store = await bootAwardStore(() => 0.99, '?award=true&r=3', spineFetch);
+    render(<AwardView store={store} awards={[]} />);
+
+    expect(store.getState().snapshot?.standings.map((s) => s.team.id)).toEqual([
+      '1',
+      '2',
+      '3',
+      '4',
+      '5',
+    ]);
+
+    // Band of 1-solved teams: first row opens it, last row closes it, and the
+    // MIDDLE row carries neither class (band continues, number hidden).
+    expect(spineClassOf('1')).toContain('spine-first');
+    expect(spineClassOf('1')).not.toContain('spine-last');
+    expect(spineClassOf('2')).not.toContain('spine-first');
+    expect(spineClassOf('2')).not.toContain('spine-last');
+    expect(spineClassOf('3')).not.toContain('spine-first');
+    expect(spineClassOf('3')).toContain('spine-last');
+
+    // Next band (0 solved) starts its own group.
+    expect(spineClassOf('4')).toContain('spine-first');
+    expect(spineClassOf('4')).not.toContain('spine-last');
+    expect(spineClassOf('5')).not.toContain('spine-first');
+    expect(spineClassOf('5')).toContain('spine-last');
+  });
+
+  it('re-bands after a reveal moves a team into another group', async () => {
+    // r=3 hides t5's B fail only, so nothing changes solved counts; use the
+    // main fixture instead: revealing team 3's hidden Yes moves it from the
+    // 0-solved band into the 1-solved band.
+    const store = await bootAwardStore();
+    renderAward(store);
+
+    // Before: [t1(1), t2(1)] band + [t3(0)] alone (first AND last).
+    expect(spineClassOf('3')).toContain('spine-first');
+    expect(spineClassOf('3')).toContain('spine-last');
+    expect(spineClassOf('2')).not.toContain('spine-first');
+    expect(spineClassOf('2')).toContain('spine-last');
+
+    await pressKey('Enter'); // focus team 3
+    await pressKey('Enter'); // reveal its hidden Yes on B
+    await finishSequence();
+
+    // After: all three teams have 1 solved → one continuous band, t2 is the
+    // middle row (team 3 sorts last on penalty).
+    expect(spineClassOf('1')).toContain('spine-first');
+    expect(spineClassOf('1')).not.toContain('spine-last');
+    expect(spineClassOf('2')).not.toContain('spine-first');
+    expect(spineClassOf('2')).not.toContain('spine-last');
+    expect(spineClassOf('3')).not.toContain('spine-first');
+    expect(spineClassOf('3')).toContain('spine-last');
   });
 });
 

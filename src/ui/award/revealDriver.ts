@@ -4,16 +4,18 @@
  * One {type:'reveal'} step from the award machine carries every net run of a
  * cell. The controller owns WHICH cell is animating and the busy latch; the
  * actual playback (fast flips for intermediate fails → optional gacha shake
- * → slow final flip) is performed by RevealingCell in AwardView using the
- * scoreboard's useCellFlip hook, which calls handleSequenceEnd() when done.
+ * → slow final flip; the finale's 6 steps for the last cell) is performed by
+ * RevealingCell in AwardView using the scoreboard's useCellFlip hook, which
+ * calls handleSequenceEnd() when done.
  *
  * Busy latch (the original withDeferredLock equivalent): isBusy() is true
  * from play() until handleSequenceEnd(), with a hard wall-clock deadline so
  * a lost animation can never wedge the ceremony keyboard.
  *
- * Finale: the overlay/zoom is restored FINALE_HOLD_MS after the reveal
- * completes; `active` stays non-null during the hold so the overlay classes
- * persist, but the latch is already released.
+ * Finale (spec §7, fixed 6-step order — see FinalePhase): the overlay/zoom
+ * is restored FINALE_HOLD_MS after the reveal completes; `active` stays
+ * non-null during the hold so the overlay classes persist, but the latch is
+ * already released.
  */
 import { useEffect, useMemo, useRef, useState } from 'react';
 
@@ -22,22 +24,65 @@ import { DEFAULT_ANIMATION_SPEEDS, type AnimationSpeed } from '@core/config';
 
 export type RevealStep = Extract<AwardStepResult, { type: 'reveal' }>;
 
-/** Gacha shake duration before the final flip. */
+/** Gacha shake duration before the final flip (non-finale cells). */
 export const GACHA_SHAKE_MS = 1500;
-/** Finale overlay/zoom restore delay after the reveal completes (spec §7). */
+/** Finale step 1: pre-heat blink/sparkle before the zoom (spec §7). */
+export const FINALE_PREHEAT_MS = 1200;
+/** Finale step 2: zoom/spotlight/rainbow/shake settle time before the flips. */
+export const FINALE_ZOOM_MS = 1000;
+/** Finale step 6: overlay/zoom restore delay after the reveal completes. */
 export const FINALE_HOLD_MS = 5000;
-/** Finale final-flip slowdown vs the matched slowFlip (spec §7: 4~5×). */
-export const FINALE_FLIP_MULTIPLIER = 4.5;
-/** Finale final-flip floor (spec §7: 약 3초 이상). */
-export const FINALE_FLIP_MIN_MS = 3000;
 
 /**
- * The VERY slow finale flip duration (spec §7): 4~5× the matched slowFlip,
- * never under 3s — the last cell of the whole ceremony deserves the drama.
+ * The finale sequence's ordered phases (spec §7):
+ *  1 `preheat`   — the cell blinks/sparkles, board still normal;
+ *  2 `spotlight` — zoom + dim + spotlight, rainbow flowing, shake started;
+ *  3/4 `flip`    — slow intermediate flips, then the slower verdict flip;
+ *  5 `settled`   — shake/rainbow stopped, confetti on a Yes;
+ *  6 (phase ends when the driver clears `active` FINALE_HOLD_MS later).
  */
-export function finaleSlowFlipMs(slowFlipMs: number): number {
-  return Math.max(FINALE_FLIP_MIN_MS, Math.round(slowFlipMs * FINALE_FLIP_MULTIPLIER));
+export type FinalePhase = 'preheat' | 'spotlight' | 'flip' | 'settled';
+
+/** Finale flip slowdown factors (config: award.finale*Slowdown, spec §7). */
+export interface FinaleSlowdowns {
+  /** Final verdict flip: slowFlip × this. */
+  flip: number;
+  /** Intermediate finale flips: slowFlip × this. */
+  intermediateFlip: number;
 }
+
+/** Schema defaults, so callers without config still play a proper finale. */
+export const DEFAULT_FINALE_SLOWDOWNS: FinaleSlowdowns = { flip: 3, intermediateFlip: 2 };
+
+/** A finale flip duration: the matched band's slowFlip × the config factor. */
+export function finaleFlipMs(slowFlipMs: number, slowdown: number): number {
+  return Math.max(1, Math.round(slowFlipMs * slowdown));
+}
+
+/** Flip durations for one reveal: `fast` for intermediates, `slow` for the verdict. */
+export interface FlipDurations {
+  fast: number;
+  slow: number;
+}
+
+/**
+ * Per-reveal flip durations (spec §7). A normal reveal uses the matched
+ * band as-is; the finale cell replaces BOTH with slowed-down variants of
+ * slowFlip — intermediate flips included, so nothing about the last cell
+ * of the ceremony goes by quickly.
+ */
+export function revealFlipDurations(
+  step: RevealStep,
+  speed: AnimationSpeed,
+  slowdowns: FinaleSlowdowns,
+): FlipDurations {
+  if (!step.effect.finale) return { fast: speed.fastFlip, slow: speed.slowFlip };
+  return {
+    fast: finaleFlipMs(speed.slowFlip, slowdowns.intermediateFlip),
+    slow: finaleFlipMs(speed.slowFlip, slowdowns.flip),
+  };
+}
+
 /** Safety margin added to the expected duration for the hard busy deadline. */
 export const BUSY_HARD_TIMEOUT_MS = 4000;
 
@@ -110,6 +155,8 @@ export function accumulateDisplay(
 export interface ActiveReveal {
   step: RevealStep;
   speed: AnimationSpeed;
+  /** Flip durations for this reveal (finale slowdowns already applied). */
+  flip: FlipDurations;
   /** Monotonic sequence number — remount key for RevealingCell. */
   seq: number;
 }
@@ -125,14 +172,26 @@ export interface RevealDriver {
   handleSequenceEnd(): void;
 }
 
-/** Worst-case playback length: gacha + flips at the 2× fallback duration. */
-function estimateDurationMs(step: RevealStep, speed: AnimationSpeed): number {
-  const finalFlip = step.effect.finale ? finaleSlowFlipMs(speed.slowFlip) : speed.slowFlip;
-  const flips = (step.runs.length - 1) * speed.fastFlip + finalFlip;
-  return (step.effect.gacha ? GACHA_SHAKE_MS : 0) + flips * 2;
+/** Worst-case playback length: lead-in + flips at the 2× fallback duration. */
+function estimateDurationMs(step: RevealStep, flip: FlipDurations): number {
+  // Finale: pre-heat + zoom settle (spec §7 steps 1-2). Otherwise the gacha
+  // shake, when it fires.
+  const leadIn = step.effect.finale
+    ? FINALE_PREHEAT_MS + FINALE_ZOOM_MS
+    : step.effect.gacha
+      ? GACHA_SHAKE_MS
+      : 0;
+  const flips = (step.runs.length - 1) * flip.fast + flip.slow;
+  return leadIn + flips * 2;
 }
 
-export function useRevealDriver(animationSpeeds: readonly AnimationSpeed[]): RevealDriver {
+export function useRevealDriver(
+  animationSpeeds: readonly AnimationSpeed[],
+  slowdowns: FinaleSlowdowns = DEFAULT_FINALE_SLOWDOWNS,
+): RevealDriver {
+  // Destructured to primitives so a fresh config object per render does not
+  // rebuild the api (and with it every keyboard callback).
+  const { flip: finaleFlipSlowdown, intermediateFlip: finaleIntermediateFlipSlowdown } = slowdowns;
   const [active, setActive] = useState<ActiveReveal | null>(null);
   const activeRef = useRef<ActiveReveal | null>(null);
   const playingRef = useRef(false);
@@ -165,11 +224,14 @@ export function useRevealDriver(animationSpeeds: readonly AnimationSpeed[]): Rev
       if (step.runs.length === 0) return; // defensive; the machine never emits this
       clearHoldTimer();
       const speed = matchAnimationSpeed(animationSpeeds, solved);
+      const flip = revealFlipDurations(step, speed, {
+        flip: finaleFlipSlowdown,
+        intermediateFlip: finaleIntermediateFlipSlowdown,
+      });
       seqRef.current += 1;
       playingRef.current = true;
-      busyDeadlineRef.current =
-        Date.now() + estimateDurationMs(step, speed) + BUSY_HARD_TIMEOUT_MS;
-      setActiveBoth({ step, speed, seq: seqRef.current });
+      busyDeadlineRef.current = Date.now() + estimateDurationMs(step, flip) + BUSY_HARD_TIMEOUT_MS;
+      setActiveBoth({ step, speed, flip, seq: seqRef.current });
     }
 
     function handleSequenceEnd(): void {
@@ -196,7 +258,7 @@ export function useRevealDriver(animationSpeeds: readonly AnimationSpeed[]): Rev
     }
 
     return { play, handleSequenceEnd, isBusy };
-  }, [animationSpeeds]);
+  }, [animationSpeeds, finaleFlipSlowdown, finaleIntermediateFlipSlowdown]);
 
   return { active, isBusy: api.isBusy, play: api.play, handleSequenceEnd: api.handleSequenceEnd };
 }

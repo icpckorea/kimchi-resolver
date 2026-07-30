@@ -24,6 +24,13 @@
  * One advance() call = one user keypress = one state transition:
  *   slide-on → (focus | blink | reveal | finalize | end)
  *
+ * Slide dismissal (spec §6): a visible slide CONSUMES the next advance() —
+ * the machine closes the slide and returns { type: 'slide-on' } without
+ * touching the ceremony, so a projector remote with no Escape key drives the
+ * whole thing with PageDown alone. The press after that advances normally,
+ * keeping the two-step "close, then advance" guard against stray presses.
+ * dismissSlide() (Escape) remains the explicit, idempotent close.
+ *
  * Deliberately NOT ported from the original (docs/spotboard-analysis.md §2):
  *   - revealOrder falsy-zero bug (problem at index 0 / id "0" works here),
  *   - unreachable 'end' (TypeError on the last keypress in the original),
@@ -409,16 +416,19 @@ export function createAwardMachine(opts: CreateAwardMachineOptions): AwardMachin
 
     const isFinale = remainingBefore === 1;
     let gacha = false;
-    // The gacha requirement counts the cell's FULL net attempts (spec §6),
-    // which with full-cell masking is simply the replay length.
-    if (!suppressEffects && (runs.length >= config.gachaEffectRequirement || isFinale)) {
-      // Finale cell → always, regardless of verdict (spec §6/§7); otherwise
-      // Yes → always; No → probability roll (fake-out), deterministic via
+    if (suppressEffects) {
+      gacha = false; // rankBegin fast-forward plays nothing
+    } else if (isFinale) {
+      // Spec §6/§7: the ceremony's final reveal ALWAYS runs the gacha effect
+      // (it is step 2 of the fixed finale sequence) — regardless of the
+      // verdict, regardless of the attempt count, and without an rng roll.
+      gacha = true;
+    } else if (runs.length >= config.gachaEffectRequirement) {
+      // The gacha requirement counts the cell's FULL net attempts (spec §6),
+      // which with full-cell masking is simply the replay length. Yes →
+      // always; No → probability roll (fake-out), deterministic via the
       // injected rng (never called when the outcome is already certain).
-      gacha =
-        isFinale ||
-        finalVerdict === 'accepted' ||
-        rng() < config.gachaEffectForNoRatio / 100;
+      gacha = finalVerdict === 'accepted' || rng() < config.gachaEffectForNoRatio / 100;
     }
 
     return {

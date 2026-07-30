@@ -47,6 +47,8 @@ describe('parseConfig — defaults', () => {
         focusBlinking: { minSolved: 7, maxRank: 10 },
         gachaEffectRequirement: 8,
         gachaEffectForNoRatio: 30,
+        finaleFlipSlowdown: 3,
+        finaleIntermediateFlipSlowdown: 2,
         animationSpeeds: [
           { minSolved: 10, fastFlip: 200, slowFlip: 800, moveUpMsPerRow: 200 },
           { minSolved: 0, fastFlip: 300, slowFlip: 700, moveUpMsPerRow: 100 },
@@ -127,6 +129,8 @@ describe('parseConfig — defaults', () => {
         focusBlinking: { minSolved: 7, maxRank: 10 },
         gachaEffectRequirement: 8,
         gachaEffectForNoRatio: 30,
+        finaleFlipSlowdown: 3,
+        finaleIntermediateFlipSlowdown: 2,
         animationSpeeds: [
           { minSolved: 10, fastFlip: 200, slowFlip: 800, moveUpMsPerRow: 200 },
           { minSolved: 0, fastFlip: 300, slowFlip: 700, moveUpMsPerRow: 100 },
@@ -244,6 +248,25 @@ describe('parseConfig — bad values collected as errors, never thrown', () => {
     const { config, errors } = parseConfig({ award: { gachaEffectForNoRatio: 150 } });
     expect(errors.some((e) => e.includes('gachaEffectForNoRatio'))).toBe(true);
     expect(config.award.gachaEffectForNoRatio).toBe(30);
+  });
+
+  it('accepts custom finale flip slowdowns (spec §7)', () => {
+    const { config, errors } = parseConfig({
+      award: { finaleFlipSlowdown: 5, finaleIntermediateFlipSlowdown: 1.5 },
+    });
+    expect(errors).toEqual([]);
+    expect(config.award.finaleFlipSlowdown).toBe(5);
+    expect(config.award.finaleIntermediateFlipSlowdown).toBe(1.5);
+  });
+
+  it('non-positive finale slowdowns are rejected to their defaults (3 / 2)', () => {
+    const { config, errors } = parseConfig({
+      award: { finaleFlipSlowdown: 0, finaleIntermediateFlipSlowdown: -2 },
+    });
+    expect(errors.some((e) => e.includes('finaleFlipSlowdown'))).toBe(true);
+    expect(errors.some((e) => e.includes('finaleIntermediateFlipSlowdown'))).toBe(true);
+    expect(config.award.finaleFlipSlowdown).toBe(3);
+    expect(config.award.finaleIntermediateFlipSlowdown).toBe(2);
   });
 
   it('does not mutate the input object', () => {

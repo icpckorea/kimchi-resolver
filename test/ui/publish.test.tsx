@@ -164,32 +164,64 @@ describe('PublishView gate', () => {
 // ---------------------------------------------------------------------------
 
 describe('PublishView APAC stars', () => {
-  it('renders gold champion, silver everyone else (schoolmate included), no star past cap', () => {
+  it("renders a gold champion, bronze champion schoolmates and silver for every other school", () => {
     seedStore({ siteScore: 5 });
     render(<PublishView />);
-    expect(starFill('x1')).toBe(FILL.gold); // champion
-    expect(starFill('x2')).toBe(FILL.silver); // champion schoolmate is silver too
+    expect(starFill('x1')).toBe(FILL.gold); // champion — World Finals direct entry
+    // x2 shares school X with the champion. WF takes one team per school, so
+    // x2 is not an invitation candidate → stays bronze (spec §13 rule 2).
+    expect(starFill('x2')).toBe(FILL.bronze);
     expect(starFill('y1')).toBe(FILL.silver);
     expect(starFill('y2')).toBe(FILL.silver);
     expect(starFill('z1')).toBe(FILL.silver);
   });
 
   it('promotes silver teams within the invited cutoff to gold (boundary ≤)', () => {
-    // cutoff 1, siteScore 2 → invited iff (filteredRank − 1)/2 ≤ 1
-    // ⇔ filteredRank ≤ 3 → x2 (fr 2) and y1 (fr 3).
+    // filteredRank: x1 1, x2 2, y1 3, y2 4, z1 5 — champion and his schoolmate
+    // occupy slots 1 and 2 even though they are not promotion candidates.
+    // cutoff 1, siteScore 2 → invited iff (filteredRank − 1)/2 ≤ 1 ⇔ fr ≤ 3.
     seedStore({ siteScore: 2, invitedCutoff: 1 });
     render(<PublishView />);
-    expect(starFill('x2')).toBe(FILL.gold); // champion schoolmate can qualify
-    expect(starFill('y1')).toBe(FILL.gold);
-    expect(starFill('y2')).toBe(FILL.silver);
-    expect(starFill('z1')).toBe(FILL.silver);
+    expect(starFill('y1')).toBe(FILL.gold); // fr 3 → (3−1)/2 = 1 ≤ 1
+    expect(starFill('y2')).toBe(FILL.silver); // fr 4 → 1.5 > 1
+    expect(starFill('z1')).toBe(FILL.silver); // fr 5 → 2 > 1
+    // Bronze is never promoted, even though x2 sits at fr 2.
+    expect(starFill('x2')).toBe(FILL.bronze);
+    expect(starFill('x1')).toBe(FILL.gold);
   });
 
   it('does not promote when the cutoff box is empty', () => {
     seedStore({ siteScore: 2, invitedCutoff: null });
     render(<PublishView />);
     expect(starFill('y1')).toBe(FILL.silver);
-    expect(starFill('x2')).toBe(FILL.silver);
+    expect(starFill('y2')).toBe(FILL.silver);
+    expect(starFill('x2')).toBe(FILL.bronze);
+  });
+
+  it('gives no star to schoolRank ≥ 4 teams (per-school cap)', () => {
+    // Local fixture: school W fields four teams, all ahead of everyone else.
+    const capContest = makeContest([
+      { id: 'w1', group: 'W' },
+      { id: 'w2', group: 'W' },
+      { id: 'w3', group: 'W' },
+      { id: 'w4', group: 'W' },
+      { id: 'v1', group: 'V' },
+    ]);
+    const capSnapshot = computeStandings(capContest, [
+      run('w1', 'p1', 10),
+      run('w2', 'p1', 20),
+      run('w3', 'p1', 30),
+      run('w4', 'p1', 40),
+      run('v1', 'p1', 50),
+    ]);
+    seedStore({ siteScore: 5 });
+    appStore.setState({ contest: capContest, snapshot: capSnapshot });
+    render(<PublishView />);
+    expect(starFill('w1')).toBe(FILL.gold); // champion
+    expect(starFill('w2')).toBe(FILL.bronze); // champion schoolmate
+    expect(starFill('w3')).toBe(FILL.bronze); // champion schoolmate
+    expect(starOf('w4')).toBeNull(); // schoolRank 4 → no star at all
+    expect(starFill('v1')).toBe(FILL.silver);
   });
 
   it('shows no stars and no star slot when config.apac.enabled is false (spec §13)', () => {
@@ -226,13 +258,14 @@ describe('PublishView star spin', () => {
     });
     const cutoff = document.getElementById('publish-invited-cutoff') as HTMLInputElement;
     fireEvent.change(cutoff, { target: { value: '1' } });
-    // x2 (fr 2) and y1 (fr 3): silver → gold — must spin with the new tier.
-    for (const teamId of ['x2', 'y1']) {
-      const star = starOf(teamId);
-      expect(star?.querySelector('polygon')?.getAttribute('fill')).toBe(FILL.gold);
-      expect(star?.classList.contains('kr-apac-star--spin')).toBe(true);
-    }
-    // Unchanged tiers must not spin.
+    // y1 (filteredRank 3): silver → gold — must spin with the new tier.
+    const y1 = starOf('y1');
+    expect(y1?.querySelector('polygon')?.getAttribute('fill')).toBe(FILL.gold);
+    expect(y1?.classList.contains('kr-apac-star--spin')).toBe(true);
+    // Unchanged tiers must not spin — including the champion's bronze
+    // schoolmate x2, which sits at filteredRank 2 but is never promoted.
+    expect(starFill('x2')).toBe(FILL.bronze);
+    expect(starOf('x2')?.classList.contains('kr-apac-star--spin')).toBe(false);
     expect(starOf('y2')?.classList.contains('kr-apac-star--spin')).toBe(false);
     expect(starOf('x1')?.classList.contains('kr-apac-star--spin')).toBe(false);
   });
