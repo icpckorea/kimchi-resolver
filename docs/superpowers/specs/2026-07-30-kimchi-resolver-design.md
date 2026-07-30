@@ -163,8 +163,8 @@ FeedSource(어댑터) → parse → diff → 표시 대기 큐 → tick 소비 �
 - **시상식 피날레 시퀀스** (`remainingReveals === 1`인 마지막 공개 셀, 순서 고정):
   1. 셀이 **반짝인다** (blink/sparkle 예열).
   2. 그 셀 쪽으로 화면을 **확대**(scale ≈ 1.9)하고, **무지개 오버레이가 흐르며 진동(shake)** 시작. 주변은 어둡게, 해당 셀에 **스포트라이트**.
-  3. **흔들리면서 아주 천천히 flip** — 셀에 여러 시도가 있으면 중간 flip들도 느리게 재생.
-  4. **마지막(판정 확정) flip은 일반 flip의 약 3배 느린 속도**로 재생.
+  3. **흔들리면서 아주 천천히 flip** — 셀에 여러 시도가 있으면 중간 flip들도 느리게 재생 (해당 티어 slowFlip × `finaleIntermediateFlipSlowdown`, 기본 2).
+  4. **마지막(판정 확정) flip은 더 느리게** 재생 (해당 티어 slowFlip × `finaleFlipSlowdown`, 기본 3 — config로 조정 가능).
   5. flip 완료 후 **진동을 멈춘다**. 결과가 **Yes면 축포(confetti) 효과** 재생.
   6. 화면 확대·스포트라이트·무지개 오버레이를 종료하고 원상 복귀 (5단계 종료 후 약 5초 뒤).
 - **가차 이펙트 연출** (발동 조건은 6장): 마지막 flip 직전, 셀이 상하좌우로 약간씩 진동하며 미세한 각도로 회전 진동하고 반짝이는 sparkle을 재생. 공개(flip) 후에는 셀이 정확히 제자리로 복귀하고 진동·반짝임이 멈춘다. **시상식 최종 공개 셀인 경우 얇은 sparkle 대신 셀 전체를 덮는 무지개 그라데이션이 연속으로 흐르는(hue가 순환하며 이동) 오버레이를 재생** — 진동이 멈출 때까지 계속 흐르고, 피날레 스포트라이트와 중첩 적용.
@@ -222,6 +222,8 @@ FeedSource(어댑터) → parse → diff → 표시 대기 큐 → tick 소비 �
     "focusBlinking": { "minSolved": 7, "maxRank": 10 },
     "gachaEffectRequirement": 8,
     "gachaEffectForNoRatio": 30,
+    "finaleFlipSlowdown": 3,
+    "finaleIntermediateFlipSlowdown": 2,
     "animationSpeeds": [
       { "minSolved": 10, "fastFlip": 200, "slowFlip": 800, "moveUpMsPerRow": 200 },
       { "minSolved": 0,  "fastFlip": 300, "slowFlip": 700, "moveUpMsPerRow": 100 }
