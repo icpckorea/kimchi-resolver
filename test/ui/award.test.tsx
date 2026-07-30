@@ -138,7 +138,7 @@ const fetchImpl: typeof fetch = async (input) => {
   if (url.includes('config.json')) return jsonResponse(configJson);
   if (url.includes('contest.json')) return jsonResponse(contestJson);
   if (url.includes('runs.json')) return jsonResponse(runsOverride ?? runsJson);
-  if (url.includes('awards.json')) return jsonResponse(awardsOverride ?? awardsFixture);
+  if (url.includes('awards')) return jsonResponse(awardsOverride ?? awardsFixture);
   return new Response('not found', { status: 404, statusText: 'Not Found' });
 };
 

@@ -30,7 +30,7 @@
     "mode": false,
     "hideName": true,
     "rankBegin": null,
-    "awardsUrl": "./sample/awards.json",
+    "awardsUrl": "./sample/awards.sample.json",
     "revealOrder": [],
     "focusBlinking": { "minSolved": 7, "maxRank": 10 },
     "gachaEffectRequirement": 8,

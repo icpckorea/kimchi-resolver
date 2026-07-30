@@ -59,7 +59,7 @@ const awardSchema = z
     mode: z.boolean().default(false),
     hideName: z.boolean().default(true),
     rankBegin: z.number().int().positive().nullable().default(null),
-    awardsUrl: z.string().default('./sample/awards.json'),
+    awardsUrl: z.string().default('./sample/awards.sample.json'),
     /** Problem labels or ids, highest priority first. */
     revealOrder: z.array(idSchema).default([]),
     focusBlinking: focusBlinkingSchema,

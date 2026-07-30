@@ -45,7 +45,19 @@ function useAwardsData(): Map<string, AwardEntry> | null {
         const res = await fetch(awardsUrl);
         if (!res.ok) throw new Error(`HTTP ${res.status}`);
         const parsed = parseAwardsJson(await res.json());
-        if (!cancelled) setAwards(parsed);
+        if (cancelled) return;
+        setAwards(parsed);
+        if (mode === 'spectator' && parsed.size > 0) {
+          // awards.json reachable from a live board means the winners are
+          // already public — both as badges here and as a fetchable file.
+          appStore
+            .getState()
+            .addSystemMessage(
+              'error',
+              'awards.json loaded on a live scoreboard: award results are public before the ' +
+                'ceremony. Remove it from this deployment and serve it only from the award build.',
+            );
+        }
       } catch (err) {
         // Missing awards.json is expected in spectator mode → stay silent.
         if (!cancelled && mode === 'publish') {

@@ -58,7 +58,7 @@ Runtime configuration lives in `public/config.json` (served as `config.json` nex
 | `award.mode` | `false` | boot into award mode |
 | `award.hideName` | `true` | mask unrevealed teams as "Team {id}" |
 | `award.rankBegin` | `null` | fast-forward the ceremony to this rank |
-| `award.awardsUrl` | `"./sample/awards.json"` | awards.json v2 location |
+| `award.awardsUrl` | `"./sample/awards.sample.json"` | awards.json v2 location |
 | `award.revealOrder` | `[]` | problem reveal priority (labels or ids) |
 | `award.focusBlinking` | `{ "minSolved": 7, "maxRank": 10 }` | blink stage condition, or null |
 | `award.gachaEffectRequirement` | `8` | attempts that trigger the gacha effect |
@@ -96,7 +96,7 @@ URL parameters override `config.json` (spec §9/§13):
 
 | Parameter | Meaning |
 |---|---|
-| `r=<run id>` | replay runs up to this run id without animation (award: the freeze cutoff) |
+| `r=<run id>` | replay runs up to this run id without animation (award: the freeze cutoff). Compared against the run's `seq`: that is the run id for the spotboard source, but a 1-based ordinal in `/submissions` order for contest-api — on contest-api prefer `time=` |
 | `time=<minute>` | replay runs up to this contest minute; forces autoplay off |
 | `award=true` | award mode |
 | `award_rank_begin=<n>` | fast-forward the ceremony to rank n |
@@ -113,7 +113,22 @@ Example: `index.html?award=true&r=1000` starts the ceremony with runs after id 1
 
 **spotboard JSON** (default): put `contest.json` and `runs.json` where `source.apiBase` points. The bundled `public/sample/` contains the 2025 ICPC Asia Seoul Regional sample (84 teams, 13 problems, 1,227 runs) so the app works offline out of the box.
 
-**ICPC Contest API** (DOMjudge/CDS): set `source.type` to `"contest-api"`, plus `baseUrl`, `contestId` and optional `auth`. The adapter reads `/contests/{id}`, `/problems`, `/teams`, `/organizations`, `/judgement-types` once and polls `/submissions` + `/judgements`. Note: when the browser talks to the judge directly, the judge must send CORS headers, or you must put a reverse proxy in front of it.
+**ICPC Contest API** (DOMjudge/CDS): set `source.type` to `"contest-api"`, plus `baseUrl` (the API **root**, e.g. `https://judge.example.org/api/v4` — the adapter appends `/contests/{contestId}` itself), `contestId` and optional `auth`. At boot the adapter reads `/contests/{id}/access` first, then `/contests/{id}`, `/problems`, `/teams?public=true`, `/organizations`, `/judgement-types`; each poll reads `/submissions` + `/judgements` + `/state`. None of these endpoints paginate, so each poll re-reads the full list.
+
+Data the adapter derives from that feed, and the rules it follows:
+
+- **Access**: the boot `/access` read decides whether this account may see `judgements` at all. If not, the app refuses to start with an error naming `api_reader` instead of showing a board that can never leave pending. An `/access` endpoint that is missing entirely only warns. At runtime, "submissions from many teams but judgements from at most one" — the shape of a team-filtered token — raises a one-off console warning.
+- **Clock and end of feed** come from `/state`: elapsed time is now − `started` clamped to `[0, duration]` (`--:--` before the start, stopped at the end), corrected by the judge's `Date` header rather than the local clock, and `end_of_updates != null` stops polling and finalizes the header. A judge without `/state` degrades to `start_time` + local clock and never self-terminates; it is never a poll failure.
+- **Teams**: `?public=true` plus a `hidden` check keeps jury/test teams — and their submissions — off the board. Your `api_reader` token would otherwise see them.
+- **School** (`group`, which drives `schoolRank` and the APAC stars): organization `formal_name` → organization `name` → the team's own `affiliation` string. Only a team with none of those gets the empty group, which means "no school" — never a shared bucket.
+- **Country**: organization `country` → team `nationality`, both ISO 3166-1 alpha-3 (alpha-2 accepted, common IOC codes aliased); `orgs.json` overrides both. An unresolvable code yields **no flag** and a warning rather than a guessed one.
+- **Verdicts**: a judgement type missing from the snapshot taken at load is scored as a penalized rejection with a warning, not left pending forever. Among several judgements the adapter skips `valid: false` (superseded by a rejudging) and takes the greatest `end_contest_time`, then the greatest id — never array order.
+
+Three things will bite you on contest day. **Read [docs/operations.md](docs/operations.md) before running this on a real judge.**
+
+- **An `api_reader` account is mandatory.** `/submissions` is ungated, but `/judgements` is role-gated and filtered to the caller's own team below `api_reader`. An under-privileged token gives a board that looks alive with every verdict stuck on pending.
+- **DOMjudge does not apply the scoreboard freeze to `/judgements`** (its `JudgementController` has no freeze logic; filtering is role-based only). Any deployment holding an `api_reader` credential reads real frozen verdicts mid-contest, so it must not be public. `r=`/`time=` bound the boot replay only — they are not a freeze.
+- **CORS**: DOMjudge sends no CORS headers. Put a same-origin reverse proxy in front of it; that also keeps the credential out of the world-readable `config.json`.
 
 **School metadata**: `public/orgs/orgs.json` maps each school (`group`) to `{ "country": "KR", "logo": "file.png" }`. Flags come from `country`; logos live in `public/orgs/logos/`. Missing entries produce a system-message warning; run `npm run check-assets` to verify before an event.
 
@@ -122,3 +137,9 @@ Example: `index.html?award=true&r=1000` starts the ceremony with runs after id 1
 ## Deploy
 
 `npm run build` produces a fully static `dist/`. Serve it with any HTTP server. `config.json`, `orgs/` and the sample data are plain files inside `dist/` — edit them in place to reconfigure a deployed instance; no rebuild is necessary.
+
+`config.json` is served to every visitor, so never put judge credentials in `source.auth` on a public host — inject the `Authorization` header in the reverse proxy instead.
+
+## Running a real contest
+
+[docs/operations.md](docs/operations.md) is the contest-day run book: the pre-flight `curl` checks against the judge, `api_reader` account setup, the freeze security warning, CORS/reverse-proxy config, the freeze-cutoff choice, the team/school/country data checks, and a troubleshooting table.

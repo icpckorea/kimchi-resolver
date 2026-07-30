@@ -512,6 +512,31 @@ export function createAppStore(deps: StoreDeps = {}): AppStore {
       }
     }
 
+    /**
+     * config.json is a static asset: every visitor can read it. Credentials in
+     * `source.auth` are therefore public, and with a DOMjudge api_reader
+     * account that is enough to query unfrozen judgements straight from the
+     * judge during the freeze (DOMjudge filters judgements by role, not by
+     * freeze). Say so loudly rather than letting it pass silently.
+     */
+    function warnAboutClientSideCredentials(config: ResolvedConfig): void {
+      if (config.source.auth === null) return;
+      addMessage(
+        'error',
+        'Credentials are set in config.json, which every visitor of this page can read. ' +
+          'Anyone can then query the judge directly — including unfrozen verdicts during the ' +
+          'freeze. Put the credentials behind a reverse proxy or an exporter instead.',
+      );
+      const protocol = globalThis.location?.protocol;
+      if (protocol !== undefined && protocol !== 'https:' && protocol !== 'file:') {
+        addMessage(
+          'error',
+          `Credentials are also sent in cleartext: this page is served over ${protocol}, ` +
+            'and every poll carries an Authorization header. Use HTTPS.',
+        );
+      }
+    }
+
     function createSource(config: ResolvedConfig, orgs: OrgsIndex): FeedSource {
       const common = {
         fetchTimeout: config.fetchTimeout,
@@ -571,6 +596,7 @@ export function createAppStore(deps: StoreDeps = {}): AppStore {
 
         // 3. Mode + feed source.
         const mode = selectMode(config);
+        warnAboutClientSideCredentials(config);
         source = createSource(config, orgs);
         set({
           config,

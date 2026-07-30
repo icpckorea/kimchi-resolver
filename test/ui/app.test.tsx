@@ -31,7 +31,7 @@ const files: Record<string, unknown> = {
   'orgs/orgs.json': readJson('orgs/orgs.json'),
   'contest.json': readJson('sample/contest.json'),
   'runs.json': readJson('sample/runs.json'),
-  'awards.json': readJson('sample/awards.json'),
+  'awards.json': readJson('sample/awards.sample.json'),
 };
 
 function stubFetch(): void {

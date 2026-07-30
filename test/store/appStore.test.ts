@@ -663,7 +663,7 @@ describe('award mode', () => {
   it('loads awards.json before the machine so only entry teams raise a slide', async () => {
     const { store } = makeHarness({
       ...smallFiles(),
-      'awards.json': [{ teamId: 1, rank: '대상', icon: 'medal_gold', labels: ['champion'] }],
+      'awards.sample.json': [{ teamId: 1, rank: '대상', icon: 'medal_gold', labels: ['champion'] }],
     });
     await store.getState().boot('?award=true&r=3');
     // The view reads the same map the machine was built from.
