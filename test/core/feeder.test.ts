@@ -534,6 +534,57 @@ describe('RunFeeder against the 2025 Seoul sample data', () => {
     );
   });
 
+  // A submission left unjudged when a LATER submission on the same cell is
+  // accepted is still a net run: its verdict decides a 20-minute penalty.
+  // The post-accept skip must not swallow that late verdict (live-sim B1).
+  describe('late verdict on a net run of an accepted cell', () => {
+    it('accepts a late verdict for a run preceding the accepting one', () => {
+      const feeder = createRunFeeder(makeContest());
+      feeder.ingest(result([run('387', { verdict: 'pending', minute: 68 })]));
+      feeder.feedAll();
+      feeder.ingest(
+        result([run('393', { verdict: 'accepted', penaltyCounts: false, minute: 69 })]),
+      );
+      feeder.feedAll();
+
+      // The real verdict for 387 lands after the cell was solved.
+      const changes = feeder.ingest(
+        result([run('387', { verdict: 'failed', penaltyCounts: true, minute: 68 })]),
+      );
+      expect(changes).toBe(1);
+      feeder.feedAll();
+
+      const applied387 = feeder.appliedRuns.find((r) => r.id === '387');
+      expect(applied387?.verdict).toBe('failed');
+      expect(applied387?.penaltyCounts).toBe(true);
+      // One canonical copy per id — the late update replaces, never duplicates.
+      expect(feeder.appliedRuns.filter((r) => r.id === '387')).toHaveLength(1);
+    });
+
+    it('still drops a submission made after the accepting run', () => {
+      const feeder = createRunFeeder(makeContest());
+      feeder.ingest(result([run('393', { verdict: 'accepted', penaltyCounts: false })]));
+      feeder.feedAll();
+
+      const changes = feeder.ingest(
+        result([run('746', { verdict: 'failed', penaltyCounts: true })]),
+      );
+      expect(changes).toBe(0);
+      expect(feeder.appliedRuns.map((r) => r.id)).toEqual(['393']);
+    });
+
+    it('a later Yes never reopens a cell already accepted by an earlier run', () => {
+      const feeder = createRunFeeder(makeContest());
+      feeder.ingest(result([run('100', { verdict: 'accepted', penaltyCounts: false })]));
+      feeder.feedAll();
+
+      const changes = feeder.ingest(
+        result([run('200', { verdict: 'accepted', penaltyCounts: false })]),
+      );
+      expect(changes).toBe(0);
+    });
+  });
+
   it('QueuedRunFeeder class is directly constructible too', () => {
     const feeder = new QueuedRunFeeder(sampleContest());
     feeder.ingest({ runs: [], contestTimeSec: 1, noMoreUpdate: false, cursor: null });
