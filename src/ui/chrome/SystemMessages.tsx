@@ -24,6 +24,11 @@ export function SystemMessages({ store = appStore }: SystemMessagesProps) {
       {messages.map((message) => (
         <div key={message.id} className={`kr-sysmsg kr-sysmsg--${message.level}`}>
           <span className="kr-sysmsg__text">{message.text}</span>
+          {message.repeats !== undefined && message.repeats > 1 ? (
+            <span className="kr-sysmsg__repeats" title={`Occurred ${message.repeats} times`}>
+              ×{message.repeats}
+            </span>
+          ) : null}
           <button
             type="button"
             className="kr-sysmsg__close"

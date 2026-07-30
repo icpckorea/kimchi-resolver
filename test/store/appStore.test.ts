@@ -288,6 +288,86 @@ describe('asset warnings', () => {
 });
 
 // ---------------------------------------------------------------------------
+// System message hygiene (5-hour unattended runs)
+// ---------------------------------------------------------------------------
+
+describe('system messages', () => {
+  it('collapses identical repeats instead of stacking rows', async () => {
+    const { store } = makeHarness(smallFiles());
+    await store.getState().boot('');
+    const before = store.getState().systemMessages.length;
+
+    for (let i = 0; i < 50; i += 1) {
+      store.getState().addSystemMessage('error', 'Fetching runs failed: ECONNRESET');
+    }
+
+    const added = store.getState().systemMessages.slice(before);
+    expect(added).toHaveLength(1);
+    expect(added[0].repeats).toBe(50);
+  });
+
+  it('keeps distinct messages separate and caps the list', async () => {
+    const { store } = makeHarness(smallFiles());
+    await store.getState().boot('');
+
+    for (let i = 0; i < 60; i += 1) {
+      store.getState().addSystemMessage('warning', `distinct ${i}`);
+    }
+
+    const all = store.getState().systemMessages;
+    expect(all.length).toBeLessThanOrEqual(20);
+    // Oldest are dropped; the newest distinct message survives.
+    expect(all[all.length - 1].text).toBe('distinct 59');
+  });
+
+  it('a flapping feed (success/failure alternating) does not grow the list', async () => {
+    // Venue wifi that drops every other poll defeats a consecutive-failure
+    // guard: the streak flag resets on each success, so every failure would
+    // otherwise append a fresh identical toast (measured ~900 over 5 hours).
+    const files = smallFiles();
+    let runsFetches = 0;
+    const impl = (async (input: RequestInfo | URL) => {
+      const url = String(input);
+      const path = url.split('?')[0];
+      if (path.endsWith('runs.json')) {
+        runsFetches += 1;
+        if (runsFetches % 2 === 0) throw new Error('ECONNRESET');
+      }
+      for (const [suffix, value] of Object.entries(files)) {
+        if (path.endsWith(suffix)) {
+          const body = typeof value === 'function' ? (value as () => unknown)() : value;
+          return new Response(JSON.stringify(body), {
+            status: 200,
+            headers: { 'Content-Type': 'application/json' },
+          });
+        }
+      }
+      return new Response('not found', { status: 404, statusText: 'Not Found' });
+    }) as typeof fetch;
+
+    const store = createAppStore({
+      fetchImpl: impl,
+      scheduler: makeScheduler().scheduler,
+      createWebSocket: makeWsStub().factory,
+      rng: () => 0.99,
+    });
+    await store.getState().boot('');
+    const before = store.getState().systemMessages.length;
+
+    for (let i = 0; i < 40; i += 1) {
+      await store.getState().pollNow();
+    }
+
+    // The failures really happened…
+    expect(runsFetches).toBeGreaterThan(20);
+    // …and collapsed into a single row carrying a repeat count.
+    const added = store.getState().systemMessages.slice(before);
+    expect(added).toHaveLength(1);
+    expect(added[0].repeats ?? 1).toBeGreaterThan(1);
+  });
+});
+
+// ---------------------------------------------------------------------------
 // Replay bounds (r= / time=)
 // ---------------------------------------------------------------------------
 

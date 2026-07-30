@@ -342,6 +342,13 @@
   overflow-wrap: anywhere;
 }
 
+.kr-sysmsg__repeats {
+  flex-shrink: 0;
+  font-variant-numeric: tabular-nums;
+  font-weight: 700;
+  opacity: 0.75;
+}
+
 .kr-sysmsg__close {
   flex-shrink: 0;
   display: inline-flex;

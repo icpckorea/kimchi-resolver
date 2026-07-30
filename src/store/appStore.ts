@@ -61,7 +61,15 @@ export interface SystemMessage {
   id: number;
   level: SystemMessageLevel;
   text: string;
+  /** Times this identical message recurred; absent or 1 means "once". */
+  repeats?: number;
 }
+
+/**
+ * Hard cap on the message list. An unattended contest can generate hundreds of
+ * distinct failures; the oldest are dropped rather than growing without bound.
+ */
+const MAX_SYSTEM_MESSAGES = 20;
 
 /** One applied (displayed) run — the dashboard feed unit. Newest first. */
 export interface JudgeEvent {
@@ -247,9 +255,34 @@ export function createAppStore(deps: StoreDeps = {}): AppStore {
 
   return createStore<AppState>()((set, get) => {
     // -- system messages ------------------------------------------------------
+    /**
+     * Append a system message, collapsing repeats and capping the list.
+     *
+     * A 5-hour unattended run on flapping venue wifi alternates success and
+     * failure, which defeats any consecutive-failure guard: measured at ~900
+     * identical "Fetching runs failed" toasts over one contest, stacked over
+     * the board and never released. Identical text bumps a repeat counter
+     * instead of adding a row, and the list is hard-capped.
+     */
     function addMessage(level: SystemMessageLevel, text: string): void {
-      const message: SystemMessage = { id: nextMessageId++, level, text };
-      set((state) => ({ systemMessages: [...state.systemMessages, message] }));
+      set((state) => {
+        const existing = state.systemMessages.find(
+          (m) => m.level === level && m.text === text,
+        );
+        if (existing !== undefined) {
+          return {
+            systemMessages: state.systemMessages.map((m) =>
+              m === existing ? { ...m, repeats: (m.repeats ?? 1) + 1 } : m,
+            ),
+          };
+        }
+        const message: SystemMessage = { id: nextMessageId++, level, text };
+        const next = [...state.systemMessages, message];
+        return {
+          systemMessages:
+            next.length > MAX_SYSTEM_MESSAGES ? next.slice(-MAX_SYSTEM_MESSAGES) : next,
+        };
+      });
     }
 
     // -- feeder-derived state -------------------------------------------------
@@ -492,6 +525,9 @@ export function createAppStore(deps: StoreDeps = {}): AppStore {
           baseUrl: config.source.baseUrl,
           contestId: config.source.contestId,
           auth: config.source.auth,
+          // Adapter diagnoses (unknown judgement type, unmapped country code,
+          // org-less teams) must reach the operator, not just the console.
+          onWarning: (text) => addMessage('warning', text),
           ...common,
         });
       }
