@@ -15,7 +15,7 @@ import { Header, formatClock } from '@ui/chrome/Header';
 import { Dashboard } from '@ui/chrome/Dashboard';
 import { SystemMessages } from '@ui/chrome/SystemMessages';
 import { useDesktopNotifications } from '@ui/chrome/useDesktopNotifications';
-import { DASHBOARD_STORAGE_KEY, resetChromeUi } from '@ui/chrome/chromeUiState';
+import { DASHBOARD_STORAGE_KEY, resetChromeUi, useChromeUi } from '@ui/chrome/chromeUiState';
 
 // ---------------------------------------------------------------------------
 // Fixtures + harness
@@ -256,6 +256,38 @@ describe('Header', () => {
     fireEvent.click(getByLabelText('Previous page'));
     expect(getByText('page 1/2')).toBeTruthy();
   });
+
+  it('paginates the FILTERED standings and resets the page when the query changes', async () => {
+    const store = await bootStore({
+      ...smallFiles(),
+      'config.json': { pagination: true, paginationSize: 2 },
+    });
+    const { getByText, getByLabelText } = render(<Header store={store} />);
+
+    // Go to the last page of the unfiltered list…
+    fireEvent.click(getByLabelText('Next page'));
+    expect(getByText('page 2/2')).toBeTruthy();
+
+    // …then search: 'One' matches a single team. The page label must follow
+    // the filtered count (the same list Scoreboard paginates) and the stored
+    // page must reset to 0 so board and header agree.
+    fireEvent.change(getByLabelText('Search teams'), { target: { value: 'One' } });
+    await act(async () => {
+      await new Promise((resolve) => setTimeout(resolve, 150));
+    });
+    expect(store.getState().config.searchQuery).toBe('One');
+    expect(useChromeUi.getState().page).toBe(0);
+    expect(getByText('page 1/1')).toBeTruthy();
+    expect((getByLabelText('Previous page') as HTMLButtonElement).disabled).toBe(true);
+    expect((getByLabelText('Next page') as HTMLButtonElement).disabled).toBe(true);
+
+    // Clearing the query restores the full pagination on page 1.
+    fireEvent.change(getByLabelText('Search teams'), { target: { value: '' } });
+    await act(async () => {
+      await new Promise((resolve) => setTimeout(resolve, 150));
+    });
+    expect(getByText('page 1/2')).toBeTruthy();
+  });
 });
 
 // ---------------------------------------------------------------------------
@@ -295,8 +327,9 @@ describe('Dashboard', () => {
     const { container, getByText } = render(<Dashboard store={store} />);
 
     expect(dashboardRunIds(container)).toEqual(['6', '5', '4', '3', '2', '1']);
-    expect(getByText('One got YES on B! (50 min.)')).toBeTruthy();
-    expect(getByText('Two got NO on B (30 min.)')).toBeTruthy();
+    // Original spotboard wording: 'Team ' prefix + '!' for every verdict.
+    expect(getByText('Team One got YES on B! (50 min.)')).toBeTruthy();
+    expect(getByText('Team Two got NO on B! (30 min.)')).toBeTruthy();
     // Each entry carries a tinted balloon.
     expect(container.querySelectorAll('.kr-dash-item__balloon')).toHaveLength(6);
     const failed = container.querySelector('[data-run-id="4"]');
@@ -348,6 +381,9 @@ describe('Dashboard', () => {
     expect(container.querySelector('[data-run-id="4"]')?.className).toContain(
       'kr-dash-item--pending',
     );
+    expect(container.querySelector('[data-run-id="4"]')?.textContent).toContain(
+      'Team Two has submitted B!',
+    );
 
     // The re-poll judges run 4 as accepted.
     const judged = smallRuns();
@@ -366,7 +402,7 @@ describe('Dashboard', () => {
       'kr-dash-item--accepted',
     );
     expect(container.querySelector('[data-run-id="4"]')?.textContent).toContain(
-      'Two got YES on B!',
+      'Team Two got YES on B!',
     );
   });
 
@@ -485,6 +521,38 @@ describe('useDesktopNotifications', () => {
       await Promise.resolve();
     });
     expect(created).toHaveLength(0);
+  });
+
+  it('warns once and disables itself when the constructor throws (Android Chrome)', async () => {
+    // Chrome for Android: page-context Notification exists, permission can be
+    // 'granted', but construction throws (service worker required).
+    class ThrowingNotification {
+      static permission: NotificationPermission = 'granted';
+      static requestPermission = vi.fn(async (): Promise<NotificationPermission> => 'granted');
+      constructor() {
+        throw new TypeError('Illegal constructor');
+      }
+    }
+    vi.stubGlobal('Notification', ThrowingNotification);
+    const store = await bootStore(smallFiles(), '?r=3');
+    const { result } = renderHook(() => useDesktopNotifications(store));
+
+    act(() => {
+      result.current.toggle();
+    });
+    expect(result.current.enabled).toBe(true);
+
+    // Feed the two accepted runs (5 and 6): no unhandled throw, one warning,
+    // and the toggle switches itself off.
+    await act(async () => {
+      store.getState().feedAllQueued();
+      await Promise.resolve();
+    });
+    expect(result.current.enabled).toBe(false);
+    const warnings = store
+      .getState()
+      .systemMessages.filter((m) => m.text.includes('Desktop notifications are unavailable'));
+    expect(warnings).toHaveLength(1);
   });
 
   it('reports unsupported browsers through a system message', async () => {

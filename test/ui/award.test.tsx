@@ -9,6 +9,7 @@
  * completes each flip via its fallback timer at 2× the flip duration.
  * All timeline math below uses that worst case.
  */
+import { StrictMode } from 'react';
 import { act, cleanup, fireEvent, render, screen, within } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
@@ -19,7 +20,9 @@ import {
   BUSY_HARD_TIMEOUT_MS,
   FINALE_HOLD_MS,
   GACHA_SHAKE_MS,
+  accumulateDisplay,
   matchAnimationSpeed,
+  moveUpDurationSec,
 } from '@ui/award/revealDriver';
 
 // ---------------------------------------------------------------------------
@@ -107,9 +110,12 @@ const fetchImpl: typeof fetch = async (input) => {
 
 const noopScheduler = { setInterval: () => 0, clearInterval: () => {} };
 
-async function bootAwardStore(rng: () => number = () => 0.99): Promise<AppStore> {
+async function bootAwardStore(
+  rng: () => number = () => 0.99,
+  search = '?award=true&r=2',
+): Promise<AppStore> {
   const store = createAppStore({ fetchImpl, scheduler: noopScheduler, rng });
-  await store.getState().boot('?award=true&r=2');
+  await store.getState().boot(search);
   expect(store.getState().status).toBe('ready');
   expect(store.getState().mode).toBe('award');
   return store;
@@ -190,13 +196,86 @@ describe('parseAwardsJson', () => {
 });
 
 describe('matchAnimationSpeed', () => {
-  it('matches the first entry whose minSolved is satisfied', () => {
+  it('matches the satisfied entry with the largest minSolved', () => {
     const speeds = [
       { minSolved: 10, fastFlip: 1, slowFlip: 2, moveUpMsPerRow: 3 },
       { minSolved: 0, fastFlip: 4, slowFlip: 5, moveUpMsPerRow: 6 },
     ];
     expect(matchAnimationSpeed(speeds, 12).fastFlip).toBe(1);
     expect(matchAnimationSpeed(speeds, 3).fastFlip).toBe(4);
+  });
+
+  it('is order-independent: an ascending config must not shadow higher bands', () => {
+    // The original required minSolved-descending order; a config written
+    // ascending silently matched the catch-all for every team (spec §6:
+    // trap removed).
+    const ascending = [
+      { minSolved: 0, fastFlip: 4, slowFlip: 5, moveUpMsPerRow: 6 },
+      { minSolved: 10, fastFlip: 1, slowFlip: 2, moveUpMsPerRow: 3 },
+    ];
+    expect(matchAnimationSpeed(ascending, 12).fastFlip).toBe(1);
+    expect(matchAnimationSpeed(ascending, 10).fastFlip).toBe(1);
+    expect(matchAnimationSpeed(ascending, 9).fastFlip).toBe(4);
+  });
+});
+
+describe('moveUpDurationSec', () => {
+  it('derives the layout-move duration from the band moveUpMsPerRow', () => {
+    const speed = { minSolved: 0, fastFlip: 300, slowFlip: 700, moveUpMsPerRow: 200 };
+    expect(moveUpDurationSec(3, speed)).toBeCloseTo(0.6);
+    expect(moveUpDurationSec(1, { ...speed, moveUpMsPerRow: 100 })).toBeCloseTo(0.1);
+    // Clamped to a sane range.
+    expect(moveUpDurationSec(100, speed)).toBe(3);
+    expect(moveUpDurationSec(1, { ...speed, moveUpMsPerRow: 10 })).toBe(0.05);
+    // No move → small default (irrelevant, nothing animates).
+    expect(moveUpDurationSec(0, speed)).toBe(0.3);
+  });
+});
+
+describe('accumulateDisplay with pre-freeze offsets', () => {
+  const RUN = { id: '1', teamId: 't', problemId: 'p', seq: 1 };
+  const fail = (minute: number) => ({
+    ...RUN,
+    minute,
+    verdict: 'failed' as const,
+    penaltyCounts: true,
+  });
+  const yes = (minute: number) => ({
+    ...RUN,
+    minute,
+    verdict: 'accepted' as const,
+    penaltyCounts: false,
+  });
+
+  it('continues the true cumulative counters over pre-freeze attempts', () => {
+    // Cell with 2 pre-freeze penalized fails + hidden [F, F, A]:
+    // the frozen '?5' must continue '−3' → '−4' → '+4' with no jump.
+    const runs = [fail(100), fail(101), yes(102)];
+    const preFreeze = { attempts: 2, failedAttempts: 2 };
+    expect(accumulateDisplay(runs, 0, preFreeze)).toMatchObject({
+      verdict: 'failed',
+      attempts: 3,
+      failedAttempts: 3,
+    });
+    expect(accumulateDisplay(runs, 1, preFreeze)).toMatchObject({
+      verdict: 'failed',
+      attempts: 4,
+      failedAttempts: 4,
+    });
+    expect(accumulateDisplay(runs, 2, preFreeze)).toMatchObject({
+      verdict: 'accepted',
+      attempts: 5,
+      failedAttempts: 4,
+      solvedMinute: 102,
+    });
+  });
+
+  it('defaults to zero offsets', () => {
+    expect(accumulateDisplay([yes(50)], 0)).toMatchObject({
+      verdict: 'accepted',
+      attempts: 1,
+      failedAttempts: 0,
+    });
   });
 });
 
@@ -373,15 +452,18 @@ describe('finale effect', () => {
     renderAward(store);
     await driveToLastReveal(store);
 
-    // Finale overlay + zoomed cell + rainbow are on during the sequence.
+    // Finale overlay + zoomed cell are on during the sequence, but the
+    // rainbow is the finale VARIANT of the gacha effect (spec §7): the gacha
+    // roll missed (gacha:false), so no rainbow may play.
     expect(screen.getByTestId('finale-dim')).toBeTruthy();
-    expect(screen.getByTestId('finale-rainbow')).toBeTruthy();
+    expect(screen.queryByTestId('finale-rainbow')).toBeNull();
     expect(screen.getByTestId('award-cell-2-1').className).toContain('award-cell-finale');
 
     // Single failed run → one slow flip (2× fallback in jsdom); the
     // spotlight/zoom then holds for FINALE_HOLD_MS before restoring.
     await advanceMs(SLOW * 2 + 50);
     expect(screen.getByTestId('finale-dim')).toBeTruthy();
+    expect(screen.queryByTestId('finale-rainbow')).toBeNull();
 
     await advanceMs(FINALE_HOLD_MS + 100);
     expect(screen.queryByTestId('finale-dim')).toBeNull();
@@ -403,9 +485,149 @@ describe('finale effect', () => {
     expect(screen.getByTestId('finale-rainbow')).toBeTruthy();
     expect(screen.queryByTestId('gacha-sparkle')).toBeNull();
 
-    // After shake + final flip the shake stops (cell back at rest).
+    // After shake + final flip the shake stops (cell back at rest) and the
+    // rainbow stops flowing with it ("진동이 멈출 때까지"); the spotlight/zoom
+    // keeps holding.
     await advanceMs(GACHA_SHAKE_MS / 2 + SLOW * 2 + 100);
     expect(screen.getByTestId('award-cell-2-1').className).not.toContain('award-cell-gacha');
+    expect(screen.queryByTestId('finale-rainbow')).toBeNull();
+    expect(screen.getByTestId('finale-dim')).toBeTruthy();
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Entry-less finalize: no invisible slide latch (spec §6)
+// ---------------------------------------------------------------------------
+
+describe('finalize without an awards.json entry', () => {
+  it('auto-dismisses the machine slide so the next advance key works', async () => {
+    const store = await bootAwardStore();
+    // Only team 2 has an award entry; team 3 (finalized first) has none.
+    render(<AwardView store={store} awards={[awardsFixture[1]]} />);
+
+    await pressKey('Enter'); // focus team 3
+    await pressKey('Enter'); // reveal team 3 B
+    await finishSequence();
+    await pressKey('Enter'); // finalize team 3 — no entry → NO slide
+    expect(stageOf(store, '3')).toBe('finalized');
+    expect(screen.queryByTestId('award-slide')).toBeNull();
+    // The machine slide was auto-dismissed, not left latched invisibly.
+    expect(store.getState().awardMachine?.currentSlideTeamId).toBeNull();
+
+    // The very next advance key (presenter remote: no Escape!) must work.
+    await pressKey('PageDown');
+    expect(stageOf(store, '2')).toBe('focused');
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Reveal spoiler prevention (deferred snapshot commit)
+// ---------------------------------------------------------------------------
+
+describe('reveal spoiler prevention', () => {
+  it('keeps the pre-reveal standings on screen until the sequence completes', async () => {
+    const store = await bootAwardStore();
+    renderAward(store);
+
+    await pressKey('Enter'); // focus team 3
+    await pressKey('Enter'); // reveal team 3 B (hidden Yes) — sequence starts
+
+    // The machine already swapped the real runs in…
+    expect(store.getState().awardMachine?.snapshot.byTeam.get('3')?.solved).toBe(1);
+    // …but the RENDERED standings must not spoil the verdict: solved spine
+    // and penalty stay at their pre-reveal values while the cell flips.
+    const row = screen.getByTestId('award-row-3');
+    expect(row.getAttribute('data-solved')).toBe('0');
+    expect(row.querySelector('.team-penalty')?.textContent).toContain('0');
+
+    await finishSequence();
+    // Sequence over → the post-reveal snapshot is committed.
+    expect(screen.getByTestId('award-row-3').getAttribute('data-solved')).toBe('1');
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Pre-freeze attempts: reveal counters + gacha trigger (spec §6 net runs)
+// ---------------------------------------------------------------------------
+
+describe('reveal with pre-freeze attempts (r=5: 3 revealed fails on team 3 B)', () => {
+  function verdictOf(testId: string): string | null | undefined {
+    return screen.getByTestId(testId).querySelector('.problem-result')?.getAttribute('data-verdict');
+  }
+  function attemptsOf(testId: string): string {
+    return screen.getByTestId(testId).querySelector('.problem-attempts')?.textContent ?? '';
+  }
+
+  it('continues the frozen counters and counts pre-freeze runs toward gacha', async () => {
+    // r=5: runs 3..5 (3 fails on team 3 B) are revealed pre-freeze; runs
+    // 6..10 (4 fails + Yes) stay hidden. Net attempts = 3 + 5 = 8 → the
+    // gacha requirement (8) is met even though only 5 runs are queued.
+    const store = await bootAwardStore(() => 0.99, '?award=true&r=5');
+    renderAward(store);
+
+    await pressKey('Enter'); // focus team 3
+    // Frozen cell shows '?8' (3 pre-freeze + 5 masked).
+    expect(attemptsOf('award-cell-3-1')).toBe('?8');
+
+    await pressKey('Enter'); // reveal
+    // Until the first flip midpoint the frozen display persists — no jump
+    // down to the hidden-only count ('?5').
+    expect(verdictOf('award-cell-3-1')).toBe('pending');
+    expect(attemptsOf('award-cell-3-1')).toBe('?8');
+
+    // First fast flip (fallback at 2×FAST): true cumulative '−4', not '−1'.
+    await advanceMs(FAST * 2 + 50);
+    expect(verdictOf('award-cell-3-1')).toBe('failed');
+    expect(attemptsOf('award-cell-3-1')).toBe('−4');
+
+    // Second fast flip → '−5'.
+    await advanceMs(FAST * 2);
+    expect(attemptsOf('award-cell-3-1')).toBe('−5');
+
+    // After all 4 fast flips the gacha shake fires (8 net attempts ≥ 8,
+    // final Yes → always) even though only 5 runs were queued post-freeze.
+    await advanceMs(2 * FAST * 2 + GACHA_SHAKE_MS / 2);
+    expect(attemptsOf('award-cell-3-1')).toBe('−7');
+    expect(screen.getByTestId('award-cell-3-1').className).toContain('award-cell-gacha');
+
+    // Final slow flip: '+7' (7 penalized fails before the Yes), no jump.
+    await advanceMs(GACHA_SHAKE_MS / 2 + SLOW * 2 + 200);
+    expect(verdictOf('award-cell-3-1')).toBe('accepted');
+    expect(attemptsOf('award-cell-3-1')).toBe('+7');
+  });
+});
+
+// ---------------------------------------------------------------------------
+// StrictMode dev double-mount: no early verdict leak
+// ---------------------------------------------------------------------------
+
+describe('StrictMode reveal playback', () => {
+  it('keeps the cell pending at flip start despite the double-invoked effect', async () => {
+    const store = await bootAwardStore();
+    render(
+      <StrictMode>
+        <AwardView store={store} awards={awardsFixture} />
+      </StrictMode>,
+    );
+
+    await pressKey('Enter'); // focus team 3
+    await pressKey('Enter'); // reveal — playback effect runs, cleans up, reruns
+
+    // Without the cancelled-midpoint guard the superseded first run's pending
+    // midpoint fires at the restart, showing run 1's verdict instantly.
+    const verdict = screen
+      .getByTestId('award-cell-3-1')
+      .querySelector('.problem-result')
+      ?.getAttribute('data-verdict');
+    expect(verdict).toBe('pending');
+
+    await finishSequence();
+    expect(
+      screen
+        .getByTestId('award-cell-3-1')
+        .querySelector('.problem-result')
+        ?.getAttribute('data-verdict'),
+    ).toBe('accepted');
   });
 });
 

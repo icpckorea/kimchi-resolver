@@ -55,6 +55,7 @@ export function Scoreboard(props: ScoreboardProps) {
   const storeConfig = useAppStore((state) => state.config);
   const storeProblems = useAppStore((state) => state.contest?.problems);
   const storeOrgs = useAppStore((state) => state.orgs);
+  const lastAppliedFlips = useAppStore((state) => state.lastAppliedFlips);
 
   const snapshot = props.snapshot !== undefined ? props.snapshot : storeSnapshot;
   const config = props.config ?? storeConfig;
@@ -70,6 +71,17 @@ export function Scoreboard(props: ScoreboardProps) {
     () => (standings === undefined ? [] : filterStandings(standings, searchQuery)),
     [standings, searchQuery],
   );
+
+  // Live-fed runs flip their cells (spec §5 "애니메이션과 함께", §7 cell flip);
+  // config.animation=false falls back to the instant swap.
+  const flipCells = useMemo(() => {
+    if (!config.animation || lastAppliedFlips === null) return null;
+    const map = new Map<string, number>();
+    for (const cell of lastAppliedFlips.cells) {
+      map.set(`${cell.teamId} ${cell.problemId}`, lastAppliedFlips.flipId);
+    }
+    return map;
+  }, [config.animation, lastAppliedFlips]);
 
   const pageSize = config.pagination ? config.paginationSize : Number.POSITIVE_INFINITY;
   const pageCount = Math.max(1, Math.ceil(filtered.length / pageSize) || 1);
@@ -98,6 +110,7 @@ export function Scoreboard(props: ScoreboardProps) {
           followed={followTeamId !== null && standing.team.id === followTeamId}
           apacStar={props.apacStars?.get(standing.team.id) ?? null}
           manualLabels={props.manualLabels?.get(standing.team.id) ?? []}
+          flipCells={flipCells}
           spineFirst={index === 0 || visible[index - 1].solved !== standing.solved}
           spineLast={
             index === visible.length - 1 || visible[index + 1].solved !== standing.solved

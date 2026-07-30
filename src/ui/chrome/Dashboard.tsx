@@ -39,17 +39,19 @@ export function dedupeEvents(events: readonly JudgeEvent[]): JudgeEvent[] {
   );
 }
 
+/** Original spotboard wording: "Team {name} got YES/NO on {P}! (N min.)". */
 function eventText(run: Run, team: Team | undefined, problem: Problem | undefined): string {
-  const teamName = team?.name ?? `Team ${run.teamId}`;
+  // Raw id in the fallback — the unconditional 'Team ' prefix supplies the word.
+  const teamName = team?.name ?? run.teamId;
   const label = problem?.label ?? run.problemId;
   const minute = `(${run.minute} min.)`;
   switch (run.verdict) {
     case 'accepted':
-      return `${teamName} got YES on ${label}! ${minute}`;
+      return `Team ${teamName} got YES on ${label}! ${minute}`;
     case 'failed':
-      return `${teamName} got NO on ${label} ${minute}`;
+      return `Team ${teamName} got NO on ${label}! ${minute}`;
     case 'pending':
-      return `${teamName} is judging on ${label} ${minute}`;
+      return `Team ${teamName} has submitted ${label}! ${minute}`;
   }
 }
 

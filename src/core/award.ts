@@ -70,8 +70,25 @@ export function createAwardMachine(opts: CreateAwardMachineOptions): AwardMachin
   // Frozen projection.
   // -------------------------------------------------------------------------
   const acceptedCells = new Set<string>();
-  for (const run of opts.revealedRuns) {
-    if (run.verdict === 'accepted') acceptedCells.add(cellKey(run.teamId, run.problemId));
+  /**
+   * cell key → net pre-freeze runs (counted up to and including the first
+   * accepted run, in seq order). Cells accepted pre-freeze never get a
+   * reveal queue, but the counts of still-open cells feed the gacha
+   * requirement and the reveal display offsets (spec §6: "그 셀의 시도
+   * 횟수(net runs)" includes pre-freeze attempts).
+   */
+  const preFreezeNet = new Map<string, { attempts: number; failedAttempts: number }>();
+  for (const run of [...opts.revealedRuns].sort((a, b) => a.seq - b.seq)) {
+    const key = cellKey(run.teamId, run.problemId);
+    if (acceptedCells.has(key)) continue; // past the first accepted → not a net run
+    let counts = preFreezeNet.get(key);
+    if (counts === undefined) {
+      counts = { attempts: 0, failedAttempts: 0 };
+      preFreezeNet.set(key, counts);
+    }
+    counts.attempts += 1;
+    if (run.verdict === 'failed' && run.penaltyCounts) counts.failedAttempts += 1;
+    if (run.verdict === 'accepted') acceptedCells.add(key);
   }
 
   const visibleRuns: Run[] = opts.revealedRuns.slice();
@@ -206,9 +223,15 @@ export function createAwardMachine(opts: CreateAwardMachineOptions): AwardMachin
     }
     const finalVerdict = runs[runs.length - 1].verdict;
 
+    const preFreeze = preFreezeNet.get(key) ?? { attempts: 0, failedAttempts: 0 };
     const isFinale = remainingBefore === 1;
     let gacha = false;
-    if (!suppressEffects && (runs.length >= config.gachaEffectRequirement || isFinale)) {
+    // The gacha requirement counts the cell's FULL net attempts (spec §6):
+    // pre-freeze runs on the cell plus the queued (net-truncated) reveals.
+    if (
+      !suppressEffects &&
+      (preFreeze.attempts + runs.length >= config.gachaEffectRequirement || isFinale)
+    ) {
       // Yes → always; No → probability roll (fake-out), deterministic via injected rng.
       gacha = finalVerdict === 'accepted' ? true : rng() < config.gachaEffectForNoRatio / 100;
     }
@@ -218,6 +241,7 @@ export function createAwardMachine(opts: CreateAwardMachineOptions): AwardMachin
       teamId,
       problemId,
       runs,
+      preFreeze: { ...preFreeze },
       effect: { gacha, finale: suppressEffects ? false : isFinale },
     };
   }
@@ -253,6 +277,9 @@ export function createAwardMachine(opts: CreateAwardMachineOptions): AwardMachin
     },
     get teamStage(): ReadonlyMap<string, AwardTeamStage> {
       return teamStage;
+    },
+    get currentFocusedTeamId() {
+      return focusedTeamId;
     },
     get currentSlideTeamId() {
       return slideTeamId;

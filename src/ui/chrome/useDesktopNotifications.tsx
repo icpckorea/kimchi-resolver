@@ -41,10 +41,15 @@ function getNotificationCtor(): NotificationCtor | null {
   return typeof holder.Notification === 'function' ? holder.Notification : null;
 }
 
-/** Build and show one notification for an accepted run. */
-function showNotification(store: AppStore, run: Run, autoCloseMs: number): void {
+/**
+ * Build and show one notification for an accepted run. Returns false only
+ * when the constructor threw — some browsers (Chrome for Android) expose a
+ * page-context Notification whose constructor throws a TypeError because
+ * notifications must go through a ServiceWorkerRegistration.
+ */
+function showNotification(store: AppStore, run: Run, autoCloseMs: number): boolean {
   const ctor = getNotificationCtor();
-  if (ctor === null || ctor.permission !== 'granted') return;
+  if (ctor === null || ctor.permission !== 'granted') return true; // nothing to show, not an error
 
   const state = store.getState();
   const team = state.contest?.teams.get(run.teamId);
@@ -58,11 +63,20 @@ function showNotification(store: AppStore, run: Run, autoCloseMs: number): void 
   const rankPart = standing === undefined ? '' : `, now ranked #${standing.icpcRank}`;
   const body = `Run ${run.id} at ${run.minute} min. — attempt ${attempts}${rankPart}`;
 
-  const notification = new ctor(title, { body, tag: `kimchi-run-${run.id}` });
-  // Standard close() only — the original's cancel() bug is not ported.
-  setTimeout(() => {
-    notification.close();
-  }, autoCloseMs);
+  try {
+    const notification = new ctor(title, { body, tag: `kimchi-run-${run.id}` });
+    // Standard close() only — the original's cancel() bug is not ported.
+    setTimeout(() => {
+      try {
+        notification.close();
+      } catch {
+        // Closing an already-gone notification is a no-op.
+      }
+    }, autoCloseMs);
+    return true;
+  } catch {
+    return false;
+  }
 }
 
 export function useDesktopNotifications(
@@ -81,6 +95,8 @@ export function useDesktopNotifications(
   enabledRef.current = enabled;
   const autoCloseRef = useRef(options.autoCloseMs ?? NOTIFICATION_AUTO_CLOSE_MS);
   autoCloseRef.current = options.autoCloseMs ?? NOTIFICATION_AUTO_CLOSE_MS;
+  /** One system message per session when construction turns out impossible. */
+  const failureReportedRef = useRef(false);
 
   useEffect(() => {
     const unsubscribe = store.getState().subscribeTeamUpdated((event) => {
@@ -89,7 +105,22 @@ export function useDesktopNotifications(
       if (store.getState().mode !== 'spectator') return;
       // The store emits just before it recomputes the snapshot; defer one
       // microtask so the notification body reports the NEW rank.
-      queueMicrotask(() => showNotification(store, event.run, autoCloseRef.current));
+      queueMicrotask(() => {
+        if (!enabledRef.current) return;
+        if (showNotification(store, event.run, autoCloseRef.current)) return;
+        // Constructor threw (e.g. Chrome for Android) — never spam an
+        // unhandled error per run: warn once and switch the toggle off.
+        setEnabled(false);
+        if (!failureReportedRef.current) {
+          failureReportedRef.current = true;
+          store
+            .getState()
+            .addSystemMessage(
+              'warning',
+              'Desktop notifications are unavailable in this browser; the toggle has been turned off.',
+            );
+        }
+      });
     });
     return unsubscribe;
   }, [store]);

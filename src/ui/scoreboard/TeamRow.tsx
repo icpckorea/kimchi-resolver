@@ -7,16 +7,17 @@
  * mimics the original move-up feel; config.animation=false renders with
  * layout={false} (no animation).
  */
-import { useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { motion, type Transition } from 'framer-motion';
 
-import type { OrgsIndex, Problem, TeamStanding } from '@core/types';
+import type { CellState, OrgsIndex, Problem, TeamStanding } from '@core/types';
 import type { ResolvedConfig } from '@core/config';
 import { ApacStar, FlagIcon, type ApacStarTier } from '@ui/icons';
 
 import { Badges } from './Badges';
 import { Balloons } from './Balloons';
 import { ProblemCell } from './ProblemCell';
+import { useCellFlip } from './useCellFlip';
 import { cls, ordinalSuffix, solvedSpineColor } from './util';
 
 /** Derivation comes from the APAC rules (core); the row just renders it. */
@@ -28,6 +29,71 @@ export interface ApacStarInfo {
 
 /** Spring tuned to the original rank move-up feel (~100-200ms per row). */
 const ROW_SPRING: Transition = { type: 'spring', stiffness: 420, damping: 40, mass: 0.9 };
+
+/** Flip duration for live-fed runs on the spectator board (spec §5/§7). */
+export const LIVE_FLIP_MS = 600;
+
+/** Content equality of the fields ProblemCell renders. */
+function sameCellDisplay(a: CellState, b: CellState): boolean {
+  return (
+    a.verdict === b.verdict &&
+    a.attempts === b.attempts &&
+    a.failedAttempts === b.failedAttempts &&
+    a.solvedMinute === b.solvedMinute &&
+    a.isFirstSolve === b.isFirstSolve &&
+    a.isLastSolve === b.isLastSolve &&
+    a.isContestFirstSolve === b.isContestFirstSolve &&
+    a.isContestLastSolve === b.isContestLastSolve
+  );
+}
+
+interface LiveCellProps {
+  problem: Problem;
+  cell: CellState;
+  showFirstSolve: boolean;
+  /** config.animation — false swaps instantly (replay-style). */
+  animate: boolean;
+  /** Flip batch id when this cell's run was just applied live; else null. */
+  flipId: number | null;
+}
+
+/**
+ * ProblemCell wrapper that plays the 3D cell flip when the cell's run was
+ * just applied by the live feed (autoplay tick / feed buttons), swapping the
+ * verdict at the flip midpoint (spec §7, original behavior). Any other
+ * content change (initial replay, derived last-solve flags moving to another
+ * cell) is applied instantly.
+ */
+function LiveCell({ problem, cell, showFirstSolve, animate, flipId }: LiveCellProps) {
+  const ctl = useCellFlip(LIVE_FLIP_MS);
+  const [displayed, setDisplayed] = useState(cell);
+  /** The cell content we last committed to (instantly or via a midpoint). */
+  const targetRef = useRef(cell);
+  /** Last flip batch handled; seeded so a mount inside an old batch is quiet. */
+  const handledFlipRef = useRef(flipId);
+  const flip = ctl.flip;
+
+  useEffect(() => {
+    if (animate && flipId !== null && flipId !== handledFlipRef.current) {
+      handledFlipRef.current = flipId;
+      targetRef.current = cell;
+      void flip(() => setDisplayed(cell));
+    } else if (!sameCellDisplay(targetRef.current, cell)) {
+      handledFlipRef.current = flipId;
+      targetRef.current = cell;
+      setDisplayed(cell);
+    }
+  }, [animate, cell, flip, flipId]);
+
+  return (
+    <ProblemCell
+      problem={problem}
+      cell={displayed}
+      showFirstSolve={showFirstSolve}
+      flip={ctl.flipping ? ctl.props : undefined}
+    />
+  );
+}
 
 function Rank({ value, className }: { value: number; className: string }) {
   return (
@@ -65,6 +131,8 @@ export interface TeamRowProps {
   /** First/last row of a same-solved-count band (rounded corner + visible count). */
   spineFirst?: boolean;
   spineLast?: boolean;
+  /** "teamId problemId" → flip batch id for just-applied live runs. */
+  flipCells?: ReadonlyMap<string, number> | null;
 }
 
 export function TeamRow({
@@ -77,6 +145,7 @@ export function TeamRow({
   manualLabels = [],
   spineFirst = false,
   spineLast = false,
+  flipCells = null,
 }: TeamRowProps) {
   const { team } = standing;
   const org = orgs[team.group];
@@ -146,11 +215,13 @@ export function TeamRow({
         {problems.map((problem) => {
           const cell = standing.cells.get(problem.id);
           return cell !== undefined ? (
-            <ProblemCell
+            <LiveCell
               key={problem.id}
               problem={problem}
               cell={cell}
               showFirstSolve={config.showFirstSolve}
+              animate={animate}
+              flipId={flipCells?.get(`${team.id} ${problem.id}`) ?? null}
             />
           ) : null;
         })}

@@ -201,6 +201,12 @@ export type AwardStepResult =
       problemId: string;
       /** Runs to animate, in order; last one carries the cell's final state here. */
       runs: Run[];
+      /**
+       * Net pre-freeze runs already applied to this cell (spec §6: the gacha
+       * trigger and the reveal counters use the cell's FULL net attempt
+       * count, i.e. preFreeze.attempts + runs.length).
+       */
+      preFreeze: { attempts: number; failedAttempts: number };
       effect: AwardRevealEffect;
     }
   | { type: 'finalize'; teamId: string; showSlide: boolean }
@@ -221,6 +227,12 @@ export interface AwardMachine {
   dismissSlide(): void;
   readonly remainingReveals: number;
   readonly teamStage: ReadonlyMap<string, AwardTeamStage>;
+  /**
+   * The single team currently holding the ceremony focus, or null. A team
+   * whose reveal moved it up keeps stage 'focused' (its identity stays
+   * revealed) — this getter is the source of truth for highlight/scroll.
+   */
+  readonly currentFocusedTeamId: string | null;
   readonly currentSlideTeamId: string | null;
   /** Snapshot of the currently-visible (partially revealed) standings. */
   readonly snapshot: Snapshot;

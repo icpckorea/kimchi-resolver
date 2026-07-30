@@ -153,6 +153,30 @@ describe('RunFeeder diff rules', () => {
     expect(feeder.ingest(result([run('1', { verdict: 'failed', penaltyCounts: true })]))).toBe(1);
   });
 
+  it('accepts a rejudgement that changes only penaltyCounts (CE -> WA, same minute/verdict)', () => {
+    const feeder = createRunFeeder(makeContest());
+    // First judged Compile Error: failed, no penalty.
+    feeder.ingest(result([run('1', { verdict: 'failed', penaltyCounts: false })]));
+    feeder.feedAll();
+    expect(feeder.appliedRuns[0].penaltyCounts).toBe(false);
+
+    // Rejudged Wrong Answer: same minute + verdict, but the failure now
+    // counts toward the 20-minute penalty — it must be re-queued.
+    expect(feeder.ingest(result([run('1', { verdict: 'failed', penaltyCounts: true })]))).toBe(1);
+    const refed = feeder.feedAll();
+    expect(refed).toHaveLength(1);
+    expect(feeder.appliedRuns).toHaveLength(1); // replaced in place, not duplicated
+    expect(feeder.appliedRuns[0].penaltyCounts).toBe(true);
+  });
+
+  it('penaltyCounts-only change is also detected while the run is still queued', () => {
+    const feeder = createRunFeeder(makeContest());
+    feeder.ingest(result([run('1', { verdict: 'failed', penaltyCounts: false })]));
+    expect(feeder.ingest(result([run('1', { verdict: 'failed', penaltyCounts: true })]))).toBe(1);
+    expect(feeder.queueLength).toBe(1); // replaced in place
+    expect(feeder.feedAll()[0].penaltyCounts).toBe(true);
+  });
+
   it('in-place replacement keeps the queue position', () => {
     const feeder = createRunFeeder(makeContest());
     feeder.ingest(

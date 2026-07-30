@@ -215,6 +215,21 @@ describe('parseConfig — bad values collected as errors, never thrown', () => {
     expect(config.source.type).toBe('spotboard');
   });
 
+  it('normalizes animationSpeeds to minSolved-descending order (spec §6: no ordering trap)', () => {
+    const { config, errors } = parseConfig({
+      award: {
+        animationSpeeds: [
+          { minSolved: 0, fastFlip: 300, slowFlip: 700, moveUpMsPerRow: 100 },
+          { minSolved: 10, fastFlip: 200, slowFlip: 800, moveUpMsPerRow: 200 },
+        ],
+      },
+    });
+    expect(errors).toHaveLength(0);
+    // An ascending config must not shadow the minSolved:10 band.
+    expect(config.award.animationSpeeds.map((s) => s.minSolved)).toEqual([10, 0]);
+    expect(config.award.animationSpeeds[0].fastFlip).toBe(200);
+  });
+
   it('invalid animationSpeeds entry restores the default table', () => {
     const { config, errors } = parseConfig({
       award: {

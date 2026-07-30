@@ -6,10 +6,11 @@
  * Mode rules: hidden entirely in award mode; in publish mode only the title
  * and the clock are shown.
  */
-import { useCallback, useEffect, useRef, useState, type ChangeEvent } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState, type ChangeEvent } from 'react';
 import { useStore } from 'zustand';
 
 import { appStore, type AppStore } from '@store/appStore';
+import { filterStandings } from '@ui/scoreboard';
 import {
   Activity,
   Bell,
@@ -58,8 +59,15 @@ export function Header({ store = appStore }: HeaderProps) {
   const playing = useStore(store, (state) => state.playing);
   const pagination = useStore(store, (state) => state.config.pagination);
   const paginationSize = useStore(store, (state) => state.config.paginationSize);
-  const teamCount = useStore(store, (state) => state.snapshot?.standings.length ?? 0);
+  const standings = useStore(store, (state) => state.snapshot?.standings ?? null);
   const storedQuery = useStore(store, (state) => state.config.searchQuery);
+
+  // Pagination must agree with the board: both paginate the SAME filtered
+  // list (Scoreboard applies filterStandings with the committed query).
+  const filteredTeamCount = useMemo(
+    () => (standings === null ? 0 : filterStandings(standings, storedQuery).length),
+    [standings, storedQuery],
+  );
 
   const notifications = useDesktopNotifications(store);
   const [dashboardVisible, toggleDashboard] = useDashboardVisibility(store);
@@ -81,6 +89,9 @@ export function Header({ store = appStore }: HeaderProps) {
         store.setState((state) => ({
           config: { ...state.config, searchQuery: value.trim() === '' ? null : value },
         }));
+        // A changed query changes the filtered page count — jump back to
+        // page 0 so the label and the rendered board stay in sync.
+        useChromeUi.getState().setPage(0);
       }, 100);
     },
     [store],
@@ -132,7 +143,7 @@ export function Header({ store = appStore }: HeaderProps) {
     );
   }
 
-  const pageCount = Math.max(1, Math.ceil(teamCount / paginationSize));
+  const pageCount = Math.max(1, Math.ceil(filteredTeamCount / paginationSize));
   const currentPage = Math.min(page, pageCount - 1);
 
   return (

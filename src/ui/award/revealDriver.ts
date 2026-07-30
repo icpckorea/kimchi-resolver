@@ -30,18 +30,32 @@ export const FINALE_HOLD_MS = 5000;
 export const BUSY_HARD_TIMEOUT_MS = 4000;
 
 /**
- * First entry whose minSolved the solved count satisfies (spec §6 — matched
- * in configured order, no descending-sort trap). Falls back to the spec
- * default table's catch-all row.
+ * The satisfied entry with the LARGEST minSolved, regardless of configured
+ * order (spec §6 — the original's "must be sorted descending" trap is
+ * removed; the config schema additionally normalizes to descending order).
+ * Falls back to the spec default table's catch-all row.
  */
 export function matchAnimationSpeed(
   speeds: readonly AnimationSpeed[],
   solved: number,
 ): AnimationSpeed {
+  let best: AnimationSpeed | null = null;
   for (const speed of speeds) {
-    if (solved >= speed.minSolved) return speed;
+    if (solved >= speed.minSolved && (best === null || speed.minSolved > best.minSolved)) {
+      best = speed;
+    }
   }
-  return DEFAULT_ANIMATION_SPEEDS[DEFAULT_ANIMATION_SPEEDS.length - 1];
+  return best ?? DEFAULT_ANIMATION_SPEEDS[DEFAULT_ANIMATION_SPEEDS.length - 1];
+}
+
+/**
+ * Row layout-move duration derived from the matched speed band's
+ * moveUpMsPerRow (spec §6/§7: per-row rank-move speed), clamped to a sane
+ * range. rowsMoved <= 0 returns a small default (no layout move plays).
+ */
+export function moveUpDurationSec(rowsMoved: number, speed: AnimationSpeed): number {
+  if (rowsMoved <= 0) return 0.3;
+  return Math.min(3, Math.max(0.05, (rowsMoved * speed.moveUpMsPerRow) / 1000));
 }
 
 /** Display override while a cell is mid-sequence. */
@@ -52,9 +66,18 @@ export interface RevealDisplay {
   solvedMinute: number | null;
 }
 
-/** Cumulative display state after runs[0..upto] have been shown. */
-export function accumulateDisplay(runs: readonly Run[], upto: number): RevealDisplay {
-  let failed = 0;
+/**
+ * Cumulative display state after runs[0..upto] have been shown. `preFreeze`
+ * carries the cell's net pre-freeze counts (spec §6): the counters shown
+ * mid-reveal are the TRUE cumulative totals, so a cell frozen at '?5' with 2
+ * earlier penalized fails continues '−3', '−4', … without jumping.
+ */
+export function accumulateDisplay(
+  runs: readonly Run[],
+  upto: number,
+  preFreeze: { attempts: number; failedAttempts: number } = { attempts: 0, failedAttempts: 0 },
+): RevealDisplay {
+  let failed = preFreeze.failedAttempts;
   let solvedMinute: number | null = null;
   for (let i = 0; i <= upto; i++) {
     const run = runs[i];
@@ -63,7 +86,7 @@ export function accumulateDisplay(runs: readonly Run[], upto: number): RevealDis
   }
   return {
     verdict: runs[upto].verdict,
-    attempts: upto + 1,
+    attempts: preFreeze.attempts + upto + 1,
     failedAttempts: failed,
     solvedMinute,
   };

@@ -14,7 +14,9 @@ import { createSpotboardSource } from '@core/ingest/spotboard';
 import { createRunFeeder } from '@core/feeder';
 import { applyUrlOverrides, defaultConfig, type ResolvedConfig } from '@core/config';
 
+import { appStore } from '@store/appStore';
 import { Scoreboard } from '@ui/scoreboard/Scoreboard';
+import { LIVE_FLIP_MS } from '@ui/scoreboard/TeamRow';
 import { Badges, autoLabelText } from '@ui/scoreboard/Badges';
 import { ProblemCell } from '@ui/scoreboard/ProblemCell';
 import { useCellFlip } from '@ui/scoreboard/useCellFlip';
@@ -563,7 +565,7 @@ describe('useCellFlip', () => {
     }
   });
 
-  it('settles (never hangs) when the component unmounts mid-flip', async () => {
+  it('settles (never hangs) when the component unmounts mid-flip, dropping the midpoint', async () => {
     const { result, unmount } = renderHook(() => useCellFlip(200));
     const midpoint = vi.fn();
     let promise!: Promise<void>;
@@ -572,7 +574,94 @@ describe('useCellFlip', () => {
     });
     unmount();
     await promise; // resolves via the unmount cleanup — no timers needed
-    expect(midpoint).toHaveBeenCalledTimes(1);
+    // A torn-down flip must NOT swap the verdict in early (StrictMode dev
+    // cleanup cycles re-run playback; the fresh run fires its own midpoints).
+    expect(midpoint).not.toHaveBeenCalled();
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Live-fed cell flip (spec §5: queued runs apply "애니메이션과 함께")
+// ---------------------------------------------------------------------------
+
+describe('live-fed cell flip', () => {
+  function flipFixture() {
+    const contest = makeContest([makeTeam('t1', 'Alpha', 'KAIST')], ['A']);
+    const r = runFactory();
+    const before = computeStandings(contest, []);
+    const after = computeStandings(contest, [r('t1', 'A', 10, 'accepted')]);
+    return { contest, before, after };
+  }
+
+  /** Drive the board from the store, like the real feed: snapshot and flip
+   *  batch land in ONE update (applyRuns runs in a single sync callback). */
+  function seed(config: ResolvedConfig, contest: Contest, snapshot: Snapshot) {
+    act(() => {
+      appStore.setState({ contest, snapshot, config, lastAppliedFlips: null });
+    });
+  }
+
+  function restore() {
+    act(() => {
+      appStore.setState({
+        contest: null,
+        snapshot: null,
+        config: baseConfig,
+        lastAppliedFlips: null,
+      });
+    });
+  }
+
+  it('flips the just-applied cell and swaps the verdict at the flip midpoint', () => {
+    vi.useFakeTimers();
+    try {
+      const { contest, before, after } = flipFixture();
+      seed(cfg(), contest, before);
+      const { container } = render(<Scoreboard orgs={{}} />);
+      expect(cell(container, 't1', 'A').getAttribute('data-verdict')).toBe('none');
+
+      // One live-applied run.
+      act(() => {
+        appStore.setState({
+          snapshot: after,
+          lastAppliedFlips: { cells: [{ teamId: 't1', problemId: 'A' }], flipId: 1 },
+        });
+      });
+
+      // Flip in progress: the OLD content is still shown behind the flip.
+      const flipping = cell(container, 't1', 'A');
+      expect(flipping.classList.contains('flip-run')).toBe(true);
+      expect(flipping.getAttribute('data-verdict')).toBe('none');
+
+      // jsdom fires no CSS animation events → the fallback timer completes
+      // the flip (2× duration) and runs the midpoint verdict swap.
+      act(() => {
+        vi.advanceTimersByTime(LIVE_FLIP_MS * 2 + 50);
+      });
+      expect(cell(container, 't1', 'A').getAttribute('data-verdict')).toBe('accepted');
+    } finally {
+      restore();
+      vi.useRealTimers();
+    }
+  });
+
+  it('swaps instantly with no flip when config.animation is off', () => {
+    try {
+      const { contest, before, after } = flipFixture();
+      seed(cfg({ animation: false }), contest, before);
+      const { container } = render(<Scoreboard orgs={{}} />);
+      act(() => {
+        appStore.setState({
+          snapshot: after,
+          lastAppliedFlips: { cells: [{ teamId: 't1', problemId: 'A' }], flipId: 1 },
+        });
+      });
+      const el = cell(container, 't1', 'A');
+      expect(el.classList.contains('flip-run')).toBe(false);
+      expect(el.getAttribute('data-verdict')).toBe('accepted');
+    } finally {
+      restore();
+    }
   });
 });
 

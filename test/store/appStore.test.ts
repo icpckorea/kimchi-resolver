@@ -342,6 +342,32 @@ describe('spectator loop', () => {
     expect(store.getState().appliedRunCount).toBe(5);
   });
 
+  it('live application publishes a flip batch; the boot replay does not', async () => {
+    const { store, timers } = makeHarness(smallFiles());
+    await store.getState().boot('?r=3');
+
+    // Replay of runs 1..3 at boot applied without animation → no batch.
+    expect(store.getState().lastAppliedFlips).toBeNull();
+
+    // Autoplay tick applies run 4 live → its cell flips.
+    timers.fire(100);
+    const first = store.getState().lastAppliedFlips;
+    expect(first).not.toBeNull();
+    expect(first!.cells).toEqual([{ teamId: '2', problemId: '2' }]);
+
+    // feed-one applies run 5 → a NEW batch (flipId is monotonic).
+    store.getState().feedOne();
+    const second = store.getState().lastAppliedFlips;
+    expect(second!.cells).toEqual([{ teamId: '3', problemId: '2' }]);
+    expect(second!.flipId).toBeGreaterThan(first!.flipId);
+
+    // feed-all batches the rest into one update.
+    store.getState().feedAllQueued();
+    const third = store.getState().lastAppliedFlips;
+    expect(third!.cells).toEqual([{ teamId: '1', problemId: '2' }]);
+    expect(third!.flipId).toBeGreaterThan(second!.flipId);
+  });
+
   it('poll dedups already-known runs via the feeder', async () => {
     let served: unknown = smallRuns();
     const { store, timers } = makeHarness({
@@ -501,19 +527,41 @@ describe('award mode', () => {
     expect(snapshot.byTeam.get('3')?.solved).toBe(0);
   });
 
-  it('advance/dismiss bump awardTick and refresh the snapshot', async () => {
+  it('reveal steps defer the snapshot commit until awardCommitSnapshot (spoiler prevention)', async () => {
     const { store } = makeHarness(smallFiles());
     await store.getState().boot('?award=true&r=3');
     expect(store.getState().awardTick).toBe(0);
 
-    const step = store.getState().awardAdvance();
-    expect(step?.type).toBe('focus');
+    const focus = store.getState().awardAdvance();
+    expect(focus?.type).toBe('focus'); // team 3 (bottom)
     expect(store.getState().awardTick).toBe(1);
 
-    // Keep advancing until team 3's B cell reveals; the store snapshot follows.
-    for (let i = 0; i < 10 && store.getState().snapshot?.byTeam.get('3')?.solved === 0; i++) {
-      store.getState().awardAdvance();
-    }
+    const blink = store.getState().awardAdvance();
+    expect(blink?.type).toBe('blink'); // default focusBlinking: rank 3 ≤ 10
+
+    const reveal = store.getState().awardAdvance();
+    expect(reveal?.type).toBe('reveal');
+    expect(store.getState().awardTick).toBe(3);
+    // The machine applied the hidden Yes, but the STORE snapshot must stay
+    // pre-reveal so the UI cannot spoil the flip.
+    expect(store.getState().awardMachine?.snapshot.byTeam.get('3')?.solved).toBe(1);
+    expect(store.getState().snapshot?.byTeam.get('3')?.solved).toBe(0);
+
+    // The reveal animation finished → the award UI commits.
+    store.getState().awardCommitSnapshot();
+    expect(store.getState().awardTick).toBe(4);
+    expect(store.getState().snapshot?.byTeam.get('3')?.solved).toBe(1);
+  });
+
+  it('non-reveal steps commit immediately; dismiss only bumps the tick', async () => {
+    const { store } = makeHarness(smallFiles());
+    await store.getState().boot('?award=true&r=3');
+
+    store.getState().awardAdvance(); // focus team 3
+    store.getState().awardAdvance(); // blink team 3 B (default focusBlinking)
+    store.getState().awardAdvance(); // reveal team 3 B (deferred)
+    const finalize = store.getState().awardAdvance(); // finalize → commits (backstop)
+    expect(finalize?.type).toBe('finalize');
     expect(store.getState().snapshot?.byTeam.get('3')?.solved).toBe(1);
 
     const tickBefore = store.getState().awardTick;

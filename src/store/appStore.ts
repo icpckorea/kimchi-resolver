@@ -70,6 +70,17 @@ export interface JudgeEvent {
 
 export type TeamUpdatedListener = (event: JudgeEvent) => void;
 
+/**
+ * The batch of cells whose runs were just applied LIVE (autoplay tick,
+ * feed-one, feed-all) — drives the spectator cell-flip animation (spec §5:
+ * queued runs are applied "애니메이션과 함께"). Replay/boot application never
+ * sets this. flipId is monotonic so consumers can detect a new batch.
+ */
+export interface LiveFlipBatch {
+  cells: { teamId: string; problemId: string }[];
+  flipId: number;
+}
+
 /** Injectable timer pair; defaults to the global setInterval/clearInterval. */
 export interface Scheduler {
   setInterval(handler: () => void, ms: number): unknown;
@@ -117,6 +128,8 @@ export interface AppState {
   awardTick: number;
   /** Recent applied runs, newest first, capped at config.maxNotifications. */
   recentEvents: JudgeEvent[];
+  /** Most recent live-applied batch (spectator cell flip); null before any. */
+  lastAppliedFlips: LiveFlipBatch | null;
   /** Publish mode (spec §13). */
   siteScore: number | null;
   invitedCutoff: number | null;
@@ -135,6 +148,13 @@ export interface AppState {
   /** Award keypress. Returns null outside award mode. */
   awardAdvance(): AwardStepResult | null;
   awardDismiss(): void;
+  /**
+   * Commit the (possibly post-reveal) machine snapshot into the store.
+   * awardAdvance defers the commit for 'reveal' steps so standings, ranks
+   * and row positions do not spoil the verdict before the flip shows it;
+   * the award UI calls this when the reveal animation completes.
+   */
+  awardCommitSnapshot(): void;
   addSystemMessage(level: SystemMessageLevel, text: string): void;
   dismissSystemMessage(id: number): void;
   setSiteScore(value: number | null): void;
@@ -194,6 +214,7 @@ export function createAppStore(deps: StoreDeps = {}): AppStore {
   let pollPromise: Promise<void> | null = null;
   let nextMessageId = 1;
   let nextEventId = 1;
+  let nextFlipId = 1;
   const teamUpdatedListeners = new Set<TeamUpdatedListener>();
 
   return createStore<AppState>()((set, get) => {
@@ -242,6 +263,16 @@ export function createAppStore(deps: StoreDeps = {}): AppStore {
     function applyRuns(runs: Run[], emit: boolean): void {
       if (runs.length > 0) {
         recordApplied(runs, emit);
+        // Live application (emit) flips the affected cells (spec §5/§7);
+        // replay/boot application swaps them in without animation.
+        if (emit) {
+          set({
+            lastAppliedFlips: {
+              cells: runs.map((run) => ({ teamId: run.teamId, problemId: run.problemId })),
+              flipId: nextFlipId++,
+            },
+          });
+        }
         recomputeSnapshot();
       }
       syncFeederMeta();
@@ -438,6 +469,7 @@ export function createAppStore(deps: StoreDeps = {}): AppStore {
       awardMachine: null,
       awardTick: 0,
       recentEvents: [],
+      lastAppliedFlips: null,
       siteScore: null,
       invitedCutoff: null,
 
@@ -568,7 +600,16 @@ export function createAppStore(deps: StoreDeps = {}): AppStore {
         const machine = get().awardMachine;
         if (machine === null) return null;
         const result = machine.advance();
-        set((state) => ({ awardTick: state.awardTick + 1, snapshot: machine.snapshot }));
+        // A 'reveal' changes the standings — keep the PRE-reveal snapshot on
+        // screen until the flip animation shows the verdict (spoiler
+        // prevention); the award UI commits via awardCommitSnapshot() when
+        // the sequence ends. Other steps do not change standings and commit
+        // immediately (this also backstops a lost commit).
+        if (result.type === 'reveal') {
+          set((state) => ({ awardTick: state.awardTick + 1 }));
+        } else {
+          set((state) => ({ awardTick: state.awardTick + 1, snapshot: machine.snapshot }));
+        }
         return result;
       },
 
@@ -576,6 +617,14 @@ export function createAppStore(deps: StoreDeps = {}): AppStore {
         const machine = get().awardMachine;
         if (machine === null) return;
         machine.dismissSlide();
+        // Dismissing a slide never changes standings — do NOT pull in a
+        // possibly still-animating reveal's snapshot here.
+        set((state) => ({ awardTick: state.awardTick + 1 }));
+      },
+
+      awardCommitSnapshot(): void {
+        const machine = get().awardMachine;
+        if (machine === null) return;
         set((state) => ({ awardTick: state.awardTick + 1, snapshot: machine.snapshot }));
       },
 

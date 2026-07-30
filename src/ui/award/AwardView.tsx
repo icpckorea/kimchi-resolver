@@ -38,6 +38,8 @@ import { parseAwardsJson, type AwardEntry } from './awardsData';
 import {
   GACHA_SHAKE_MS,
   accumulateDisplay,
+  matchAnimationSpeed,
+  moveUpDurationSec,
   useRevealDriver,
   type ActiveReveal,
   type RevealDisplay,
@@ -107,7 +109,7 @@ export function AwardView({ store = appStore, awards, apacStars = null }: AwardV
             'warning',
             `awards.json could not be loaded (${
               err instanceof Error ? err.message : String(err)
-            }); slides will show without award data.`,
+            }); award slides and medals will be skipped.`,
           );
       }
     })();
@@ -116,11 +118,31 @@ export function AwardView({ store = appStore, awards, apacStars = null }: AwardV
     };
   }, [awards, config.award.awardsUrl, store]);
 
+  // -- entry-less slide auto-dismiss (spec §6) ------------------------------
+  // The machine raises a slide on every finalize, but the full-screen slide
+  // exists only "awards.json 데이터가 있으면". Without this dismissal an
+  // invisible slide would latch and swallow every advance key (a presenter
+  // remote has no Escape). An effect (not a handleStep check) also covers
+  // the async awards fetch and rankBegin fast-forward edge cases.
+  const machineSlideTeamId = machine?.currentSlideTeamId ?? null;
+  useEffect(() => {
+    if (machineSlideTeamId === null) return;
+    if (!awardsByTeam.has(machineSlideTeamId)) store.getState().awardDismiss();
+  }, [machineSlideTeamId, awardsByTeam, store]);
+
   // -- ceremony step handling ----------------------------------------------
   /** Cell in its one-keypress blink stage (cleared on the next transition). */
   const [blinkCell, setBlinkCell] = useState<{ teamId: string; problemId: string } | null>(null);
   /** Slide re-shown by clicking a finalized medalist (machine slide wins). */
   const [reshownTeamId, setReshownTeamId] = useState<string | null>(null);
+
+  // Reveal completed → commit the deferred (post-reveal) standings into the
+  // store. Until this moment the board renders the PRE-reveal snapshot so
+  // solved counts, penalty, ranks and row positions cannot spoil the flip.
+  const handleSequenceEnd = useCallback(() => {
+    store.getState().awardCommitSnapshot();
+    driver.handleSequenceEnd();
+  }, [driver, store]);
 
   const handleStep = useCallback(
     (step: AwardStepResult | null) => {
@@ -172,22 +194,26 @@ export function AwardView({ store = appStore, awards, apacStars = null }: AwardV
   }, [advance, dismissSlide]);
 
   // -- focused-team auto-scroll ---------------------------------------------
+  // The machine's currentFocusedTeamId is the single source of truth: a team
+  // whose reveal moved it up keeps stage 'focused' (identity stays revealed),
+  // so scanning teamStage would highlight/scroll stale rows.
   const rowRefs = useRef(new Map<string, HTMLElement>());
-  let focusedTeamId: string | null = null;
-  if (machine !== null) {
-    for (const [teamId, stage] of machine.teamStage) {
-      if (stage === 'focused') {
-        focusedTeamId = teamId;
-        break;
-      }
-    }
-  }
+  const focusedTeamId = machine?.currentFocusedTeamId ?? null;
   useEffect(() => {
     if (focusedTeamId === null) return;
     const el = rowRefs.current.get(focusedTeamId);
     // scrollIntoView is missing in jsdom — optional call.
     el?.scrollIntoView?.({ behavior: 'smooth', block: 'center' });
   }, [focusedTeamId]);
+
+  // -- previous row order (rank-move duration, spec §6 moveUpMsPerRow) ------
+  const prevIndexRef = useRef(new Map<string, number>());
+  useEffect(() => {
+    if (snapshot === null) return;
+    const order = new Map<string, number>();
+    snapshot.standings.forEach((standing, index) => order.set(standing.team.id, index));
+    prevIndexRef.current = order;
+  }, [snapshot]);
 
   // -- finale spotlight position --------------------------------------------
   const [finalePos, setFinalePos] = useState<{ x: number; y: number } | null>(null);
@@ -218,12 +244,17 @@ export function AwardView({ store = appStore, awards, apacStars = null }: AwardV
   return (
     <div className="scoreboard award-view" data-testid="award-view">
       <div className="award-board">
-        {snapshot.standings.map((standing) => (
+        {snapshot.standings.map((standing, index) => (
           <AwardRow
             key={standing.team.id}
             standing={standing}
             problems={contest.problems}
             stage={machine.teamStage.get(standing.team.id)}
+            focused={focusedTeamId === standing.team.id}
+            moveDurationSec={moveUpDurationSec(
+              Math.abs((prevIndexRef.current.get(standing.team.id) ?? index) - index),
+              matchAnimationSpeed(config.award.animationSpeeds, standing.solved),
+            )}
             hideName={config.award.hideName}
             showFirstSolve={config.showFirstSolve}
             showBalloons={config.showBalloons}
@@ -233,7 +264,7 @@ export function AwardView({ store = appStore, awards, apacStars = null }: AwardV
             apacStar={apacStars?.get(standing.team.id) ?? null}
             blinkCell={blinkCell}
             active={driver.active}
-            onSequenceEnd={driver.handleSequenceEnd}
+            onSequenceEnd={handleSequenceEnd}
             entry={awardsByTeam.get(standing.team.id)}
             finaleCellRef={finaleCellRef}
             setRowRef={(teamId, el) => {
@@ -268,6 +299,10 @@ interface AwardRowProps {
   standing: TeamStanding;
   problems: Problem[];
   stage: string | undefined;
+  /** True only for the machine's current focus (single team at a time). */
+  focused: boolean;
+  /** Layout-move duration from the team's animation speed band (spec §6). */
+  moveDurationSec: number;
   hideName: boolean;
   showFirstSolve: boolean;
   showBalloons: boolean;
@@ -288,6 +323,8 @@ function AwardRow({
   standing,
   problems,
   stage,
+  focused,
+  moveDurationSec,
   hideName,
   showFirstSolve,
   showBalloons,
@@ -306,7 +343,6 @@ function AwardRow({
   const team = standing.team;
   const identity = maskIdentity(team, stage, hideName);
   const finalized = stage === 'finalized';
-  const focused = stage === 'focused';
   const medalist = finalized && entry !== undefined;
   const MedalIcon =
     entry !== undefined
@@ -316,7 +352,7 @@ function AwardRow({
   return (
     <motion.div
       layout="position"
-      transition={{ type: 'tween', duration: 0.5, ease: 'easeInOut' }}
+      transition={{ type: 'tween', duration: moveDurationSec, ease: 'easeInOut' }}
       className={cls(
         'team-row',
         'award-row',
@@ -472,10 +508,12 @@ function RevealingCell({
   const { step, speed } = active;
   const [display, setDisplay] = useState<RevealDisplay>(() => ({
     // Until the first flip midpoint the cell still shows its frozen pending
-    // state (every queued run was masked as pending).
+    // state — exactly what the board displayed before the keypress ('?N'
+    // with N = pre-freeze + masked attempts). baseCell is the PRE-reveal
+    // cell (the store snapshot commits only after the sequence ends).
     verdict: 'pending',
-    attempts: step.runs.length,
-    failedAttempts: 0,
+    attempts: baseCell.attempts,
+    failedAttempts: step.preFreeze.failedAttempts,
     solvedMinute: null,
   }));
   const [shaking, setShaking] = useState(false);
@@ -508,7 +546,11 @@ function RevealingCell({
         setActiveFlip(isFinal ? 'slow' : 'fast');
         const ctl = isFinal ? slowRef.current : fastRef.current;
         // Verdict swap at the flip midpoint (original spotboard behavior).
-        await ctl.flip(() => setDisplay(accumulateDisplay(runs, i)));
+        // The cancelled guard keeps a superseded playback run (StrictMode
+        // dev double-mount) from firing its pending midpoint early.
+        await ctl.flip(() => {
+          if (!cancelled) setDisplay(accumulateDisplay(runs, i, step.preFreeze));
+        });
       }
       if (cancelled) return;
       // Shake stops and the cell returns exactly to rest after the flip.
@@ -558,7 +600,10 @@ function RevealingCell({
         flip={flipProps}
       />
       {shaking && !step.effect.finale ? <SparkleOverlay /> : null}
-      {step.effect.finale ? <RainbowOverlay /> : null}
+      {/* The rainbow is the finale VARIANT of the gacha effect (spec §7):
+          it plays only while the gacha shake runs ("진동이 멈출 때까지") —
+          never when the gacha roll missed. Spotlight/zoom stays finale-only. */}
+      {shaking && step.effect.finale ? <RainbowOverlay /> : null}
     </span>
   );
 }

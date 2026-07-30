@@ -95,8 +95,24 @@ export function useCellFlip(flipSpeedMs: number): CellFlip {
     }
   }, [finish, runMidpoint, setPhaseBoth]);
 
-  // Unmount during a flip must not hang the award sequence.
-  useEffect(() => finish, [finish]);
+  // Unmount during a flip must not hang the award sequence: settle the
+  // promise, but DROP the pending midpoint instead of firing it — a flip
+  // torn down by unmount (or a StrictMode dev cleanup cycle) must not swap
+  // the verdict in early. The restarted/next flip re-runs its own midpoints.
+  useEffect(
+    () => () => {
+      if (fallbackRef.current !== null) {
+        clearTimeout(fallbackRef.current);
+        fallbackRef.current = null;
+      }
+      midpointRef.current = null;
+      const resolve = resolveRef.current;
+      resolveRef.current = null;
+      if (phaseRef.current !== 'idle') setPhaseBoth('idle');
+      if (resolve !== null) resolve();
+    },
+    [setPhaseBoth],
+  );
 
   const props: CellFlipProps =
     phase === 'idle'

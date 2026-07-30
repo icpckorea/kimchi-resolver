@@ -73,12 +73,20 @@ const snapshot = computeStandings(contest, [
 
 const initialState = appStore.getState();
 
-function seedStore(overrides: { siteScore?: number | null; invitedCutoff?: number | null } = {}) {
+function seedStore(
+  overrides: {
+    siteScore?: number | null;
+    invitedCutoff?: number | null;
+    /** Stars are gated by config.apac.enabled (spec §13); most tests want them on. */
+    apacEnabled?: boolean;
+  } = {},
+) {
   appStore.setState({
     status: 'ready',
     mode: 'publish',
     contest,
     snapshot,
+    config: { ...initialState.config, apac: { enabled: overrides.apacEnabled ?? true } },
     siteScore: overrides.siteScore ?? null,
     invitedCutoff: overrides.invitedCutoff ?? null,
   });
@@ -179,6 +187,17 @@ describe('PublishView APAC stars', () => {
     seedStore({ siteScore: 2, invitedCutoff: null });
     render(<PublishView />);
     expect(starFill('y1')).toBe(FILL.silver);
+  });
+
+  it('shows no stars and no star slot when config.apac.enabled is false (spec §13)', () => {
+    seedStore({ siteScore: 5, apacEnabled: false });
+    render(<PublishView />);
+    // The board itself still renders (the site-score gate is independent)…
+    expect(document.querySelector('.publish-board')).not.toBeNull();
+    expect(screen.getByText('Team x1')).toBeTruthy();
+    // …but the APAC star column is absent entirely.
+    expect(document.querySelector('.apac-slot')).toBeNull();
+    expect(document.querySelector('svg.kr-apac-star')).toBeNull();
   });
 });
 

@@ -66,7 +66,14 @@ const awardSchema = z
     gachaEffectRequirement: z.number().int().positive().default(8),
     /** Percent [0, 100]. */
     gachaEffectForNoRatio: z.number().min(0).max(100).default(30),
-    animationSpeeds: z.array(animationSpeedSchema).default(DEFAULT_ANIMATION_SPEEDS),
+    /**
+     * Normalized to minSolved-descending so matching is order-independent
+     * (spec §6: the original's "must be sorted descending" trap is removed).
+     */
+    animationSpeeds: z
+      .array(animationSpeedSchema)
+      .default(DEFAULT_ANIMATION_SPEEDS)
+      .transform((speeds) => [...speeds].sort((a, b) => b.minSolved - a.minSolved)),
   })
   .default({});
 

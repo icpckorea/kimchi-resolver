@@ -290,8 +290,10 @@ describe('advance(): bottom-up order with rank shifts', () => {
     const machine = rankShiftFixture();
 
     // 1. bottom-most team in the visible order is t3 (0 solved).
+    expect(machine.currentFocusedTeamId).toBeNull();
     expect(machine.advance()).toEqual({ type: 'focus', teamId: 't3' });
     expect(machine.teamStage.get('t3')).toBe('focused');
+    expect(machine.currentFocusedTeamId).toBe('t3');
 
     // 2. reveal t3's only pending cell (B). t3 moves above the unfinalized t4.
     const reveal = machine.advance();
@@ -304,10 +306,16 @@ describe('advance(): bottom-up order with rank shifts', () => {
 
     // 3. focus jumps BACK down to t4, now the bottom-most non-finalized team.
     expect(machine.advance()).toEqual({ type: 'focus', teamId: 't4' });
+    // t3 keeps stage 'focused' (identity stays revealed), but the machine's
+    // single focus getter points at t4 only — the UI highlight/scroll source.
+    expect(machine.teamStage.get('t3')).toBe('focused');
+    expect(machine.teamStage.get('t4')).toBe('focused');
+    expect(machine.currentFocusedTeamId).toBe('t4');
 
     // 4. t4 has no pending cells → finalize with slide.
     expect(machine.advance()).toEqual({ type: 'finalize', teamId: 't4', showSlide: true });
     expect(machine.teamStage.get('t4')).toBe('finalized');
+    expect(machine.currentFocusedTeamId).toBeNull(); // focus released on finalize
     expect(machine.currentSlideTeamId).toBe('t4');
 
     // 5. while the slide is showing, advance() is a no-op slide-on.
@@ -574,6 +582,70 @@ describe('gacha effect', () => {
     const t1Reveal = advanceUntilRevealOf(machine, 't1');
     expect(t1Reveal.effect).toEqual({ gacha: false, finale: false });
     expect(rng).not.toHaveBeenCalled();
+  });
+
+  /**
+   * Spec §6: the requirement counts the cell's net runs — pre-freeze
+   * attempts included — not just the post-freeze queued reveals.
+   */
+  function preFreezeGachaFixture(preFreezeFails: number) {
+    const revealed: Run[] = [];
+    for (let i = 0; i < preFreezeFails; i++) {
+      revealed.push(run(1 + i, 't1', '1', 10 + i, 'failed'));
+    }
+    const hidden = [
+      run(20, 't1', '1', 100, 'failed'),
+      run(21, 't1', '1', 105, 'accepted'),
+      run(50, 't2', '0', 50, 'accepted'),
+      run(51, 't2', '2', 60, 'accepted'), // t1's reveal is not the finale
+    ];
+    return makeMachine({
+      contest: makeContest(['t1', 't2']),
+      revealed,
+      hidden,
+      config: { gachaEffectRequirement: 8 },
+      rng: () => 0.99,
+    });
+  }
+
+  it('counts pre-freeze net attempts toward the requirement (6 + 2 = 8 → gacha)', () => {
+    const machine = preFreezeGachaFixture(6);
+    const reveal = advanceUntilRevealOf(machine, 't1');
+    expect(reveal.runs).toHaveLength(2); // animation list stays post-freeze only
+    expect(reveal.preFreeze).toEqual({ attempts: 6, failedAttempts: 6 });
+    expect(reveal.effect).toEqual({ gacha: true, finale: false });
+  });
+
+  it('one attempt short across the freeze boundary (5 + 2 = 7) → no gacha', () => {
+    const machine = preFreezeGachaFixture(5);
+    const reveal = advanceUntilRevealOf(machine, 't1');
+    expect(reveal.preFreeze).toEqual({ attempts: 5, failedAttempts: 5 });
+    expect(reveal.effect).toEqual({ gacha: false, finale: false });
+  });
+
+  it('pre-freeze runs past the first accepted are not net and do not count', () => {
+    // A cell accepted pre-freeze is never revealed; its counts are moot. But
+    // ANOTHER cell's counts must be its own: t1 B has 1 pre-freeze fail while
+    // t1 A holds 7 pre-freeze runs — no cross-cell bleed (1 + 2 < 8).
+    const revealed: Run[] = [];
+    for (let i = 0; i < 7; i++) revealed.push(run(1 + i, 't1', '0', 10 + i, 'failed'));
+    revealed.push(run(8, 't1', '1', 20, 'failed'));
+    const machine = makeMachine({
+      contest: makeContest(['t1', 't2']),
+      revealed,
+      hidden: [
+        run(20, 't1', '1', 100, 'failed'),
+        run(21, 't1', '1', 105, 'accepted'),
+        run(50, 't2', '0', 50, 'accepted'),
+        run(51, 't2', '2', 60, 'accepted'),
+      ],
+      config: { gachaEffectRequirement: 8 },
+      rng: () => 0.99,
+    });
+    const reveal = advanceUntilRevealOf(machine, 't1');
+    expect(reveal.problemId).toBe('1');
+    expect(reveal.preFreeze).toEqual({ attempts: 1, failedAttempts: 1 });
+    expect(reveal.effect).toEqual({ gacha: false, finale: false });
   });
 
   it('remainingReveals === 1 forces the gacha condition even for one attempt', () => {
