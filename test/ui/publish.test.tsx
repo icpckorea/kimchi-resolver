@@ -315,11 +315,11 @@ describe('PublishView star spin', () => {
     act(() => {
       appStore.setState({}); // settle: previous tiers recorded
     });
-    const select = document.getElementById(
-      'publish-already-invited-groups',
-    ) as HTMLSelectElement;
-    for (const option of [...select.options]) option.selected = option.value === 'Y';
-    fireEvent.change(select);
+    fireEvent.click(document.getElementById('publish-already-invited-groups') as HTMLButtonElement);
+    const row = [...document.querySelectorAll('.publish-school')].find(
+      (el) => el.textContent === 'Y',
+    );
+    fireEvent.click(row!.querySelector('input') as HTMLInputElement);
     expect(appStore.getState().alreadyInvited.groups).toEqual(['Y']);
     // School Y leaves the scored list: silver → bronze, spinning.
     expect(starFill('y1')).toBe(FILL.bronze);
@@ -375,46 +375,69 @@ describe('PublishControls', () => {
   // The picker is a native multi-select over the contest's own schools: an
   // operator cannot look up a team id, and a mistyped name used to fail
   // silently.
-  function schoolSelect(): HTMLSelectElement {
-    const select = document.getElementById('publish-already-invited-groups');
-    expect(select, 'school multi-select missing').not.toBeNull();
-    return select as HTMLSelectElement;
+  function openPicker(): void {
+    const toggle = document.getElementById('publish-already-invited-groups');
+    expect(toggle, 'school picker toggle missing').not.toBeNull();
+    fireEvent.click(toggle as HTMLButtonElement);
   }
 
-  /** Select exactly `names` (a multi-select change, not a click). */
-  function pickSchools(names: string[]): void {
-    const select = schoolSelect();
-    for (const option of [...select.options]) {
-      option.selected = names.includes(option.value);
-    }
-    fireEvent.change(select);
+  function schoolRows(): HTMLLabelElement[] {
+    return [...document.querySelectorAll('.publish-school')] as HTMLLabelElement[];
   }
 
-  it('lists every school in the contest, alphabetically, selecting the seeded ones', () => {
+  function schoolBox(name: string): HTMLInputElement {
+    const row = schoolRows().find((el) => el.textContent === name);
+    expect(row, `no checkbox for ${name}`).toBeDefined();
+    return row!.querySelector('input') as HTMLInputElement;
+  }
+
+  it('opens a panel listing every school alphabetically, checking the seeded ones', () => {
     seedStore({ alreadyInvited: { teamIds: [], groups: ['Y'] } });
     render(<PublishControls />);
 
-    const options = [...schoolSelect().options];
-    expect(options.map((o) => o.value)).toEqual(['X', 'Y', 'Z']);
-    expect(options.find((o) => o.value === 'Y')?.selected).toBe(true);
-    expect(options.find((o) => o.value === 'X')?.selected).toBe(false);
+    // Closed by default: the toggle summarises the selection instead.
+    expect(schoolRows()).toHaveLength(0);
+    expect(document.getElementById('publish-already-invited-groups')?.textContent).toContain('Y');
+
+    openPicker();
+    expect(schoolRows().map((el) => el.textContent)).toEqual(['X', 'Y', 'Z']);
+    expect(schoolBox('Y').checked).toBe(true);
+    expect(schoolBox('X').checked).toBe(false);
   });
 
-  it('commits the picked schools and keeps them in contest order', () => {
+  it('filters the panel and commits picks in contest order', () => {
     seedStore();
     render(<PublishControls />);
+    openPicker();
 
-    pickSchools(['Z']);
+    fireEvent.change(document.querySelector('.publish-schools-filter') as HTMLInputElement, {
+      target: { value: 'z' },
+    });
+    expect(schoolRows().map((el) => el.textContent)).toEqual(['Z']);
+
+    fireEvent.click(schoolBox('Z'));
     expect(appStore.getState().alreadyInvited.groups).toEqual(['Z']);
 
-    // Picked in reverse order; the committed value stays contest-ordered.
-    pickSchools(['Z', 'X']);
+    // Clear the filter and add an earlier school: order follows the contest.
+    fireEvent.change(document.querySelector('.publish-schools-filter') as HTMLInputElement, {
+      target: { value: '' },
+    });
+    fireEvent.click(schoolBox('X'));
     expect(appStore.getState().alreadyInvited.groups).toEqual(['X', 'Z']);
 
-    pickSchools(['X']);
+    fireEvent.click(schoolBox('Z'));
     expect(appStore.getState().alreadyInvited.groups).toEqual(['X']);
     // Team ids are untouched: they remain a config.json-only escape hatch.
     expect(appStore.getState().alreadyInvited.teamIds).toEqual([]);
+  });
+
+  it('closes the panel on Escape', () => {
+    seedStore();
+    render(<PublishControls />);
+    openPicker();
+    expect(schoolRows().length).toBeGreaterThan(0);
+    fireEvent.keyDown(document, { key: 'Escape' });
+    expect(schoolRows()).toHaveLength(0);
   });
 
   // Extra teams occupying slots can only push everyone below them DOWN, so an
@@ -427,7 +450,8 @@ describe('PublishControls', () => {
     expect(hint?.textContent).toContain('적게 표시');
 
     // Picking one invited school removes the warning.
-    pickSchools(['Y']);
+    openPicker();
+    fireEvent.click(schoolBox('Y'));
     expect(document.querySelector('.publish-controls-hint')).toBeNull();
   });
 });

@@ -91,26 +91,115 @@
   font-variant-numeric: normal;
 }
 
-/* Already-invited school picker: a native multi-select over the contest's own
- * schools, so a team id never has to be looked up nor a name typed. Sized in
- * rem — the board's font-size is a viewport clamp that can fall to 6px, which
- * an em-based control inherits and renders unreadable. */
-.publish-schools-select {
+/* Already-invited school picker: a dropdown whose panel holds a filter box and
+ * a checkbox list of the contest's own schools, so a team id never has to be
+ * looked up nor a name typed. Sized in rem — the board's font-size is a
+ * viewport clamp that can fall to 6px, which an em-based control inherits and
+ * renders unreadable. */
+.publish-schools {
+  position: relative;
+}
+
+.publish-schools-toggle {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
   width: 22rem;
   max-width: 100%;
   font: inherit;
-  font-size: 0.8rem;
+  font-size: 0.85rem;
   line-height: 1.6;
-  padding: 0.2rem;
+  text-align: left;
+  padding: 0.25rem 0.5rem;
   border: 1px solid rgba(0, 0, 0, 0.25);
   border-radius: 0.3rem;
   background: rgba(255, 255, 255, 0.9);
   color: inherit;
+  cursor: pointer;
 }
 
-.publish-schools-select:focus {
+.publish-schools-toggle:focus-visible {
   outline: none;
   border-color: #7db4ff;
+}
+
+.publish-schools-summary {
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+.publish-schools-caret {
+  flex: none;
+  width: 0;
+  height: 0;
+  border-left: 0.3rem solid transparent;
+  border-right: 0.3rem solid transparent;
+  border-top: 0.35rem solid currentColor;
+  opacity: 0.6;
+}
+
+.publish-schools-panel {
+  position: absolute;
+  z-index: 30;
+  top: calc(100% + 0.25rem);
+  left: 0;
+  width: 22rem;
+  max-width: 90vw;
+  padding: 0.4rem;
+  border: 1px solid rgba(0, 0, 0, 0.2);
+  border-radius: 0.35rem;
+  background: #fff;
+  box-shadow: 0 0.5rem 1.5rem rgba(0, 0, 0, 0.18);
+}
+
+.publish-schools-filter {
+  width: 100%;
+  font: inherit;
+  font-size: 0.85rem;
+  padding: 0.2rem 0.4rem;
+  margin-bottom: 0.3rem;
+  border: 1px solid rgba(0, 0, 0, 0.2);
+  border-radius: 0.25rem;
+  background: #fff;
+  color: inherit;
+}
+
+.publish-schools-list {
+  max-height: 14rem;
+  overflow-y: auto;
+}
+
+.publish-school {
+  display: flex;
+  align-items: center;
+  gap: 0.45rem;
+  font-size: 0.85rem;
+  line-height: 1.8;
+  padding: 0 0.2rem;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  cursor: pointer;
+  color: #222;
+}
+
+.publish-school:hover {
+  background: #f2f6ff;
+}
+
+.publish-school input {
+  flex: none;
+  margin: 0;
+  cursor: pointer;
+}
+
+.publish-schools-empty {
+  margin: 0;
+  padding: 0.4rem 0.2rem;
+  font-size: 0.8rem;
+  color: #777;
 }
 
 /* Cross-site invitations unknown → ranks are pushed down (spec §13). */

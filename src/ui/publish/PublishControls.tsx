@@ -13,7 +13,7 @@
  * fewer teams qualify than really do (spec §13 rule 3, 교차 사이트 입력).
  */
 
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { useAppStore } from '@store/appStore';
 import './publish.css';
 
@@ -86,34 +86,93 @@ interface InvitedSchoolPickerProps {
  * list makes both impossible.
  */
 function InvitedSchoolPicker({ schools, selected, onChange }: InvitedSchoolPickerProps) {
+  const [open, setOpen] = useState(false);
+  const [filter, setFilter] = useState('');
+  const rootRef = useRef<HTMLDivElement>(null);
   const chosen = new Set(selected);
 
+  // Click-away and Escape close the panel (only while it is open).
+  useEffect(() => {
+    if (!open) return;
+    const onPointerDown = (e: MouseEvent): void => {
+      if (!rootRef.current?.contains(e.target as Node)) setOpen(false);
+    };
+    const onKeyDown = (e: KeyboardEvent): void => {
+      if (e.key === 'Escape') setOpen(false);
+    };
+    document.addEventListener('mousedown', onPointerDown);
+    document.addEventListener('keydown', onKeyDown);
+    return () => {
+      document.removeEventListener('mousedown', onPointerDown);
+      document.removeEventListener('keydown', onKeyDown);
+    };
+  }, [open]);
+
+  const toggle = (school: string): void => {
+    const next = new Set(chosen);
+    if (next.has(school)) next.delete(school);
+    else next.add(school);
+    // Emit in contest order, not click order, so the value is stable.
+    onChange(schools.filter((name) => next.has(name)));
+  };
+
+  const needle = filter.trim().toLowerCase();
+  const visible =
+    needle === '' ? schools : schools.filter((s) => s.toLowerCase().includes(needle));
+
+  const summary =
+    chosen.size === 0
+      ? '선택 안 함'
+      : selected.length <= 2
+        ? selected.join(', ')
+        : `${selected[0]} 외 ${chosen.size - 1}곳`;
+
   return (
-    <label className="publish-field publish-field--wide" htmlFor="publish-already-invited-groups">
-      <span className="publish-field-label">
+    <div className="publish-field publish-field--wide publish-schools" ref={rootRef}>
+      <span className="publish-field-label" id="publish-already-invited-label">
         이미 초청된 학교 {chosen.size > 0 ? `(${chosen.size})` : ''}
       </span>
-      <select
+      <button
+        type="button"
         id="publish-already-invited-groups"
-        className="publish-schools-select"
-        multiple
-        size={8}
-        value={[...chosen]}
-        onChange={(e) => {
-          const picked = new Set(
-            [...e.target.selectedOptions].map((option) => option.value),
-          );
-          // Emit in contest order, not click order, so the value is stable.
-          onChange(schools.filter((name) => picked.has(name)));
-        }}
+        className="publish-schools-toggle"
+        aria-expanded={open}
+        aria-haspopup="listbox"
+        aria-labelledby="publish-already-invited-label"
+        onClick={() => setOpen((v) => !v)}
       >
-        {schools.map((school) => (
-          <option key={school} value={school}>
-            {school}
-          </option>
-        ))}
-      </select>
-    </label>
+        <span className="publish-schools-summary">{summary}</span>
+        <span className="publish-schools-caret" aria-hidden="true" />
+      </button>
+      {open ? (
+        <div className="publish-schools-panel" role="listbox" aria-multiselectable="true">
+          <input
+            className="publish-schools-filter"
+            type="text"
+            autoComplete="off"
+            spellCheck={false}
+            placeholder="학교 검색"
+            value={filter}
+            onChange={(e) => setFilter(e.target.value)}
+          />
+          <div className="publish-schools-list">
+            {visible.map((school) => (
+              <label key={school} className="publish-school" role="option" aria-selected={chosen.has(school)}>
+                <input
+                  type="checkbox"
+                  checked={chosen.has(school)}
+                  onChange={() => toggle(school)}
+                />
+                <span>{school}</span>
+              </label>
+            ))}
+            {visible.length === 0 ? (
+              <p className="publish-schools-empty">일치하는 학교가 없습니다.</p>
+            ) : null}
+          </div>
+        </div>
+      ) : null}
+    </div>
   );
 }
 
