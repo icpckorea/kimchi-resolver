@@ -401,10 +401,17 @@
 
 /* ---- balloons -------------------------------------------------------------- */
 
+/* The stack is reserved at a fixed 15-balloon width. Sized to content it grew
+ * and shrank with each team's solve count, and since .team-title absorbs the
+ * spare room, every row's badge column landed at a different x — the badges
+ * stopped lining up down the board. 15 balloons = 0.8em + 14 × 0.45em (the
+ * 0.8em width less the 0.35em overlap) = 7.1em, plus the 0.2em gutter. */
 .balloons {
   flex: none;
   display: flex;
   align-items: center;
+  box-sizing: border-box;
+  min-width: 7.3em;
   padding-right: 0.2em;
 }
 
