@@ -1,19 +1,19 @@
 /**
  * Publish-mode inputs (spec §13): site score (required, positive number),
  * invited score cutoff (optional, non-negative number) and the cross-site
- * "already invited" lists (optional, comma-separated team ids / school names).
+ * "already invited" schools, picked from the contest's own school list.
  *
  * Values are seeded from the store (config/URL `site_score` /
  * `invited_cutoff` and `publish.alreadyInvited` land there during boot) and
  * stay editable; every valid change is written back to the store so the board
  * re-evaluates computeApacStars live.
  *
- * When both already-invited lists are empty a hint says so: cross-site
- * invitations cannot be derived from the contest data, so filtered ranks may
- * be optimistic (spec §13 rule 3, 교차 사이트 입력).
+ * When nothing is selected a hint says so: cross-site invitations cannot be
+ * derived from the contest data, and leaving them out pushes ranks DOWN, so
+ * fewer teams qualify than really do (spec §13 rule 3, 교차 사이트 입력).
  */
 
-import { useState } from 'react';
+import { useMemo, useState } from 'react';
 import { useAppStore } from '@store/appStore';
 import './publish.css';
 
@@ -71,42 +71,48 @@ function NumericField({ id, label, seed, placeholder, isValid, onCommit, require
   );
 }
 
-/** "a, b ,, c" → ['a', 'b', 'c']. Blanks are dropped. */
-export function parseCsvList(text: string): string[] {
-  return text
-    .split(',')
-    .map((part) => part.trim())
-    .filter((part) => part !== '');
+interface InvitedSchoolPickerProps {
+  /** Every school in the contest, alphabetical. */
+  schools: readonly string[];
+  selected: readonly string[];
+  onChange: (groups: string[]) => void;
 }
 
-interface ListFieldProps {
-  id: string;
-  label: string;
-  seed: readonly string[];
-  placeholder: string;
-  onCommit: (values: string[]) => void;
-}
+/**
+ * School picker for the cross-site "already invited" list.
+ *
+ * Free text was unusable: an operator cannot know a team id, and a mistyped
+ * school name silently does nothing. Picking from the contest's own school
+ * list makes both impossible.
+ */
+function InvitedSchoolPicker({ schools, selected, onChange }: InvitedSchoolPickerProps) {
+  const chosen = new Set(selected);
 
-function ListField({ id, label, seed, placeholder, onCommit }: ListFieldProps) {
-  const [text, setText] = useState(() => seed.join(', '));
+  const toggle = (school: string): void => {
+    const next = new Set(chosen);
+    if (next.has(school)) next.delete(school);
+    else next.add(school);
+    onChange(schools.filter((name) => next.has(name)));
+  };
 
   return (
-    <label className="publish-field publish-field--wide" htmlFor={id}>
-      <span className="publish-field-label">{label}</span>
-      <input
-        id={id}
-        className="publish-field-input"
-        type="text"
-        autoComplete="off"
-        spellCheck={false}
-        placeholder={placeholder}
-        value={text}
-        onChange={(e) => {
-          setText(e.target.value);
-          onCommit(parseCsvList(e.target.value));
-        }}
-      />
-    </label>
+    <fieldset className="publish-field publish-field--wide publish-schools">
+      <legend className="publish-field-label">
+        이미 초청된 학교 {chosen.size > 0 ? `(${chosen.size})` : ''}
+      </legend>
+      <div className="publish-schools-list">
+        {schools.map((school) => (
+          <label key={school} className="publish-school">
+            <input
+              type="checkbox"
+              checked={chosen.has(school)}
+              onChange={() => toggle(school)}
+            />
+            <span>{school}</span>
+          </label>
+        ))}
+      </div>
+    </fieldset>
   );
 }
 
@@ -118,8 +124,16 @@ export function PublishControls() {
   const setInvitedCutoff = useAppStore((s) => s.setInvitedCutoff);
   const setAlreadyInvited = useAppStore((s) => s.setAlreadyInvited);
 
-  // Seed once (the fields are uncontrolled after mount, like the numbers).
-  const [seed] = useState(alreadyInvited);
+  const contest = useAppStore((s) => s.contest);
+  const schools = useMemo(() => {
+    if (contest === null) return [];
+    const names = new Set<string>();
+    for (const team of contest.teams.values()) {
+      if (team.group !== '') names.add(team.group);
+    }
+    return [...names].sort((a, b) => a.localeCompare(b));
+  }, [contest]);
+
   const invitedEmpty =
     alreadyInvited.teamIds.length === 0 && alreadyInvited.groups.length === 0;
 
@@ -146,25 +160,19 @@ export function PublishControls() {
         isValid={(v) => v >= 0}
         onCommit={setInvitedCutoff}
       />
-      <ListField
-        id="publish-already-invited-teams"
-        label="이미 초청된 팀 id (쉼표 구분)"
-        seed={seed.teamIds}
-        placeholder="예: 1024, 2048"
-        onCommit={(teamIds) => setAlreadyInvited({ ...alreadyInvited, teamIds })}
-      />
-      <ListField
-        id="publish-already-invited-groups"
-        label="이미 초청된 학교 (쉼표 구분)"
-        seed={seed.groups}
-        placeholder="예: National Taiwan University"
-        onCommit={(groups) => setAlreadyInvited({ ...alreadyInvited, groups })}
+      {/* Team ids are not something an operator can look up, so the picker
+       * works in school names taken from the contest itself. config.json can
+       * still carry `alreadyInvited.teamIds` for scripted setups. */}
+      <InvitedSchoolPicker
+        schools={schools}
+        selected={alreadyInvited.groups}
+        onChange={(groups) => setAlreadyInvited({ ...alreadyInvited, groups })}
       />
       {invitedEmpty ? (
         <p className="publish-controls-hint" role="note">
-          다른 리저널에서 이미 초청된 팀 정보가 없습니다. 대회 데이터만으로는 알 수 없는
-          정보이므로, 초청된 학교가 리스트에 남아 그 아래 팀들의 순위가 실제보다 밀립니다.
-          즉 진출 가능한 팀이 실제보다 적게 표시될 수 있습니다.
+          다른 리저널에서 이미 초청된 학교를 하나도 고르지 않았습니다. 이 정보는 대회
+          데이터에 없으므로 직접 골라야 합니다. 비워 두면 그 학교 팀들이 순위 슬롯을
+          차지해 아래 팀들이 밀리고, 진출 가능한 팀이 실제보다 적게 표시됩니다.
         </p>
       ) : null}
     </form>

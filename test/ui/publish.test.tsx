@@ -315,8 +315,10 @@ describe('PublishView star spin', () => {
     act(() => {
       appStore.setState({}); // settle: previous tiers recorded
     });
-    const groups = document.getElementById('publish-already-invited-groups') as HTMLInputElement;
-    fireEvent.change(groups, { target: { value: 'Y' } });
+    const box = [...document.querySelectorAll('.publish-school')]
+      .find((el) => el.textContent === 'Y')!
+      .querySelector('input') as HTMLInputElement;
+    fireEvent.click(box);
     expect(appStore.getState().alreadyInvited.groups).toEqual(['Y']);
     // School Y leaves the scored list: silver → bronze, spinning.
     expect(starFill('y1')).toBe(FILL.bronze);
@@ -369,47 +371,53 @@ describe('PublishControls', () => {
     expect(cutoff.getAttribute('aria-invalid')).toBeNull();
   });
 
-  it('seeds the already-invited fields from the store as comma-separated text', () => {
-    seedStore({ alreadyInvited: { teamIds: ['t1', 't2'], groups: ['National Taiwan University'] } });
+  // The picker lists the contest's own schools: an operator cannot look up a
+  // team id, and a mistyped school name used to fail silently.
+  function schoolBox(name: string): HTMLInputElement {
+    const label = [...document.querySelectorAll('.publish-school')].find((el) =>
+      el.textContent?.includes(name),
+    );
+    expect(label, `no checkbox for ${name}`).toBeDefined();
+    return label!.querySelector('input') as HTMLInputElement;
+  }
+
+  it('lists every school in the contest, alphabetically, checking the seeded ones', () => {
+    seedStore({ alreadyInvited: { teamIds: [], groups: ['Y'] } });
     render(<PublishControls />);
-    expect(
-      (document.getElementById('publish-already-invited-teams') as HTMLInputElement).value,
-    ).toBe('t1, t2');
-    expect(
-      (document.getElementById('publish-already-invited-groups') as HTMLInputElement).value,
-    ).toBe('National Taiwan University');
+
+    const names = [...document.querySelectorAll('.publish-school')].map((el) => el.textContent);
+    expect(names).toEqual(['X', 'Y', 'Z']);
+    expect(schoolBox('Y').checked).toBe(true);
+    expect(schoolBox('X').checked).toBe(false);
   });
 
-  it('commits the already-invited lists, trimming blanks', () => {
+  it('commits the picked schools and keeps them in contest order', () => {
     seedStore();
     render(<PublishControls />);
-    const teams = document.getElementById('publish-already-invited-teams') as HTMLInputElement;
-    const groups = document.getElementById('publish-already-invited-groups') as HTMLInputElement;
 
-    fireEvent.change(teams, { target: { value: ' t1 ,, t2 ,' } });
-    expect(appStore.getState().alreadyInvited.teamIds).toEqual(['t1', 't2']);
-    fireEvent.change(groups, { target: { value: 'Kyoto U, NTU' } });
-    expect(appStore.getState().alreadyInvited).toEqual({
-      teamIds: ['t1', 't2'],
-      groups: ['Kyoto U', 'NTU'],
-    });
+    fireEvent.click(schoolBox('Z'));
+    expect(appStore.getState().alreadyInvited.groups).toEqual(['Z']);
 
-    fireEvent.change(teams, { target: { value: '' } });
+    fireEvent.click(schoolBox('X'));
+    expect(appStore.getState().alreadyInvited.groups).toEqual(['X', 'Z']);
+
+    fireEvent.click(schoolBox('Z'));
+    expect(appStore.getState().alreadyInvited.groups).toEqual(['X']);
+    // Team ids are untouched: they remain a config.json-only escape hatch.
     expect(appStore.getState().alreadyInvited.teamIds).toEqual([]);
   });
 
   // Extra teams occupying slots can only push everyone below them DOWN, so an
   // empty alreadyInvited list under-reports qualifiers — never over-reports.
-  it('warns that ranks are pushed down while both already-invited lists are empty', () => {
+  it('warns that ranks are pushed down while no school is picked', () => {
     seedStore();
     render(<PublishControls />);
     const hint = document.querySelector('.publish-controls-hint');
-    expect(hint?.textContent).toContain('밀립니다');
+    expect(hint?.textContent).toContain('밀리고');
     expect(hint?.textContent).toContain('적게 표시');
 
-    // Naming one invited school removes the warning.
-    const groups = document.getElementById('publish-already-invited-groups') as HTMLInputElement;
-    fireEvent.change(groups, { target: { value: 'NTU' } });
+    // Picking one invited school removes the warning.
+    fireEvent.click(schoolBox('Y'));
     expect(document.querySelector('.publish-controls-hint')).toBeNull();
   });
 });

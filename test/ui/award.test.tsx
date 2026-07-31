@@ -717,9 +717,13 @@ describe('award badge carousel', () => {
     expect(carousel.style.getPropertyValue('--kr-badge-steps')).toBe(`steps(${count}, end)`);
 
     // "One at a time" is enforced by the CSS window: the viewport is exactly
-    // one badge line tall and clips the rest (jsdom runs no animations).
+    // one SLOT tall and clips the rest (jsdom runs no animations). The slot is
+    // taller than the pill so rounding cannot reveal the next badge's border.
     expect(scoreboardCss).toMatch(
-      /\.team-badges--carousel\s*\{[^}]*height:\s*var\(--kr-badge-line[^}]*overflow:\s*hidden/,
+      /\.team-badges--carousel\s*\{[^}]*height:\s*var\(--kr-badge-slot[^}]*overflow:\s*hidden/,
+    );
+    expect(scoreboardCss).toMatch(
+      /\.team-badges__slot\s*\{[^}]*height:\s*var\(--kr-badge-slot/,
     );
     expect(scoreboardCss).toContain('@keyframes kr-badge-cycle');
   });

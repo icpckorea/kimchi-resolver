@@ -71,12 +71,14 @@
 
 .solved-count {
   flex: none;
-  width: 1em;
+  /* Wide enough for a two-digit count: at 1em the "10" of a 13-problem set
+   * overflowed past the band's left edge and read as clipped. */
+  width: 1.6em;
   margin-right: 0.3em;
-  padding-right: 0.15em;
+  padding: 0 0.15em;
   display: flex;
   align-items: center;
-  justify-content: flex-end;
+  justify-content: center;
   font-size: 1.05em;
   font-weight: 600;
   letter-spacing: -0.05em;
@@ -180,6 +182,9 @@
   flex-direction: column;
   justify-content: center;
   padding-right: 0.4em;
+  /* The stacked pair is sized to fit (see the line heights below); clip rather
+   * than spill into the row underneath if a font ever renders taller. */
+  overflow: hidden;
 }
 
 .team-name-line {
@@ -190,14 +195,19 @@
 
 /* Never clipped, never ellipsized (spec §7: "팀명은 항상 완전히 표시").
  * The desktop block below sizes the name down when it would not fit. */
+/* Line heights are pinned so the stacked name + group always fit the 2em row:
+ * 0.9 × 1.25 + 0.5 × 1.2 = 1.72em. With the browser default (~1.4) the pair
+ * came to ~1.96em and the school line was clipped by the row's bottom edge. */
 .team-name {
   font-size: 0.9em;
+  line-height: 1.25;
   font-weight: 400;
   white-space: nowrap;
 }
 
 .team-group {
   font-size: 0.5em;
+  line-height: 1.2;
   color: #777;
   white-space: nowrap;
   overflow: hidden;
@@ -256,20 +266,21 @@
  * its extra room here and on .team-title. BOARD_MAX_BADGES in Badges.tsx is
  * tuned to this width — two badges plus a `+N` chip. */
 .team-badge-col {
-  /* One badge line, measured at the ROW font size. .team-badge is 0.45em of
-   * that, so its own height below is 1.6em (1.6 × 0.45 = 0.72). Both the
-   * carousel viewport and the rise wrapper inherit the row font size, so this
-   * custom property resolves identically on them. */
-  --kr-badge-line: 0.72em;
+  /* Carousel slot height at the ROW font size. The pill inside is shorter
+   * (0.52em font × 1.55 line ≈ 0.81em of the row); that slack is what keeps a
+   * sub-pixel rounding sliver from exposing the neighbouring badge. */
+  --kr-badge-slot: 1.05em;
   /* Shrinkable, unlike the name column: when the row runs out of room the
-   * badges give way so the team name still fits in full (spec §7). 16em is
+   * badges give way so the team name still fits in full (spec §7). 17em is
    * the designed width (two badges + a `+N` chip), 5em the hard floor. */
-  flex: 0 1 16em;
+  flex: 0 1 17em;
   min-width: 5em;
   display: flex;
   align-items: center;
+  /* Badges are centred inside their own column (they no longer hug the name). */
+  justify-content: center;
   overflow: hidden;
-  padding-right: 0.4em;
+  padding: 0 0.4em;
 }
 
 .team-badges {
@@ -278,13 +289,14 @@
   min-width: 0;
   max-width: 100%;
   overflow: hidden;
+  justify-content: center;
 }
 
 .team-badge {
   flex: 0 1 auto;
-  font-size: 0.45em;
-  line-height: 1.5;
-  padding: 0 0.7em;
+  font-size: 0.52em;
+  line-height: 1.55;
+  padding: 0 0.75em;
   border-radius: 1em;
   white-space: nowrap;
   overflow: hidden;
@@ -315,13 +327,24 @@
  * `--kr-badge-count` / `--kr-badge-cycle` / `--kr-badge-steps` are set inline
  * by Badges.tsx because they depend on the badge count. */
 
-/* The viewport is exactly one badge line tall — only one badge can ever be
- * on screen, whatever the animation is doing. */
+/* The viewport is exactly one SLOT tall — only one badge can ever be on
+ * screen, whatever the animation is doing. The slot is taller than the pill,
+ * so the 1px that sub-pixel rounding can expose is slot padding, never the
+ * next badge's border. */
 .team-badges--carousel {
   display: block;
   width: 100%;
-  height: var(--kr-badge-line, 0.72em);
+  height: var(--kr-badge-slot, 1.05em);
   overflow: hidden;
+}
+
+/* One carousel step = one slot. The pill is centred inside it. */
+.team-badges__slot {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  box-sizing: border-box;
+  height: var(--kr-badge-slot, 1.05em);
 }
 
 /* Slides the window down by one badge line and back up, once per step (must
@@ -341,8 +364,7 @@
 .team-badges--carousel .team-badge {
   display: block;
   box-sizing: border-box;
-  height: 1.6em; /* = --kr-badge-line at this badge's 0.45em font size */
-  line-height: 1.5;
+  line-height: 1.55;
   max-width: 100%;
   width: fit-content;
 }
@@ -358,7 +380,7 @@
 
 @keyframes kr-badge-rise {
   0% {
-    transform: translateY(var(--kr-badge-line, 0.72em));
+    transform: translateY(var(--kr-badge-slot, 1.05em));
   }
   16% {
     transform: translateY(0);

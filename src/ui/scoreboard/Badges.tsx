@@ -116,7 +116,12 @@ export function Badges({
         <span className="team-badges__rise">
           <span className="team-badges__track">
             {items.map((item) => (
-              <Badge key={`${item.manual ? 'm' : 'a'}:${item.text}`} item={item} />
+              // Each badge sits in a taller slot so the step size is the SLOT,
+              // not the pill: a sub-pixel rounding sliver then reveals empty
+              // slot padding instead of the next badge's border.
+              <span className="team-badges__slot" key={`${item.manual ? 'm' : 'a'}:${item.text}`}>
+                <Badge item={item} />
+              </span>
             ))}
           </span>
         </span>
