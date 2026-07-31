@@ -143,3 +143,10 @@ Three things will bite you on contest day. **Read [docs/operations.md](docs/oper
 ## Running a real contest
 
 [docs/operations.md](docs/operations.md) is the contest-day run book: the pre-flight `curl` checks against the judge, `api_reader` account setup, the freeze security warning, CORS/reverse-proxy config, the freeze-cutoff choice, the team/school/country data checks, and a troubleshooting table.
+
+## Shoutouts
+
+- Spotboard was actually awesome. We, the ICPC Seoul regional tech committee, used it for more than 13 years. All of us in ICPC Seoul regional tech committee deeply appreciate for the original spotboard authors and contributors.
+  - @wookayin
+  - @beingryu
+  - @myungwoo
