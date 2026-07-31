@@ -146,7 +146,8 @@ Three things will bite you on contest day. **Read [docs/operations.md](docs/oper
 
 ## Shoutouts
 
-- Spotboard was actually awesome. We, the ICPC Seoul regional tech committee, used it for more than 13 years. All of us in ICPC Seoul regional tech committee deeply appreciate for the original spotboard authors and contributors.
-  - @wookayin
-  - @beingryu
-  - @myungwoo
+- Spotboard was truly awesome. We, the ICPC Seoul Regional Tech Committee, used it for more than 13 years. All of us on the committee deeply appreciate the original Spotboard authors and contributors for their every commit and effort.
+  - [@wookayin](https://github.com/wookayin)
+  - [@beingryu](https://github.com/beingryu)
+  - [@myungwoo](https://github.com/myungwoo)
+  - And the Algospot community
