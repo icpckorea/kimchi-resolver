@@ -410,6 +410,9 @@
   flex: none;
   display: flex;
   align-items: center;
+  /* Right-aligned inside the reserved slot, so the stack always ends flush
+   * against the problem cells however many balloons a team has. */
+  justify-content: flex-end;
   box-sizing: border-box;
   min-width: 7.3em;
   padding-right: 0.2em;
