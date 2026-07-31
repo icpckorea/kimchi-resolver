@@ -88,31 +88,32 @@ interface InvitedSchoolPickerProps {
 function InvitedSchoolPicker({ schools, selected, onChange }: InvitedSchoolPickerProps) {
   const chosen = new Set(selected);
 
-  const toggle = (school: string): void => {
-    const next = new Set(chosen);
-    if (next.has(school)) next.delete(school);
-    else next.add(school);
-    onChange(schools.filter((name) => next.has(name)));
-  };
-
   return (
-    <fieldset className="publish-field publish-field--wide publish-schools">
-      <legend className="publish-field-label">
+    <label className="publish-field publish-field--wide" htmlFor="publish-already-invited-groups">
+      <span className="publish-field-label">
         이미 초청된 학교 {chosen.size > 0 ? `(${chosen.size})` : ''}
-      </legend>
-      <div className="publish-schools-list">
+      </span>
+      <select
+        id="publish-already-invited-groups"
+        className="publish-schools-select"
+        multiple
+        size={8}
+        value={[...chosen]}
+        onChange={(e) => {
+          const picked = new Set(
+            [...e.target.selectedOptions].map((option) => option.value),
+          );
+          // Emit in contest order, not click order, so the value is stable.
+          onChange(schools.filter((name) => picked.has(name)));
+        }}
+      >
         {schools.map((school) => (
-          <label key={school} className="publish-school">
-            <input
-              type="checkbox"
-              checked={chosen.has(school)}
-              onChange={() => toggle(school)}
-            />
-            <span>{school}</span>
-          </label>
+          <option key={school} value={school}>
+            {school}
+          </option>
         ))}
-      </div>
-    </fieldset>
+      </select>
+    </label>
   );
 }
 

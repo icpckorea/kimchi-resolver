@@ -315,10 +315,11 @@ describe('PublishView star spin', () => {
     act(() => {
       appStore.setState({}); // settle: previous tiers recorded
     });
-    const box = [...document.querySelectorAll('.publish-school')]
-      .find((el) => el.textContent === 'Y')!
-      .querySelector('input') as HTMLInputElement;
-    fireEvent.click(box);
+    const select = document.getElementById(
+      'publish-already-invited-groups',
+    ) as HTMLSelectElement;
+    for (const option of [...select.options]) option.selected = option.value === 'Y';
+    fireEvent.change(select);
     expect(appStore.getState().alreadyInvited.groups).toEqual(['Y']);
     // School Y leaves the scored list: silver → bronze, spinning.
     expect(starFill('y1')).toBe(FILL.bronze);
@@ -371,37 +372,46 @@ describe('PublishControls', () => {
     expect(cutoff.getAttribute('aria-invalid')).toBeNull();
   });
 
-  // The picker lists the contest's own schools: an operator cannot look up a
-  // team id, and a mistyped school name used to fail silently.
-  function schoolBox(name: string): HTMLInputElement {
-    const label = [...document.querySelectorAll('.publish-school')].find((el) =>
-      el.textContent?.includes(name),
-    );
-    expect(label, `no checkbox for ${name}`).toBeDefined();
-    return label!.querySelector('input') as HTMLInputElement;
+  // The picker is a native multi-select over the contest's own schools: an
+  // operator cannot look up a team id, and a mistyped name used to fail
+  // silently.
+  function schoolSelect(): HTMLSelectElement {
+    const select = document.getElementById('publish-already-invited-groups');
+    expect(select, 'school multi-select missing').not.toBeNull();
+    return select as HTMLSelectElement;
   }
 
-  it('lists every school in the contest, alphabetically, checking the seeded ones', () => {
+  /** Select exactly `names` (a multi-select change, not a click). */
+  function pickSchools(names: string[]): void {
+    const select = schoolSelect();
+    for (const option of [...select.options]) {
+      option.selected = names.includes(option.value);
+    }
+    fireEvent.change(select);
+  }
+
+  it('lists every school in the contest, alphabetically, selecting the seeded ones', () => {
     seedStore({ alreadyInvited: { teamIds: [], groups: ['Y'] } });
     render(<PublishControls />);
 
-    const names = [...document.querySelectorAll('.publish-school')].map((el) => el.textContent);
-    expect(names).toEqual(['X', 'Y', 'Z']);
-    expect(schoolBox('Y').checked).toBe(true);
-    expect(schoolBox('X').checked).toBe(false);
+    const options = [...schoolSelect().options];
+    expect(options.map((o) => o.value)).toEqual(['X', 'Y', 'Z']);
+    expect(options.find((o) => o.value === 'Y')?.selected).toBe(true);
+    expect(options.find((o) => o.value === 'X')?.selected).toBe(false);
   });
 
   it('commits the picked schools and keeps them in contest order', () => {
     seedStore();
     render(<PublishControls />);
 
-    fireEvent.click(schoolBox('Z'));
+    pickSchools(['Z']);
     expect(appStore.getState().alreadyInvited.groups).toEqual(['Z']);
 
-    fireEvent.click(schoolBox('X'));
+    // Picked in reverse order; the committed value stays contest-ordered.
+    pickSchools(['Z', 'X']);
     expect(appStore.getState().alreadyInvited.groups).toEqual(['X', 'Z']);
 
-    fireEvent.click(schoolBox('Z'));
+    pickSchools(['X']);
     expect(appStore.getState().alreadyInvited.groups).toEqual(['X']);
     // Team ids are untouched: they remain a config.json-only escape hatch.
     expect(appStore.getState().alreadyInvited.teamIds).toEqual([]);
@@ -417,7 +427,7 @@ describe('PublishControls', () => {
     expect(hint?.textContent).toContain('적게 표시');
 
     // Picking one invited school removes the warning.
-    fireEvent.click(schoolBox('Y'));
+    pickSchools(['Y']);
     expect(document.querySelector('.publish-controls-hint')).toBeNull();
   });
 });
