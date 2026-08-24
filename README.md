@@ -57,6 +57,7 @@ Runtime configuration lives in `public/config.json` (served as `config.json` nex
 | `publish.alreadyInvited.teamIds` / `.groups` | `[]` | teams/schools already invited at another regional (see APAC stars) |
 | `award.mode` | `false` | boot into award mode |
 | `award.hideName` | `true` | mask unrevealed teams as "Team {id}" |
+| `award.showBalloons` | `false` | balloons on the ceremony board (the live board uses `showBalloons`) |
 | `award.rankBegin` | `null` | fast-forward the ceremony to this rank |
 | `award.awardsUrl` | `"./sample/awards.sample.json"` | awards.json v2 location |
 | `award.revealOrder` | `[]` | problem reveal priority (labels or ids) |
@@ -71,9 +72,11 @@ Runtime configuration lives in `public/config.json` (served as `config.json` nex
 
 With `apac.enabled`, award and publish modes mark APAC Championship advancement next to the rank (per the ICPC APAC rules, at most 3 teams per school — schoolRank ≥ 4 teams never get a star):
 
-- bronze star — 학내 3등 이내
-- silver star — APAC championship 초대 가능
-- gold star — APAC championship 진출
+- bronze star — Top 3 in their school
+- silver star — Likely invited to the APAC Championship
+- gold star — Invited to the APAC Championship
+
+(the wording of the star tooltips on the board; the publish-mode legend keeps the Korean phrasing)
 
 During the ceremony every schoolRank ≤ 3 team wears bronze. Once the final standings are known (ceremony fully revealed, or publish mode), the **scored list** decides the colors. It is built like this (validated against the 58 published rows of 2025-26 Seoul at icpcapac.solved.ac/2026):
 

@@ -170,7 +170,7 @@ FeedSource(어댑터) → parse → diff → 표시 대기 큐 → tick 소비 �
 - **대회 첫 Yes 반짝임**: contest-first solve 셀은 연두 위에 추가 sparkle/shimmer 애니메이션(CSS keyframe, 은은한 반복 광택)을 얹는다.
 - **시상식 피날레 시퀀스** (`remainingReveals === 1`인 마지막 공개 셀, 순서 고정):
   1. 셀이 **반짝인다** (blink/sparkle 예열).
-  2. 그 셀 쪽으로 화면을 **확대**(scale ≈ 1.9)하고, **무지개 오버레이가 흐르며 진동(shake)** 시작. 주변은 어둡게, 해당 셀에 **스포트라이트**.
+  2. 그 셀 쪽으로 화면을 **확대**(scale ≈ 5 — CSS `--award-finale-zoom`)하고, **무지개 오버레이가 흐르며 진동(shake)** 시작. 주변은 어둡게, 해당 셀에 **스포트라이트**.
   3. **흔들리면서 아주 천천히 flip** — 셀에 여러 시도가 있으면 중간 flip들도 느리게 재생 (해당 티어 slowFlip × `finaleIntermediateFlipSlowdown`, 기본 2).
   4. **마지막(판정 확정) flip은 더 느리게** 재생 (해당 티어 slowFlip × `finaleFlipSlowdown`, 기본 3 — config로 조정 가능).
   5. flip 완료 후 **진동을 멈춘다**. 결과가 **Yes면 축포(confetti) 효과** 재생.
@@ -279,7 +279,7 @@ URL 파라미터 (`URLSearchParams`로 파싱, config보다 우선): `r`, `time`
 
 **전제**: 대회가 종료된 상황(award 모드 또는 publish 모드)에서만 동작. `config.apac.enabled`로 on/off.
 
-**별 의미**: 동색 = 학내 3등 이내, 은색 = APAC championship **초대 가능**(후보), 금색 = APAC championship **진출**. 툴팁·범례·README도 이 문구를 사용한다.
+**별 의미**: 동색 = 학내 3등 이내, 은색 = APAC championship **초대 가능**(후보), 금색 = APAC championship **진출**. 범례는 이 문구를 쓰고, 보드/시상식 **툴팁과 README는 영어**를 쓴다 — bronze `Top 3 in their school`, silver `Likely invited to the APAC Championship`, gold `Invited to the APAC Championship` (`APAC_STAR_TITLES`).
 
 **별 아이콘 규칙** (별 부여·색상 변경 시 항상 별이 한 바퀴 회전하는 애니메이션 포함):
 

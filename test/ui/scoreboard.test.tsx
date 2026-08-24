@@ -16,9 +16,9 @@ import { applyUrlOverrides, defaultConfig, type ResolvedConfig } from '@core/con
 
 import { appStore } from '@store/appStore';
 import { Scoreboard } from '@ui/scoreboard/Scoreboard';
-import { LIVE_FLIP_MS } from '@ui/scoreboard/TeamRow';
+import { APAC_STAR_TITLES, LIVE_FLIP_MS } from '@ui/scoreboard/TeamRow';
 import { BOARD_MAX_BADGES, Badges, autoLabelText } from '@ui/scoreboard/Badges';
-import { ProblemCell } from '@ui/scoreboard/ProblemCell';
+import { ProblemCell, cellAttemptsText } from '@ui/scoreboard/ProblemCell';
 import { useCellFlip } from '@ui/scoreboard/useCellFlip';
 import { estimateTextEm, solvedSpineColor, hsv2rgb, ordinalSuffix } from '@ui/scoreboard/util';
 
@@ -435,40 +435,86 @@ describe('team names are never truncated', () => {
     expect(em(badge, 'min-width')).not.toBeNull();
   });
 
+  /** Body of the `@media all and (max-width: 1200px)` narrow-screen block. */
+  function narrowBlock(): string {
+    const at = css.indexOf('@media all and (max-width: 1200px)');
+    expect(at, 'narrow-screen block not found in scoreboard.css').toBeGreaterThan(-1);
+    return blockAt(at);
+  }
+
   it('fits the longest sample name at 1024x768 without shrinking below full size', () => {
     const teams: Array<{ name: string }> = JSON.parse(
       readFileSync(resolve(__dirname, '../..', 'public/sample/contest.json'), 'utf8'),
     ).teams;
     const problemCount = 13; // the sample contest
 
-    // --- board scale at 1024x768 (scoreboard.css ~20-rows rule) -------------
-    const base = (768 - 4.15 * 16) / 80; // .scoreboard font-size, px
+    // --- board scale at 1024x768 (scoreboard.css ~18-rows rule) -------------
+    // Both terms of the min(): the viewport height over 18 four-em rows, and
+    // the board width over the row's total width (the 1001-1200px tier).
+    const base = Math.min((768 - 4.15 * 16) / 72, (1024 - 2.5 * 16) / 102);
     const rowPx = 2 * base; // .team-row font-size
     const rowWidthEm = (1024 - 2 * 12) / rowPx; // minus .app-main side padding
 
+    // Cell width comes from the CSS so widening a cell has to be paid for
+    // here rather than silently pushing the row over the edge.
+    const cellWidth = em(ruleBody('.problem-result'), 'width') as number;
+    expect(cellWidth).toBeGreaterThan(0);
+
     // --- fixed columns, in row-em (mirrors the rules above) ----------------
     const fixed =
-      1.3 + // .solved-count (1em + 0.3em margin)
+      1.9 + // .solved-count (1.6em + 0.3em margin)
       (2.1 + 0.15 + 2.4 * 0.8) + // .team-ranks (icpc + gap + domestic @0.8em)
       1.2 + // .apac-slot
       1.6 + // .team-flag (1.1em + 0.25em margins)
-      (0.8 + (problemCount - 1) * 0.45 + 0.2) + // .balloons, worst case: all solved
-      problemCount * 2.3 * 0.6 + // .results cells @0.6em
+      // .balloons are display:none at this width (the ≤1200px block)
+      problemCount * cellWidth * 0.6 + // .results cells @0.6em
       3.5; // .team-penalty
     const pool = rowWidthEm - fixed; // left for .team-title + .team-badge-col
 
     const budget = em(desktopFitBlock(), '--kr-title-budget') as number;
-    const badgeMin = em(ruleBody('.team-badge-col'), 'min-width') as number;
+    const badgeMin = em(narrowBlock(), 'min-width') as number;
     expect(budget).toBeGreaterThan(0);
     expect(badgeMin).toBeGreaterThan(0);
 
     // The name column's reserved width plus the badge floor still fit the row.
     expect(pool).toBeGreaterThanOrEqual(budget + 0.4 + badgeMin);
 
-    // ...and every sample name fits that budget at the full 0.9em name size,
-    // so nothing is truncated *and* nothing has to shrink.
+    // ...and every sample name fits that budget at the full 1em name size
+    // (the .team-name clamp cap), so nothing is truncated *and* nothing has
+    // to shrink.
     const widest = teams.reduce((a, b) => (estimateTextEm(a.name) > estimateTextEm(b.name) ? a : b));
-    expect(estimateTextEm(widest.name) * 0.9).toBeLessThanOrEqual(budget);
+    expect(estimateTextEm(widest.name) * 1).toBeLessThanOrEqual(budget);
+  });
+
+  it('keeps the balloon stack out of the row below 1200px', () => {
+    const block = narrowBlock();
+    expect(/\.balloons\s*\{[^}]*display:\s*none/.test(block)).toBe(true);
+    // The cells are NOT shrunk here: a narrower cell brings back the wrapped
+    // '?50' that the 2.8em width exists to fix.
+    expect(block).not.toMatch(/\.problem-result\s*\{/);
+  });
+
+  it('fits a problem letter plus a three-digit attempt count on one line', () => {
+    // Worst realistic cell content: a pending cell with a long history, on a
+    // wide letter — 'M' + '?50' (the 2025 Seoul data has a 50-attempt cell).
+    const body = ruleBody('.problem-result');
+    const cellWidth = em(body, 'width') as number;
+    const labelSize = em(ruleBody('.problem-label'), 'font-size') as number;
+    const attemptsSize = em(ruleBody('.problem-attempts'), 'font-size') as number;
+    const gap = em(body, 'gap') as number;
+
+    // In em of the CELL's own font. letter-spacing (-1px per character) and
+    // the border (1px a side) are absolute px and net out NEGATIVE, so they
+    // give the least room back at the LARGEST board scale — the 16px cap of
+    // the .scoreboard clamp is where the line is tightest.
+    const cellFontPx = 16 * 2 * 0.6;
+    const content =
+      estimateTextEm('M') * labelSize +
+      gap +
+      estimateTextEm('?50') * attemptsSize -
+      (4 * 1) / cellFontPx + // letter-spacing: -1px after each of 4 chars
+      (2 * 1) / cellFontPx; // 1px border a side (box-sizing: border-box)
+    expect(content).toBeLessThanOrEqual(cellWidth);
   });
 
   it('hands the fit estimate to CSS on every row', () => {
@@ -918,5 +964,60 @@ describe('misc', () => {
       img.dispatchEvent(new Event('error'));
     });
     expect(container.querySelector('[data-team-id="t1"] img.team-logo')).toBeNull();
+  });
+});
+
+
+// ---------------------------------------------------------------------------
+// Attempt text and the ceremony's pending cap
+// ---------------------------------------------------------------------------
+
+describe('cell attempt text', () => {
+  const pending = (attempts: number): Parameters<typeof cellAttemptsText>[0] =>
+    ({
+      verdict: 'pending',
+      attempts,
+      failedAttempts: attempts - 1,
+      solvedMinute: null,
+      isFirstSolve: false,
+      isLastSolve: false,
+      isContestFirstSolve: false,
+      isContestLastSolve: false,
+    }) as Parameters<typeof cellAttemptsText>[0];
+
+  it('shows the exact pending count with no cap (the live board)', () => {
+    expect(cellAttemptsText(pending(50))).toBe('?50');
+    expect(cellAttemptsText(pending(1))).toBe('?1');
+  });
+
+  it('caps the pending count at the cap given (the ceremony board)', () => {
+    expect(cellAttemptsText(pending(4), 5)).toBe('?4');
+    expect(cellAttemptsText(pending(5), 5)).toBe('?5+'); // "5회 이상" — 5 included
+    expect(cellAttemptsText(pending(50), 5)).toBe('?5+');
+  });
+
+  it('never caps a settled verdict', () => {
+    const solved = { ...pending(9), verdict: 'accepted' as const, failedAttempts: 9 };
+    const failed = { ...pending(9), verdict: 'failed' as const, failedAttempts: 9 };
+    expect(cellAttemptsText(solved, 5)).toBe('+9');
+    expect(cellAttemptsText(failed, 5)).toBe('−9');
+  });
+});
+
+describe('APAC star tooltip', () => {
+  it('names the tier in English on the board', () => {
+    const contest = makeContest([makeTeam('t1', 'Alpha', 'Univ One')], ['A']);
+    const snapshot = computeStandings(contest, []);
+    const { container } = renderBoard(contest, snapshot, cfg({ apac: { enabled: true } }), {
+      apacStars: new Map([['t1', { tier: 'gold' as const }]]),
+    });
+
+    const star = container.querySelector('svg.kr-apac-star');
+    expect(star?.querySelector('title')?.textContent).toBe(APAC_STAR_TITLES.gold);
+    expect(APAC_STAR_TITLES).toEqual({
+      bronze: 'Top 3 in their school',
+      silver: 'Likely invited to the APAC Championship',
+      gold: 'Invited to the APAC Championship',
+    });
   });
 });

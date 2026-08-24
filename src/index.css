@@ -2,7 +2,7 @@
  * Global page styles: minimal reset, Open Sans-ish system font stack, page
  * background and the wrapper layout — fixed 2.6em header offset, a
  * full-viewport-width board (spec §7: no 1024px centering; row height scales
- * so ~20 teams fit, see scoreboard.css), and a right-hand gutter for the 16em
+ * so ~18 teams fit, see scoreboard.css), and a right-hand gutter for the 16em
  * events dashboard on viewports ≥ 1300px (chrome.css hides the dashboard
  * below that).
  */
@@ -56,8 +56,8 @@ svg {
 /* ---- wrapper layout ------------------------------------------------------ */
 
 /* Content clears the fixed 2.6em header (chrome.css) plus breathing room.
- * Keep these paddings in sync with the 4.15rem allowance in the ~20-row
- * board scale rule (scoreboard.css). */
+ * Keep these paddings in sync with the 4.15rem allowance (and the 2.5rem width
+ * allowance) in the ~18-row board scale rule (scoreboard.css). */
 .app-main {
   padding: 3.4rem 0.75rem 0.75rem;
 }

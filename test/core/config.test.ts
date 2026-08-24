@@ -46,6 +46,7 @@ describe('parseConfig — defaults', () => {
       award: {
         mode: false,
         hideName: true,
+        showBalloons: false,
         rankBegin: null,
         awardsUrl: './sample/awards.sample.json',
         revealOrder: [],
@@ -133,6 +134,7 @@ describe('parseConfig — defaults', () => {
       award: {
         mode: false,
         hideName: true,
+        showBalloons: false,
         rankBegin: null,
         awardsUrl: './sample/awards.sample.json',
         revealOrder: [],

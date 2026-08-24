@@ -34,7 +34,7 @@ import { useStore } from 'zustand';
 import type { AwardStepResult, CellState, Problem, Team, TeamStanding } from '@core/types';
 import { appStore, type AppStore } from '@store/appStore';
 import { ApacStar, AwardMedal, FlagIcon, iconRegistry } from '@ui/icons';
-import type { ApacStarInfo } from '@ui/scoreboard/TeamRow';
+import { APAC_STAR_TITLES, type ApacStarInfo } from '@ui/scoreboard/TeamRow';
 import { ProblemCell } from '@ui/scoreboard/ProblemCell';
 import { useCellFlip } from '@ui/scoreboard/useCellFlip';
 import { Badges } from '@ui/scoreboard/Badges';
@@ -67,6 +67,14 @@ import { ConfettiBurst, FinaleDim, RainbowOverlay, SparkleOverlay } from './effe
 import './award.css';
 
 const ADVANCE_KEYS = new Set(['Enter', 'ArrowRight', ';', 'PageDown']);
+
+/**
+ * Ceremony cap on the PENDING count: a yellow card with this many tries or
+ * more reads `?5+` instead of the exact number, whatever the verdict turns
+ * out to be. The board keeps the real count — on stage the exact number of a
+ * long history is a spoiler, and the card only has to say "many tries".
+ */
+const PENDING_ATTEMPTS_CAP = 5;
 
 export interface AwardViewProps {
   /** Store override for tests; the app uses the singleton. */
@@ -277,7 +285,7 @@ export function AwardView({ store = appStore, apacStars = null }: AwardViewProps
             }
             hideName={config.award.hideName}
             showFirstSolve={config.showFirstSolve}
-            showBalloons={config.showBalloons}
+            showBalloons={config.award.showBalloons}
             showTeamGroup={config.showTeamGroup}
             problemCount={contest.problems.length}
             apacEnabled={apacStars !== null}
@@ -442,7 +450,7 @@ function AwardRow({
               spinning={apacStar.spinning}
               size={20}
               className="team-apac-star"
-              title={`APAC ${apacStar.tier} star`}
+              title={APAC_STAR_TITLES[apacStar.tier]}
             />
           ) : null}
         </div>
@@ -521,7 +529,12 @@ function AwardRow({
               className={cls('award-cell-fx', blinking && 'award-cell-blink')}
               data-testid={`award-cell-${team.id}-${problem.id}`}
             >
-              <ProblemCell problem={problem} cell={cell} showFirstSolve={showFirstSolve} />
+              <ProblemCell
+                problem={problem}
+                cell={cell}
+                showFirstSolve={showFirstSolve}
+                pendingCap={PENDING_ATTEMPTS_CAP}
+              />
             </span>
           );
         })}
@@ -710,6 +723,7 @@ function RevealingCell({
         cell={cellToRender}
         showFirstSolve={showFirstSolve}
         flip={flipProps}
+        pendingCap={PENDING_ATTEMPTS_CAP}
       />
       {/* Sparkles: the finale's step-1 pre-heat, and the plain gacha shake. */}
       {preheating || (shaking && !finale) ? <SparkleOverlay /> : null}

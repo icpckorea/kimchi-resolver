@@ -1039,24 +1039,25 @@ describe('full-cell replay with pre-freeze attempts (r=5: 3 revealed fails on te
     return screen.getByTestId(testId).querySelector('.problem-attempts')?.textContent ?? '';
   }
 
-  it('replays the whole net history from ?8 through −1…−7 to +7', async () => {
+  it('replays the whole net history from ?5+ through −1…−7 to +7', async () => {
     // r=5: runs 3..5 (3 fails on team 3 B) land pre-freeze, runs 6..10
-    // (4 fails + Yes) post-freeze. The cell is masked ENTIRELY: it shows the
-    // FULL attempt count '?8', and one advance replays all 8 net runs —
+    // (4 fails + Yes) post-freeze. The cell is masked ENTIRELY: it holds the
+    // full net attempt count (8) and one advance replays all 8 net runs —
     // 7 fast fail flips, then the gacha shake (8 ≥ requirement 8, final Yes
-    // → always), then the slow Yes flip.
+    // → always), then the slow Yes flip. On the ceremony board the yellow
+    // card reads '?5+', not '?8' (PENDING_ATTEMPTS_CAP).
     const store = await bootAwardStore(() => 0.99, '?award=true&r=5');
     renderAward(store);
 
     await pressKey('Enter'); // focus team 3
-    // Masked cell shows pending with the full net attempt count.
+    // Masked cell shows pending with the capped attempt count.
     expect(verdictOf('award-cell-3-1')).toBe('pending');
-    expect(attemptsOf('award-cell-3-1')).toBe('?8');
+    expect(attemptsOf('award-cell-3-1')).toBe('?5+');
 
     await pressKey('Enter'); // reveal
     // Until the first flip midpoint the frozen display persists.
     expect(verdictOf('award-cell-3-1')).toBe('pending');
-    expect(attemptsOf('award-cell-3-1')).toBe('?8');
+    expect(attemptsOf('award-cell-3-1')).toBe('?5+');
 
     // First fast flip (fallback at 2×FAST): the replay starts from zero —
     // '−1', the first pre-freeze fail, NOT a continuation at '−4'.
@@ -1270,5 +1271,81 @@ describe('gacha effect', () => {
     await advanceMs(GACHA_SHAKE_MS / 2 + SLOW * 2 + 100);
     expect(screen.getByTestId('award-cell-3-1').className).not.toContain('award-cell-gacha');
     expect(screen.queryByTestId('gacha-sparkle')).toBeNull();
+  });
+});
+
+
+// ---------------------------------------------------------------------------
+// Ceremony board chrome: balloons (spec §7 — the row spends the width on the
+// cells and the names instead) and the capped pending count.
+// ---------------------------------------------------------------------------
+
+describe('ceremony board chrome', () => {
+  it('leaves the balloon stack off the ceremony board by default', async () => {
+    const store = await bootAwardStore();
+    const { container } = renderAward(store);
+
+    // The live board's `showBalloons` is on by default and stays on — only
+    // the ceremony opts out (award.showBalloons).
+    expect(store.getState().config.showBalloons).toBe(true);
+    expect(store.getState().config.award.showBalloons).toBe(false);
+    expect(container.querySelector('.balloons')).toBeNull();
+  });
+
+  it('brings the balloons back when award.showBalloons is on', async () => {
+    const balloonFetch: typeof fetch = async (input) => {
+      const url = String(input);
+      if (url.includes('config.json')) {
+        return jsonResponse({
+          ...configJson,
+          award: { ...configJson.award, showBalloons: true },
+        });
+      }
+      return fetchImpl(input);
+    };
+    const store = await bootAwardStore(() => 0.99, '?award=true&r=2', balloonFetch);
+    const { container } = renderAward(store);
+
+    expect(container.querySelector('.balloons')).not.toBeNull();
+  });
+
+  it('caps a yellow card at ?5+ however long the history is', async () => {
+    // Team 3 cell B is masked with 8 net attempts (see the replay describe).
+    const store = await bootAwardStore(() => 0.99, '?award=true&r=5');
+    renderAward(store);
+
+    const attempts = () =>
+      screen.getByTestId('award-cell-3-1').querySelector('.problem-attempts')?.textContent;
+    expect(attempts()).toBe('?5+');
+
+    // The cap is on the PENDING card only — the fail counts it flips through
+    // stay exact.
+    await pressKey('Enter'); // focus team 3
+    await pressKey('Enter'); // reveal
+    await advanceMs(7 * FAST * 2 + 50);
+    expect(attempts()).toBe('−7');
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Finale zoom: one knob for the transform and the shake keyframes
+// ---------------------------------------------------------------------------
+
+describe('finale zoom', () => {
+  const css = readFileSync(resolve(__dirname, '../../src/ui/award/award.css'), 'utf8');
+
+  it('drives every finale transform from --award-finale-zoom', () => {
+    expect(css).toMatch(/--award-finale-zoom:\s*5\b/);
+    expect(css).toMatch(/\.award-cell-finale\s*\{[^}]*transform:\s*scale\(var\(--award-finale-zoom\)\)/);
+    // The shake keyframes carry the zoom too — a hardcoded scale there would
+    // snap the card back to its old size for the whole shake.
+    const keyframes = /@keyframes award-gacha-shake-zoomed\s*\{([\s\S]*?)\n\}/.exec(css);
+    expect(keyframes).not.toBeNull();
+    expect((keyframes as RegExpExecArray)[1]).not.toMatch(/scale\((?!var\()/);
+  });
+
+  it('lets the zoomed card out of the board box', () => {
+    // .board-wrap clips (index.css) and the card is several rows tall.
+    expect(css).toMatch(/\.app-main--award \.board-wrap\s*\{[^}]*overflow:\s*visible/);
   });
 });

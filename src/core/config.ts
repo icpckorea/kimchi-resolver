@@ -58,6 +58,14 @@ const awardSchema = z
   .object({
     mode: z.boolean().default(false),
     hideName: z.boolean().default(true),
+    /**
+     * Balloons on the ceremony board: OFF by default. The stack reserves
+     * 7.3em of every row (scoreboard.css) and the ceremony spends that width
+     * on the cells and the team names instead. Independent of the top-level
+     * `showBalloons`, which governs the live board only — set this to bring
+     * the balloons back on stage.
+     */
+    showBalloons: z.boolean().default(false),
     rankBegin: z.number().int().positive().nullable().default(null),
     awardsUrl: z.string().default('./sample/awards.sample.json'),
     /** Problem labels or ids, highest priority first. */

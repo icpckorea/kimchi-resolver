@@ -10,7 +10,8 @@
  * The problem letter and the attempt counts are real DOM text (accessibility
  * and copy — the original used CSS `content`, deliberately not ported).
  * Attempts text: `+N` solved after N penalized failures, `−N` failed N times,
- * `?N` pending with N net runs.
+ * `?N` pending with N net runs — or `?K+` when a cap is given (award mode,
+ * see PENDING_ATTEMPTS_CAP).
  */
 import type { CellState, Problem } from '@core/types';
 import type { CellFlipProps } from './useCellFlip';
@@ -35,15 +36,24 @@ export function cellStateClass(cell: CellState, showFirstSolve: boolean): string
   return `solved${sparkle}`;
 }
 
-/** `+N` / `−N` / `?N` attempt text, or null when there is nothing to show. */
-export function cellAttemptsText(cell: CellState): string | null {
+/**
+ * `+N` / `−N` / `?N` attempt text, or null when there is nothing to show.
+ *
+ * `pendingCap` caps only the PENDING (yellow) count: at or above the cap the
+ * cell reads `?K+` instead of the exact number. The board shows the real
+ * count; the ceremony passes a cap so a long history stays a "many tries"
+ * card until the verdict lands (spec §6 — the number is the spoiler).
+ */
+export function cellAttemptsText(cell: CellState, pendingCap?: number): string | null {
   switch (cell.verdict) {
     case 'accepted':
       return cell.failedAttempts > 0 ? `+${cell.failedAttempts}` : null;
     case 'failed':
       return cell.failedAttempts > 0 ? `${MINUS}${cell.failedAttempts}` : null;
     case 'pending':
-      return `?${cell.attempts}`;
+      return pendingCap !== undefined && cell.attempts >= pendingCap
+        ? `?${pendingCap}+`
+        : `?${cell.attempts}`;
     default:
       return null;
   }
@@ -55,10 +65,18 @@ export interface ProblemCellProps {
   showFirstSolve: boolean;
   /** Spread of useCellFlip(...).props — wires the flip animation. */
   flip?: CellFlipProps;
+  /** Pending counts at or above this read `?K+` (award mode; see above). */
+  pendingCap?: number;
 }
 
-export function ProblemCell({ problem, cell, showFirstSolve, flip }: ProblemCellProps) {
-  const attempts = cellAttemptsText(cell);
+export function ProblemCell({
+  problem,
+  cell,
+  showFirstSolve,
+  flip,
+  pendingCap,
+}: ProblemCellProps) {
+  const attempts = cellAttemptsText(cell, pendingCap);
   const title =
     cell.verdict === 'accepted' && cell.solvedMinute !== null
       ? `${problem.title} — solved at ${cell.solvedMinute} min.${

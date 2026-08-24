@@ -9,6 +9,17 @@
 
 .award-view {
   position: relative;
+  /* Finale card zoom (spec §7 step 2). One knob: the zoom transition and the
+   * shake keyframes both read it. */
+  --award-finale-zoom: 5;
+}
+
+/* The zoomed finale card is several rows tall and reaches past the board's
+ * rounded box, which .board-wrap clips (index.css). Award mode is a single
+ * full-screen ceremony — nothing scrolls sideways there — so it lets the
+ * card out. */
+.app-main--award .board-wrap {
+  overflow: visible;
 }
 
 /* Row layout and cell colors come from the shared scoreboard styles
@@ -187,8 +198,10 @@
   z-index: 40;
   pointer-events: none;
   /* Radial spotlight punched out of a dark veil, centered on the cell. */
+  /* Wide enough to hold the zoomed card (see --award-finale-zoom) with room
+   * to fall off, so the spotlight reads as light and not as a ring. */
   background: radial-gradient(
-    circle 9em at var(--spot-x, 50%) var(--spot-y, 50%),
+    circle 16em at var(--spot-x, 50%) var(--spot-y, 50%),
     rgba(0, 0, 0, 0) 0,
     rgba(0, 0, 0, 0.28) 55%,
     rgba(0, 0, 0, 0.82) 100%
@@ -207,33 +220,34 @@
 .award-cell-finale {
   position: relative;
   z-index: 50; /* above the dim veil */
-  transform: scale(1.9);
-  transition: transform 0.35s ease;
+  transform: scale(var(--award-finale-zoom));
+  /* Long enough that a 5× jump reads as a zoom and not as a cut. */
+  transition: transform 0.6s cubic-bezier(0.22, 1, 0.36, 1);
 }
 
-/* Finale + gacha shake combined: keep the 1.9x zoom inside the keyframes. */
+/* Finale + gacha shake combined: keep the zoom inside the keyframes. */
 .award-cell-finale.award-cell-gacha {
   animation: award-gacha-shake-zoomed 0.18s linear infinite;
 }
 
 @keyframes award-gacha-shake-zoomed {
   0% {
-    transform: scale(1.9) translate(0, 0) rotate(0deg);
+    transform: scale(var(--award-finale-zoom)) translate(0, 0) rotate(0deg);
   }
   20% {
-    transform: scale(1.9) translate(1.5px, -1px) rotate(0.7deg);
+    transform: scale(var(--award-finale-zoom)) translate(1.5px, -1px) rotate(0.7deg);
   }
   40% {
-    transform: scale(1.9) translate(-1.5px, 1px) rotate(-0.6deg);
+    transform: scale(var(--award-finale-zoom)) translate(-1.5px, 1px) rotate(-0.6deg);
   }
   60% {
-    transform: scale(1.9) translate(1px, 1.5px) rotate(0.5deg);
+    transform: scale(var(--award-finale-zoom)) translate(1px, 1.5px) rotate(0.5deg);
   }
   80% {
-    transform: scale(1.9) translate(-1px, -1.5px) rotate(-0.7deg);
+    transform: scale(var(--award-finale-zoom)) translate(-1px, -1.5px) rotate(-0.7deg);
   }
   100% {
-    transform: scale(1.9) translate(0, 0) rotate(0deg);
+    transform: scale(var(--award-finale-zoom)) translate(0, 0) rotate(0deg);
   }
 }
 

@@ -13,16 +13,47 @@
   color: #1c1c1c;
 }
 
-/* Desktop board scale (spec §7): full-width board with ~20 team rows filling
+/* Desktop board scale (spec §7): full-width board with ~18 team rows filling
  * the viewport height below the fixed header. A .team-row is 2em tall at a
- * 2em font, i.e. 4× this base font-size, so base = available height / 20 / 4.
+ * 2em font, i.e. 4× this base font-size, so base = available height / 18 / 4.
  * 4.15rem = .app-main's 3.4rem top (header + gap) + 0.75rem bottom padding
- * (index.css). At 1024×768 this yields a ~8.8px base → ~35px rows → header +
- * 20 rows fill the screen exactly. ≥769px only — the ≤768px mobile compact
- * layout (§14) keeps the fixed base above. */
+ * (index.css). At 1024×768 this yields a ~9.7px base → ~39px rows → header +
+ * 18 rows fill the screen exactly.
+ *
+ * The second term of the min() is the WIDTH guard. A row is a fixed set of
+ * em-sized columns, so a viewport that is tall but narrow (4:3 desktops, a
+ * portrait tablet) would take its row size from the height and then overflow
+ * sideways. Dividing the board width by the row's full width — its total in
+ * row-em, × 2 because a row-em is 2 × this base — caps the base at the
+ * largest size that still fits horizontally. The divisor is that sum for a
+ * 13-problem board:
+ *
+ *   solved 1.9 + ranks 4.17 + apac 1.2 + flag 1.6 + cells 13 × 2.8 × 0.6
+ *   + penalty 3.5 + title budget 12.7 + 0.4 + badge floor 3.5  ≈ 50.8
+ *
+ * 2.5rem covers .app-main's 0.75rem side padding plus a classic scrollbar.
+ * The two tiers below re-derive the same sum where a column changes.
+ * ≥769px only — the ≤768px mobile compact layout (§14) keeps the fixed base
+ * above. */
 @media (min-width: 769px) {
   .scoreboard {
-    font-size: clamp(6px, calc((100vh - 4.15rem) / 80), 14px);
+    font-size: clamp(6px, min((100vh - 4.15rem) / 72, (100vw - 2.5rem) / 102), 16px);
+  }
+}
+
+/* Narrow desktops (≤1000px) spend less on the name (9em budget below), so the
+ * same row needs less width: 50.8 − 3.7 ≈ 47.1 row-em. */
+@media (min-width: 769px) and (max-width: 1000px) {
+  .scoreboard {
+    font-size: clamp(6px, min((100vh - 4.15rem) / 72, (100vw - 2.5rem) / 95), 16px);
+  }
+}
+
+/* ≥1201px the balloon stack is back (7.3em) and the badge column keeps its
+ * 5em floor: 50.8 + 7.3 + 1.5 ≈ 59.6 row-em. */
+@media (min-width: 1201px) {
+  .scoreboard {
+    font-size: clamp(6px, min((100vh - 4.15rem) / 72, (100vw - 2.5rem) / 120), 16px);
   }
 }
 
@@ -196,8 +227,9 @@
 /* Never clipped, never ellipsized (spec §7: "팀명은 항상 완전히 표시").
  * The desktop block below sizes the name down when it would not fit. */
 /* Line heights are pinned so the stacked name + group always fit the 2em row:
- * 0.9 × 1.25 + 0.5 × 1.2 = 1.72em. With the browser default (~1.4) the pair
- * came to ~1.96em and the school line was clipped by the row's bottom edge. */
+ * 0.9 × 1.25 + 0.5 × 1.2 = 1.72em here, and 1 × 1.25 + 0.55 × 1.2 = 1.91em at
+ * the desktop caps below. With the browser default (~1.4) the pair came to
+ * ~1.96em and the school line was clipped by the row's bottom edge. */
 .team-name {
   font-size: 0.9em;
   line-height: 1.25;
@@ -226,29 +258,31 @@
  *    truncating. `--kr-name-em` is the estimated text width in units of the
  *    name's own font size, set inline by TeamRow / AwardView (util.ts
  *    `nameFitStyle`); dividing the budget by it gives the font size that
- *    makes the text exactly as wide as the budget. The 0.9em cap keeps
+ *    makes the text exactly as wide as the budget. The 1em cap keeps
  *    normal names at their designed size, the 0.5em floor keeps an absurd
- *    name legible (0.5em still fits ~24em of text = ~45 latin characters).
+ *    name legible (0.5em still fits ~25em of text = ~46 latin characters).
  *
- * Row height is untouched: the name line is capped at its old 0.9em and can
- * only get shorter, so the ~20-rows-per-screen scale above still holds.
+ * Row height is untouched: the pair is capped at 1.91em of the 2em row (see
+ * the line heights above), so the ~18-rows-per-screen scale above still
+ * holds.
  * ≥769px only — the ≤768px compact layout (§14) wraps instead, see below. */
 @media (min-width: 769px) {
   .team-title {
-    --kr-title-budget: 12em;
+    /* 12.7em fits the widest sample name (12.6em of text) at the full 1em. */
+    --kr-title-budget: 12.7em;
     --kr-name-budget: var(--kr-title-budget);
     /* grow into spare room; never shrink below the reserved budget */
     flex: 1 0 calc(var(--kr-title-budget) + 0.4em);
   }
 
   .team-name {
-    font-size: clamp(0.5em, calc(var(--kr-name-budget) / var(--kr-name-em, 12)), 0.9em);
+    font-size: clamp(0.5em, calc(var(--kr-name-budget) / var(--kr-name-em, 12)), 1em);
   }
 
   /* The school line gets the same treatment (a 51-character university name
    * needs only a 0.44em font to fit); the ellipsis stays as a last resort. */
   .team-group {
-    font-size: clamp(0.34em, calc(var(--kr-name-budget) / var(--kr-group-em, 24)), 0.5em);
+    font-size: clamp(0.34em, calc(var(--kr-name-budget) / var(--kr-group-em, 24)), 0.55em);
   }
 }
 
@@ -436,11 +470,17 @@
   align-items: stretch;
 }
 
+/* Width is set so the WIDEST content still fits on one line: the widest
+ * problem letter (1.3em of this font — 'M' on a 13-problem board) plus a
+ * three-character attempt count ('?50'). At 2.3em a pending cell with a long
+ * history broke '?50' onto a second line. The letter-spacing below and the
+ * border are absolute px, so they are worth LESS em the larger the board
+ * gets: the line is tightest at the 16px scale cap. */
 .problem-result {
   position: relative;
   overflow: hidden;
   box-sizing: border-box;
-  width: 2.3em;
+  width: 2.8em;
   font-size: 0.6em;
   border: 1px solid #fff;
   display: flex;
@@ -462,6 +502,9 @@
 
 .problem-attempts {
   color: inherit;
+  /* A hair smaller than the letter, which buys the third character of a
+   * '?50' its room back. */
+  font-size: 0.88em;
 }
 
 /* verdict colors (original) */
@@ -604,7 +647,13 @@
 
 /* ---- narrow screens (original media query level) --------------------------- */
 
-@media all and (max-width: 1000px) {
+/* ≤1200px (was ≤1000px): the balloon stack reserves 7.3em of every row, and
+ * below this width that is the difference between a row that fits and one
+ * that spills — the cells and the name keep the room instead. The cells
+ * themselves are NOT shrunk here any more: a narrower cell brings back the
+ * wrapped '?50' this width was widened to fix, and the board scale's width
+ * guard (above) already sizes the row down to fit. */
+@media all and (max-width: 1200px) {
   .balloons {
     display: none;
   }
@@ -613,10 +662,6 @@
   .team-badge-col {
     flex-basis: 9em;
     min-width: 3.5em;
-  }
-
-  .problem-result {
-    width: 2em;
   }
 }
 

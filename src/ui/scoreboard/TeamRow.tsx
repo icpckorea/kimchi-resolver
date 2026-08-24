@@ -27,11 +27,12 @@ export interface ApacStarInfo {
   spinning?: boolean;
 }
 
-/** APAC star semantics per tier (spec §13) — tooltip text. */
-const APAC_STAR_TITLES: Record<ApacStarTier, string> = {
-  bronze: '학내 3등 이내',
-  silver: 'APAC championship 초대 가능',
-  gold: 'APAC championship 진출',
+/** APAC star semantics per tier (spec §13) — tooltip text, shared with the
+ * award board (AwardView imports it). */
+export const APAC_STAR_TITLES: Record<ApacStarTier, string> = {
+  bronze: 'Top 3 in their school',
+  silver: 'Likely invited to the APAC Championship',
+  gold: 'Invited to the APAC Championship',
 };
 
 /** Spring tuned to the original rank move-up feel (~100-200ms per row). */
