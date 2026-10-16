@@ -11,6 +11,12 @@
   font-size: 0.625rem;
   background: #fff;
   color: #1c1c1c;
+  /* Publish-mode "selected for the regional" row (RowDecor.advance). A pale
+   * yellow keeps the #1c1c1c text and the #777 school line readable on the
+   * white board (≈ 17:1 and ≈ 4:1); hover is one step deeper. A host page
+   * can override both. */
+  --row-advance-bg: #fff3b0;
+  --row-advance-hover-bg: #ffe680;
 }
 
 /* Desktop board scale (spec §7): full-width board with ~18 team rows filling
@@ -31,13 +37,18 @@
  *   solved 1.9 + ranks 4.17 + apac 1.2 + flag 1.6 + cells 13 × 2.8 × 0.6
  *   + penalty 3.5 + title budget 12.7 + 0.4 + badge floor 3.5  ≈ 50.8
  *
+ * Publish-mode boards can add a column (RowDecor): the value column
+ * (`--kr-value-col`, 2.64 row-em) and the leading checkbox column
+ * (`--kr-leading-col`, 1.2 row-em). Each adds 2 × its width to the divisor;
+ * on every other board both are 0.
+ *
  * 2.5rem covers .app-main's 0.75rem side padding plus a classic scrollbar.
  * The two tiers below re-derive the same sum where a column changes.
  * ≥769px only — the ≤768px mobile compact layout (§14) keeps the fixed base
  * above. */
 @media (min-width: 769px) {
   .scoreboard {
-    font-size: clamp(6px, min((100vh - 4.15rem) / 72, (100vw - 2.5rem) / 102), 16px);
+    font-size: clamp(6px, min((100vh - 4.15rem) / 72, (100vw - 2.5rem) / (102 + var(--kr-value-col, 0) + var(--kr-leading-col, 0))), 16px);
   }
 }
 
@@ -45,7 +56,7 @@
  * same row needs less width: 50.8 − 3.7 ≈ 47.1 row-em. */
 @media (min-width: 769px) and (max-width: 1000px) {
   .scoreboard {
-    font-size: clamp(6px, min((100vh - 4.15rem) / 72, (100vw - 2.5rem) / 95), 16px);
+    font-size: clamp(6px, min((100vh - 4.15rem) / 72, (100vw - 2.5rem) / (95 + var(--kr-value-col, 0) + var(--kr-leading-col, 0))), 16px);
   }
 }
 
@@ -53,7 +64,7 @@
  * 5em floor: 50.8 + 7.3 + 1.5 ≈ 59.6 row-em. */
 @media (min-width: 1201px) {
   .scoreboard {
-    font-size: clamp(6px, min((100vh - 4.15rem) / 72, (100vw - 2.5rem) / 120), 16px);
+    font-size: clamp(6px, min((100vh - 4.15rem) / 72, (100vw - 2.5rem) / (120 + var(--kr-value-col, 0) + var(--kr-leading-col, 0))), 16px);
   }
 }
 
@@ -96,6 +107,78 @@
   top: 0;
   bottom: 0;
   z-index: 30;
+}
+
+/* ---- publish-mode row decoration (RowDecor) ------------------------------- */
+
+/* Width-guard terms for the optional columns (see the board scale above). */
+.scoreboard--has-value {
+  --kr-value-col: 5.3;
+}
+
+.scoreboard--has-leading {
+  --kr-leading-col: 2.4;
+}
+
+/* Selected for the regional. Wins over the followed highlight: the yellow is
+ * the answer the page exists to show (the followed row stays bold/sticky). */
+.team-row.team-row--advance {
+  background-color: var(--row-advance-bg);
+}
+
+.team-row.team-row--advance:hover {
+  background-color: var(--row-advance-hover-bg);
+}
+
+/* Ineligible team: kept on the board, at half opacity. */
+.team-row.team-row--dimmed {
+  opacity: 0.5;
+}
+
+/* Control before the spine (the prepare page's ineligible checkbox). */
+.team-row-leading {
+  flex: none;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0 0.25em;
+}
+
+.team-row-leading input[type='checkbox'] {
+  width: 0.7em;
+  height: 0.7em;
+  margin: 0;
+  cursor: pointer;
+}
+
+/* Selection step tag after the name (prepare page only). */
+.team-row-tag {
+  flex: none;
+  align-self: center;
+  margin-left: 0.4em;
+  padding: 0 0.45em;
+  border-radius: 0.6em;
+  font-size: 0.45em;
+  line-height: 1.5;
+  font-weight: 600;
+  color: #5c4a00;
+  background: #ffe066;
+  white-space: nowrap;
+}
+
+/* Right-aligned note (the APAC value, 4 decimals). Every row of a board that
+ * shows values keeps this column, empty or not, so the columns line up. */
+.team-row-value {
+  flex: none;
+  width: 4.4em;
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  padding-right: 0.3em;
+  font-size: 0.6em;
+  font-variant-numeric: tabular-nums;
+  color: #444;
+  white-space: nowrap;
 }
 
 /* ---- solved-count color spine -------------------------------------------- */
