@@ -18,5 +18,8 @@ export default defineConfig({
     environment: 'node',
     include: ['test/**/*.test.ts', 'test/**/*.test.tsx'],
     environmentMatchGlobs: [['test/ui/**', 'jsdom']],
+    // Node ≥ 25 ships a global localStorage that shadows jsdom's (and has no
+    // clear() without --localstorage-file). Turn it off in the test workers.
+    poolOptions: { forks: { execArgv: ['--no-experimental-webstorage'] } },
   },
 });
