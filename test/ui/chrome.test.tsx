@@ -178,7 +178,7 @@ describe('Header', () => {
   });
 
   it('shows only the title and the clock in publish mode', async () => {
-    const store = await bootStore(smallFiles(), '?publish=true&site_score=3');
+    const store = await bootStore(smallFiles(), '?publish=true');
     const { container, getByText } = render(<Header store={store} />);
     expect(getByText('Chrome Test Contest')).toBeTruthy();
     expect(container.querySelector('.kr-header__clock-text')?.textContent).toBe('05:00');

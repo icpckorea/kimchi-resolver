@@ -96,6 +96,65 @@ const awardSchema = z
   })
   .default({});
 
+const countSchema = z.number().int().nonnegative();
+
+/**
+ * Publish block (publish-modes spec §3, §6.5). `mode` only selects the
+ * features of the prepare page; `enabled` (or `?publish=true`) still decides
+ * whether the app enters it at all.
+ */
+const publishSchema = z
+  .object({
+    enabled: z.boolean().default(false),
+    mode: z.enum(['off', 'preliminary', 'regional']).default('off'),
+    /** Initial value of the assumed invitation cutoff (regional mode). */
+    invitedScoreCutoff: z.number().nonnegative().nullable().default(null),
+    /**
+     * Cross-site invitations (spec §6.5): schools that already have an APAC
+     * championship invitation drop out of this site's scored list entirely.
+     * Winner schools of other regionals and schools invited by another route
+     * are computed the same; the prepare page shows them as two pickers.
+     * The champion is handled automatically and needs no entry here. The
+     * legacy `groups` key is read as `invitedGroups` (see
+     * {@link migrateLegacyKeys}).
+     */
+    alreadyInvited: z
+      .object({
+        teamIds: z.array(idSchema).default([]),
+        winnerGroups: z.array(z.string()).default([]),
+        invitedGroups: z.array(z.string()).default([]),
+      })
+      .default({}),
+    /** Preliminary selection inputs (spec §5.1). null = not entered yet. */
+    preliminary: z
+      .object({
+        totalTeams: z.number().int().positive().nullable().default(null),
+        topN: countSchema.default(30),
+        k: countSchema.nullable().default(null),
+        ineligibleTeamIds: z.array(idSchema).default([]),
+      })
+      .default({}),
+    /** Regional simulation initial values (spec §6.4). */
+    regional: z
+      .object({
+        prelimSchools: countSchema.nullable().default(null),
+        prelimTeams: countSchema.nullable().default(null),
+        coefficients: z
+          .object({
+            regionalSchools: z.number().finite().default(0.56),
+            regionalTeams: z.number().finite().default(0.24),
+            prelimSchools: z.number().finite().default(0.14),
+            prelimTeams: z.number().finite().default(0.06),
+            foreignTeams: z.number().finite().default(0.3),
+          })
+          .default({}),
+        /** Previous-year World Finals medal schools: scored-list quota 3. */
+        wfMedalGroups: z.array(z.string()).default([]),
+      })
+      .default({}),
+  })
+  .default({});
+
 const configSchema = z.object({
   source: sourceSchema,
   fetchTimeout: z.number().positive().default(5000),
@@ -120,29 +179,13 @@ const configSchema = z.object({
     })
     .default({}),
   apac: z.object({ enabled: z.boolean().default(false) }).default({}),
-  publish: z
-    .object({
-      enabled: z.boolean().default(false),
-      siteScore: z.number().positive().nullable().default(null),
-      invitedScoreCutoff: z.number().nonnegative().nullable().default(null),
-      /**
-       * Cross-site invitations (spec §13 rule 3.1): teams already invited to
-       * the APAC championship at another regional. Their schools drop out of
-       * this site's scored list entirely. The champion is handled
-       * automatically and needs no entry here.
-       */
-      alreadyInvited: z
-        .object({
-          teamIds: z.array(idSchema).default([]),
-          groups: z.array(z.string()).default([]),
-        })
-        .default({}),
-    })
-    .default({}),
+  publish: publishSchema,
   award: awardSchema,
 });
 
 export type AppConfig = z.output<typeof configSchema>;
+export type PublishConfig = AppConfig['publish'];
+export type PublishModeConfig = PublishConfig['mode'];
 export type AwardConfig = AppConfig['award'];
 export type SourceConfig = AppConfig['source'];
 export type AnimationSpeed = z.output<typeof animationSpeedSchema>;
@@ -223,9 +266,36 @@ function pruneAtPath(root: unknown, path: readonly (string | number)[]): unknown
 }
 
 /**
+ * Renames legacy keys in place (on the private clone) before validation, so
+ * an invalid legacy value is reported and pruned under its new path:
+ * - `publish.alreadyInvited.groups` → `invitedGroups` (publish-modes spec
+ *   §6.5). When `invitedGroups` or `winnerGroups` is also present, the new
+ *   keys win and the legacy key is dropped with an error.
+ */
+function migrateLegacyKeys(candidate: unknown, errors: string[]): void {
+  if (candidate === null || typeof candidate !== 'object') return;
+  const publish = (candidate as Record<string, unknown>).publish;
+  if (publish === null || typeof publish !== 'object') return;
+  const invited = (publish as Record<string, unknown>).alreadyInvited;
+  if (invited === null || typeof invited !== 'object' || Array.isArray(invited)) return;
+  const record = invited as Record<string, unknown>;
+  if (!('groups' in record)) return;
+  if ('invitedGroups' in record || 'winnerGroups' in record) {
+    errors.push(
+      'config.publish.alreadyInvited.groups: legacy key ignored because ' +
+        'invitedGroups/winnerGroups is set',
+    );
+  } else {
+    record.invitedGroups = record.groups;
+  }
+  delete record.groups;
+}
+
+/**
  * Validates a parsed config.json value. Never throws: invalid keys are
  * reported in `errors` (for SystemMessage display) and replaced by their
- * spec defaults; valid keys are kept.
+ * spec defaults; valid keys are kept. Unknown keys (e.g. the removed
+ * `publish.siteScore`) are dropped silently.
  */
 export function parseConfig(json: unknown): ParseConfigResult {
   const errors: string[] = [];
@@ -237,6 +307,7 @@ export function parseConfig(json: unknown): ParseConfigResult {
     candidate = {};
   } else {
     candidate = deepClonePlain(json);
+    migrateLegacyKeys(candidate, errors);
   }
 
   // Parse; on failure, record the issues, prune the offending keys back to
@@ -265,6 +336,8 @@ export interface UrlOverridesResult {
   warnings: string[];
 }
 
+const PUBLISH_MODES: readonly PublishModeConfig[] = ['off', 'preliminary', 'regional'];
+
 /** '', 'true', '1', 'yes', 'on' → true; 'false', '0', 'no', 'off' → false. */
 function parseBoolParam(raw: string): boolean | null {
   const s = raw.trim().toLowerCase();
@@ -284,8 +357,9 @@ function parseNumberParam(raw: string): number | null {
  * Applies URL parameter overrides (spec §9/§13) on top of a parsed config.
  * URL wins over config.json. Params: `r`, `time` (forces autoPlay=false),
  * `award`, `award_rank_begin`, `animation`, `q`, `t`, `publish`,
- * `site_score`, `invited_cutoff`. Invalid values are ignored and reported
- * in `warnings`. The input config is not mutated.
+ * `publish_mode`, `invited_cutoff`. Invalid values are ignored and reported
+ * in `warnings`. The input config is not mutated. (`site_score` was removed
+ * with `publish.siteScore`: the regional mode computes S from its inputs.)
  */
 export function applyUrlOverrides(config: AppConfig, search: string): UrlOverridesResult {
   // The clone keeps any already-resolved URL fields when re-applied.
@@ -369,13 +443,12 @@ export function applyUrlOverrides(config: AppConfig, search: string): UrlOverrid
     out.publish.enabled = v;
   });
 
-  numberParam(
-    'site_score',
-    (n) => n > 0,
-    (n) => {
-      out.publish.siteScore = n;
-    },
-  );
+  const publishMode = params.get('publish_mode');
+  if (publishMode !== null) {
+    const mode = PUBLISH_MODES.find((m) => m === publishMode.trim().toLowerCase());
+    if (mode === undefined) warn('publish_mode', publishMode);
+    else out.publish.mode = mode;
+  }
 
   numberParam(
     'invited_cutoff',
@@ -394,8 +467,8 @@ export function applyUrlOverrides(config: AppConfig, search: string): UrlOverrid
 
 /**
  * App mode from a (resolved) config. publish takes precedence over award
- * (spec §13). publish only requires `publish.enabled`; `siteScore` may still
- * be null — the UI gates the actual scoreboard on it.
+ * (spec §13). publish only requires `publish.enabled`; `publish.mode` selects
+ * the prepare page's features, not the app mode.
  */
 export function selectMode(config: AppConfig): AppMode {
   if (config.publish.enabled) return 'publish';

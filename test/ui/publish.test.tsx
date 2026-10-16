@@ -2,6 +2,7 @@ import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { act, cleanup, fireEvent, render, screen } from '@testing-library/react';
 import type { Contest, Problem, Run, Team, Verdict } from '@core/types';
 import { computeStandings } from '@core/standings';
+import type { RegionalSimInputs } from '@core/publishState';
 import { appStore } from '@store/appStore';
 import { PublishView } from '../../src/ui/publish/PublishView';
 import { PublishControls } from '../../src/ui/publish/PublishControls';
@@ -73,9 +74,41 @@ const snapshot = computeStandings(contest, [
 
 const initialState = appStore.getState();
 
+/**
+ * Regional inputs whose computed S is exactly `siteScore`: every coefficient
+ * is 0 except the preliminary team count's, which is 1 (S = T_p). Without a
+ * site score the default coefficients apply to the fixture's own counts.
+ */
+function regionalInputs(overrides: {
+  siteScore?: number;
+  invitedCutoff?: number | null;
+  alreadyInvited?: { teamIds: string[]; groups: string[] };
+}): RegionalSimInputs {
+  const base = initialState.regionalInputs;
+  return {
+    ...base,
+    ...(overrides.siteScore !== undefined
+      ? {
+          prelimTeams: overrides.siteScore,
+          coefficients: {
+            regionalSchools: 0,
+            regionalTeams: 0,
+            prelimSchools: 0,
+            prelimTeams: 1,
+            foreignTeams: 0,
+          },
+        }
+      : {}),
+    cutoff: overrides.invitedCutoff ?? null,
+    invitedTeamIds: overrides.alreadyInvited?.teamIds ?? [],
+    invitedGroups: overrides.alreadyInvited?.groups ?? [],
+  };
+}
+
 function seedStore(
   overrides: {
-    siteScore?: number | null;
+    /** Site score S, reached through the regional inputs (see regionalInputs). */
+    siteScore?: number;
     invitedCutoff?: number | null;
     /** Stars are gated by config.apac.enabled (spec §13); most tests want them on. */
     apacEnabled?: boolean;
@@ -89,9 +122,7 @@ function seedStore(
     contest,
     snapshot,
     config: { ...initialState.config, apac: { enabled: overrides.apacEnabled ?? true } },
-    siteScore: overrides.siteScore ?? null,
-    invitedCutoff: overrides.invitedCutoff ?? null,
-    alreadyInvited: overrides.alreadyInvited ?? { teamIds: [], groups: [] },
+    regionalInputs: regionalInputs(overrides),
   });
 }
 
@@ -117,39 +148,17 @@ afterEach(() => {
 });
 
 // ---------------------------------------------------------------------------
-// Gate on missing site score
+// Board (no site-score gate: publish-modes spec §7)
 // ---------------------------------------------------------------------------
 
-describe('PublishView gate', () => {
-  it('shows the instruction panel instead of the board when siteScore is null', () => {
-    seedStore({ siteScore: null });
+describe('PublishView board', () => {
+  it('shows the final board at once, with no site-score input', () => {
+    seedStore();
     render(<PublishView />);
-    expect(screen.getByText('site score를 입력하세요')).toBeTruthy();
-    expect(document.querySelector('.publish-board')).toBeNull();
-    // The input form is still there so the value can be typed in.
-    expect(document.getElementById('publish-site-score')).not.toBeNull();
-  });
-
-  it('shows the board once a valid site score is typed', () => {
-    seedStore({ siteScore: null });
-    render(<PublishView />);
-    const input = document.getElementById('publish-site-score') as HTMLInputElement;
-    fireEvent.change(input, { target: { value: '5' } });
-    expect(appStore.getState().siteScore).toBe(5);
-    expect(screen.queryByText('site score를 입력하세요')).toBeNull();
     expect(document.querySelector('.publish-board')).not.toBeNull();
     expect(screen.getByText('Team x1')).toBeTruthy();
-  });
-
-  it('re-closes the gate when the site score becomes invalid again', () => {
-    seedStore({ siteScore: 5 });
-    render(<PublishView />);
-    expect(document.querySelector('.publish-board')).not.toBeNull();
-    const input = document.getElementById('publish-site-score') as HTMLInputElement;
-    fireEvent.change(input, { target: { value: 'abc' } });
-    expect(appStore.getState().siteScore).toBeNull();
-    expect(screen.getByText('site score를 입력하세요')).toBeTruthy();
-    expect(document.querySelector('.publish-board')).toBeNull();
+    expect(document.getElementById('publish-site-score')).toBeNull();
+    expect(screen.queryByText('site score를 입력하세요')).toBeNull();
   });
 
   it('renders chrome with title and clock but no header buttons', () => {
@@ -252,7 +261,7 @@ describe('PublishView APAC stars', () => {
   it('shows no stars and no star slot when config.apac.enabled is false (spec §13)', () => {
     seedStore({ siteScore: 5, apacEnabled: false });
     render(<PublishView />);
-    // The board itself still renders (the site-score gate is independent)…
+    // The board itself still renders…
     expect(document.querySelector('.publish-board')).not.toBeNull();
     expect(screen.getByText('Team x1')).toBeTruthy();
     // …but the APAC star column is absent entirely.
@@ -320,7 +329,7 @@ describe('PublishView star spin', () => {
       (el) => el.textContent === 'Y',
     );
     fireEvent.click(row!.querySelector('input') as HTMLInputElement);
-    expect(appStore.getState().alreadyInvited.groups).toEqual(['Y']);
+    expect(appStore.getState().regionalInputs.invitedGroups).toEqual(['Y']);
     // School Y leaves the scored list: silver → bronze, spinning.
     expect(starFill('y1')).toBe(FILL.bronze);
     expect(starOf('y1')?.classList.contains('kr-apac-star--spin')).toBe(true);
@@ -335,41 +344,26 @@ describe('PublishView star spin', () => {
 // ---------------------------------------------------------------------------
 
 describe('PublishControls', () => {
-  it('seeds both inputs from the store (URL/config values)', () => {
-    seedStore({ siteScore: 84, invitedCutoff: 2.5 });
+  it('seeds the cutoff from the store (URL/config values) and has no site-score input', () => {
+    seedStore({ invitedCutoff: 2.5 });
     render(<PublishControls />);
-    expect((document.getElementById('publish-site-score') as HTMLInputElement).value).toBe('84');
     expect((document.getElementById('publish-invited-cutoff') as HTMLInputElement).value).toBe(
       '2.5',
     );
+    expect(document.getElementById('publish-site-score')).toBeNull();
   });
 
-  it('commits valid numbers to the store and null for invalid input', () => {
-    seedStore({ siteScore: null, invitedCutoff: null });
+  it('commits a valid cutoff to the store and null for invalid input', () => {
+    seedStore({ invitedCutoff: null });
     render(<PublishControls />);
-    const site = document.getElementById('publish-site-score') as HTMLInputElement;
     const cutoff = document.getElementById('publish-invited-cutoff') as HTMLInputElement;
-
-    fireEvent.change(site, { target: { value: '12' } });
-    expect(appStore.getState().siteScore).toBe(12);
-    fireEvent.change(site, { target: { value: '-3' } }); // must be > 0
-    expect(appStore.getState().siteScore).toBeNull();
-    expect(site.getAttribute('aria-invalid')).toBe('true');
+    expect(cutoff.getAttribute('aria-invalid')).toBeNull(); // optional: empty is fine
 
     fireEvent.change(cutoff, { target: { value: '0' } }); // ≥ 0 is fine
-    expect(appStore.getState().invitedCutoff).toBe(0);
+    expect(appStore.getState().regionalInputs.cutoff).toBe(0);
     fireEvent.change(cutoff, { target: { value: '-1' } });
-    expect(appStore.getState().invitedCutoff).toBeNull();
-  });
-
-  it('marks the required site score as invalid when empty, but cutoff not', () => {
-    seedStore({ siteScore: null, invitedCutoff: null });
-    render(<PublishControls />);
-    const site = document.getElementById('publish-site-score') as HTMLInputElement;
-    const cutoff = document.getElementById('publish-invited-cutoff') as HTMLInputElement;
-    expect(site.getAttribute('aria-invalid')).toBe('true');
-    expect(site.getAttribute('aria-required')).toBe('true');
-    expect(cutoff.getAttribute('aria-invalid')).toBeNull();
+    expect(appStore.getState().regionalInputs.cutoff).toBeNull();
+    expect(cutoff.getAttribute('aria-invalid')).toBe('true');
   });
 
   // The picker is a native multi-select over the contest's own schools: an
@@ -416,19 +410,19 @@ describe('PublishControls', () => {
     expect(schoolRows().map((el) => el.textContent)).toEqual(['Z']);
 
     fireEvent.click(schoolBox('Z'));
-    expect(appStore.getState().alreadyInvited.groups).toEqual(['Z']);
+    expect(appStore.getState().regionalInputs.invitedGroups).toEqual(['Z']);
 
     // Clear the filter and add an earlier school: order follows the contest.
     fireEvent.change(document.querySelector('.publish-schools-filter') as HTMLInputElement, {
       target: { value: '' },
     });
     fireEvent.click(schoolBox('X'));
-    expect(appStore.getState().alreadyInvited.groups).toEqual(['X', 'Z']);
+    expect(appStore.getState().regionalInputs.invitedGroups).toEqual(['X', 'Z']);
 
     fireEvent.click(schoolBox('Z'));
-    expect(appStore.getState().alreadyInvited.groups).toEqual(['X']);
+    expect(appStore.getState().regionalInputs.invitedGroups).toEqual(['X']);
     // Team ids are untouched: they remain a config.json-only escape hatch.
-    expect(appStore.getState().alreadyInvited.teamIds).toEqual([]);
+    expect(appStore.getState().regionalInputs.invitedTeamIds).toEqual([]);
   });
 
   it('closes the panel on Escape', () => {

@@ -3,19 +3,28 @@
  *
  * - Chrome: contest title + clock only. No header buttons, no polling,
  *   no autoplay, no animation loops.
- * - Gate: until a valid site score exists the board is replaced by an
- *   instruction panel ("site score를 입력하세요") plus the input form.
- * - APAC stars: computeApacStars in the 'final' phase with the champion
- *   taken from standings[0]; siteScore / invitedCutoff / alreadyInvited edits
- *   re-evaluate live. A star whose tier changed spins once (previous tiers are
- *   tracked in a ref; the star remounts via key={tier} so the animation
- *   replays).
+ * - No gate: the final board shows at once (publish-modes spec §7). The site
+ *   score S is computed from the standings and the regional inputs
+ *   (spec §6.1); there is no direct site-score input any more.
+ * - APAC stars: simulateRegional ('final' phase, champion = standings[0],
+ *   2026-27 per-school quota); edits of the regional inputs re-evaluate live.
+ *   A star whose tier changed spins once (previous tiers are tracked in a
+ *   ref; the star remounts via key={tier} so the animation replays).
+ *
+ * Task 6 of the publish-modes plan rebuilds this screen per mode.
  */
 
 import { useEffect, useMemo, useRef, useState } from 'react';
 import type { Snapshot } from '@core/types';
-import { computeApacStars, type ApacStarTier } from '@core/apac';
-import { useAppStore, type AlreadyInvitedState } from '@store/appStore';
+import {
+  computeSiteScore,
+  countSiteInputs,
+  DEFAULT_SCHOOL_QUOTA,
+  simulateRegional,
+  type ApacStarTier,
+} from '@core/apac';
+import type { RegionalSimInputs } from '@core/publishState';
+import { useAppStore } from '@store/appStore';
 import { Scoreboard, type ApacStarInfo } from '@ui/scoreboard';
 import { PublishControls } from './PublishControls';
 import './publish.css';
@@ -49,22 +58,38 @@ export interface ApacStarState {
   spinning: Set<string>;
 }
 
-function useApacStars(
-  snapshot: Snapshot | null,
-  siteScore: number | null,
-  invitedCutoff: number | null,
-  alreadyInvited: AlreadyInvitedState,
-): ApacStarState {
+/**
+ * S from the standings counts (operator overrides win when set) and the
+ * preliminary counts (empty → 0).
+ */
+function siteScoreOf(snapshot: Snapshot, inputs: RegionalSimInputs): number {
+  const auto = countSiteInputs(snapshot);
+  const override = inputs.regionalOverride;
+  return computeSiteScore({
+    regional: {
+      schools: override.schools ?? auto.schools,
+      teams: override.teams ?? auto.teams,
+      foreign: override.foreign ?? auto.foreign,
+    },
+    prelimSchools: inputs.prelimSchools ?? 0,
+    prelimTeams: inputs.prelimTeams ?? 0,
+    coefficients: inputs.coefficients,
+  });
+}
+
+function useApacStars(snapshot: Snapshot | null, inputs: RegionalSimInputs): ApacStarState {
   const stars = useMemo(() => {
     if (snapshot === null) return new Map<string, ApacStarTier>();
-    return computeApacStars(snapshot, {
-      phase: 'final',
-      championTeamId: snapshot.standings[0]?.team.id ?? null,
-      siteScore,
-      invitedScoreCutoff: invitedCutoff,
-      alreadyInvited,
-    });
-  }, [snapshot, siteScore, invitedCutoff, alreadyInvited]);
+    return simulateRegional(snapshot, {
+      siteScore: siteScoreOf(snapshot, inputs),
+      cutoff: inputs.cutoff,
+      quota: { base: DEFAULT_SCHOOL_QUOTA, wfMedalGroups: inputs.wfMedalGroups },
+      alreadyInvited: {
+        teamIds: inputs.invitedTeamIds,
+        groups: [...inputs.winnerGroups, ...inputs.invitedGroups],
+      },
+    }).stars;
+  }, [snapshot, inputs]);
 
   // Previous tiers live in a ref: comparing against them marks changed stars
   // as spinning, and the ref is advanced after commit.
@@ -96,22 +121,14 @@ export interface PublishViewProps {
 export function PublishView({ manualLabels = null }: PublishViewProps) {
   const contest = useAppStore((s) => s.contest);
   const snapshot = useAppStore((s) => s.snapshot);
-  const siteScore = useAppStore((s) => s.siteScore);
-  const invitedCutoff = useAppStore((s) => s.invitedCutoff);
-  const alreadyInvited = useAppStore((s) => s.alreadyInvited);
+  const regionalInputs = useAppStore((s) => s.regionalInputs);
   const config = useAppStore((s) => s.config);
   const clock = useClock();
 
-  const gateOpen = siteScore !== null && siteScore > 0;
   // APAC stars are gated by config.apac.enabled in publish mode too
   // (spec §13: "config.apac.enabled로 on/off").
   const apacEnabled = config.apac.enabled;
-  const starState = useApacStars(
-    gateOpen && apacEnabled ? snapshot : null,
-    siteScore,
-    invitedCutoff,
-    alreadyInvited,
-  );
+  const starState = useApacStars(apacEnabled ? snapshot : null, regionalInputs);
 
   // Static board (spec §13): no row animation, no pagination slices; the
   // APAC star slot follows config.apac.enabled.
@@ -145,17 +162,7 @@ export function PublishView({ manualLabels = null }: PublishViewProps) {
 
       <PublishControls />
 
-      {!gateOpen ? (
-        <section className="publish-gate" aria-label="site score required">
-          <h2 className="publish-gate-title">site score를 입력하세요</h2>
-          <p className="publish-gate-hint">
-            publish 모드는 site score 값이 필요합니다. 위 입력란에 site score를 입력하면 최종
-            순위표와 APAC 별 판정이 표시됩니다. 별의 의미: 동색 = 학내 3등 이내, 은색 = APAC
-            championship 초대 가능, 금색 = APAC championship 진출. invited score cutoff 값을
-            입력하면 진출이 확정된 팀의 별이 금색으로 바뀝니다.
-          </p>
-        </section>
-      ) : snapshot === null || contest === null ? (
+      {snapshot === null || contest === null ? (
         <section className="publish-gate" aria-label="loading">
           <p className="publish-gate-hint">최종 순위표를 준비하는 중입니다.</p>
         </section>

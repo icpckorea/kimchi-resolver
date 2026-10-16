@@ -1,12 +1,16 @@
 /**
- * Publish-mode inputs (spec §13): site score (required, positive number),
- * invited score cutoff (optional, non-negative number) and the cross-site
- * "already invited" schools, picked from the contest's own school list.
+ * Publish-mode inputs (spec §13): invited score cutoff (optional,
+ * non-negative number) and the cross-site "already invited" schools, picked
+ * from the contest's own school list. Both live in the store's
+ * `regionalInputs` (publish-modes spec §6.4). The site score is no longer an
+ * input: PublishView computes it (spec §6.1).
  *
- * Values are seeded from the store (config/URL `site_score` /
- * `invited_cutoff` and `publish.alreadyInvited` land there during boot) and
- * stay editable; every valid change is written back to the store so the board
- * re-evaluates computeApacStars live.
+ * Values are seeded from the store (config/URL `invited_cutoff` and
+ * `publish.alreadyInvited` land there during boot, or this browser's stored
+ * inputs) and stay editable; every valid change is written back to the store
+ * so the board re-evaluates the stars live.
+ *
+ * Task 6 of the publish-modes plan replaces this form per mode.
  *
  * When nothing is selected a hint says so: cross-site invitations cannot be
  * derived from the contest data, and leaving them out pushes ranks DOWN, so
@@ -177,12 +181,8 @@ function InvitedSchoolPicker({ schools, selected, onChange }: InvitedSchoolPicke
 }
 
 export function PublishControls() {
-  const siteScoreSeed = useAppStore((s) => s.siteScore);
-  const invitedCutoffSeed = useAppStore((s) => s.invitedCutoff);
-  const alreadyInvited = useAppStore((s) => s.alreadyInvited);
-  const setSiteScore = useAppStore((s) => s.setSiteScore);
-  const setInvitedCutoff = useAppStore((s) => s.setInvitedCutoff);
-  const setAlreadyInvited = useAppStore((s) => s.setAlreadyInvited);
+  const regionalInputs = useAppStore((s) => s.regionalInputs);
+  const setRegionalInputs = useAppStore((s) => s.setRegionalInputs);
 
   const contest = useAppStore((s) => s.contest);
   const schools = useMemo(() => {
@@ -195,7 +195,9 @@ export function PublishControls() {
   }, [contest]);
 
   const invitedEmpty =
-    alreadyInvited.teamIds.length === 0 && alreadyInvited.groups.length === 0;
+    regionalInputs.invitedTeamIds.length === 0 &&
+    regionalInputs.winnerGroups.length === 0 &&
+    regionalInputs.invitedGroups.length === 0;
 
   return (
     <form
@@ -204,29 +206,20 @@ export function PublishControls() {
       onSubmit={(e) => e.preventDefault()}
     >
       <NumericField
-        id="publish-site-score"
-        label="site score"
-        seed={siteScoreSeed}
-        placeholder="예: 84"
-        isValid={(v) => v > 0}
-        onCommit={setSiteScore}
-        required
-      />
-      <NumericField
         id="publish-invited-cutoff"
         label="invited score cutoff"
-        seed={invitedCutoffSeed}
+        seed={regionalInputs.cutoff}
         placeholder="예: 2.5"
         isValid={(v) => v >= 0}
-        onCommit={setInvitedCutoff}
+        onCommit={(cutoff) => setRegionalInputs({ cutoff })}
       />
       {/* Team ids are not something an operator can look up, so the picker
        * works in school names taken from the contest itself. config.json can
        * still carry `alreadyInvited.teamIds` for scripted setups. */}
       <InvitedSchoolPicker
         schools={schools}
-        selected={alreadyInvited.groups}
-        onChange={(groups) => setAlreadyInvited({ ...alreadyInvited, groups })}
+        selected={regionalInputs.invitedGroups}
+        onChange={(invitedGroups) => setRegionalInputs({ invitedGroups })}
       />
       {invitedEmpty ? (
         <p className="publish-controls-hint" role="note">

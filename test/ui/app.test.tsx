@@ -3,7 +3,7 @@
  * a stubbed global fetch serving the bundled sample data (public/), then
  * checks the two headline integrations:
  * - spectator mode renders all 84 sample teams once the queue is fed, and
- * - ?publish=true boots into the publish gate with its input controls.
+ * - ?publish=true boots into the publish board with its input controls.
  */
 import fs from 'node:fs';
 import path from 'node:path';
@@ -91,16 +91,27 @@ it('boots spectator mode and renders all 84 sample teams after feeding the queue
 });
 
 // ---------------------------------------------------------------------------
-// Publish gate
+// Publish (no site-score gate: publish-modes spec §7)
 // ---------------------------------------------------------------------------
 
-it('?publish=true boots the publish gate with the site-score controls', async () => {
+it('?publish=true boots straight into the final publish board', async () => {
   await bootApp('?publish=true');
   expect(appStore.getState().mode).toBe('publish');
 
-  // Gate: no site score yet → instruction panel + inputs, no board.
-  expect(screen.getByText('site score를 입력하세요')).toBeTruthy();
-  expect(document.getElementById('publish-site-score')).not.toBeNull();
+  expect(screen.queryByText('site score를 입력하세요')).toBeNull();
+  expect(document.getElementById('publish-site-score')).toBeNull();
   expect(document.getElementById('publish-invited-cutoff')).not.toBeNull();
-  expect(document.querySelector('.publish-board')).toBeNull();
+  expect(document.querySelectorAll('.publish-board .team-row').length).toBe(84);
+});
+
+it('publish_mode=regional reads the stored inputs of this contest from localStorage', async () => {
+  const key =
+    'kimchi.publish:regional:./sample/:2025 ICPC Asia Seoul Regional Contest';
+  const stored = { ...appStore.getState().regionalInputs, cutoff: 1.25 };
+  localStorage.setItem(key, JSON.stringify(stored));
+  await bootApp('?publish=true&publish_mode=regional');
+  expect(appStore.getState().publishInputsFromStorage).toBe(true);
+  expect((document.getElementById('publish-invited-cutoff') as HTMLInputElement).value).toBe(
+    '1.25',
+  );
 });

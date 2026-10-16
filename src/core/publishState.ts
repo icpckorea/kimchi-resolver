@@ -232,6 +232,12 @@ const regionalSchema = z
   })
   .strict() satisfies z.ZodType<RegionalSimInputs>;
 
+/**
+ * Strict schema of {@link RegionalSimInputs}. The prepare page also uses it to
+ * check inputs it reads back from localStorage.
+ */
+export const regionalSimInputsSchema = regionalSchema;
+
 const baseShape = {
   schemaVersion: z.literal(PUBLISH_STATE_VERSION),
   generatedAt: z.string().datetime(),
