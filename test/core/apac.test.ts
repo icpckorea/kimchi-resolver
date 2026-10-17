@@ -194,6 +194,33 @@ describe('computeApacStars — ceremony phase', () => {
     expect(stars.has('y3')).toBe(false);
   });
 
+  it('gives teams of an invited school (groups) no star, and the rest bronze', () => {
+    const stars = computeApacStars(
+      fixtureSnapshot(),
+      opts({ alreadyInvited: { groups: ['Y'] } }),
+    );
+    expect(asObject(stars)).toEqual({ x1: 'bronze', x2: 'bronze', x3: 'bronze' });
+    expect(stars.has('y1')).toBe(false);
+    expect(stars.has('y2')).toBe(false);
+    expect(stars.has('y3')).toBe(false);
+  });
+
+  it('keeps an alreadyInvited team gold even when it has 0 solves or is over the quota', () => {
+    const stars = computeApacStars(
+      fixtureSnapshot(),
+      opts({ quota: QUOTA_2026_27, alreadyInvited: { teamIds: ['z1', 'x4'] } }),
+    );
+    expect(stars.get('z1')).toBe('gold'); // 0 solved
+    expect(stars.get('x4')).toBe('gold'); // 4th of school X, over the quota
+    // School X is out of the scored list because x4 is invited.
+    expect(stars.has('x1')).toBe(false);
+    expect(stars.has('x2')).toBe(false);
+    expect(stars.has('x3')).toBe(false);
+    expect(stars.get('y1')).toBe('bronze');
+    expect(stars.get('y2')).toBe('bronze');
+    expect(stars.has('y3')).toBe(false); // over the quota of 2
+  });
+
   it('gives no bronze to the 3rd team of a school with quota base 2', () => {
     const stars = computeApacStars(fixtureSnapshot(), opts({ quota: QUOTA_2026_27 }));
     expect(asObject(stars)).toEqual({

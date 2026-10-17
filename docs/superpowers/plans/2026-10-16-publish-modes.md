@@ -150,7 +150,7 @@ next eligible not-taken team share icpcRank → warning naming both team names
     opts: { siteScore: number; cutoff: number | null; quota: SchoolQuota; alreadyInvited: AlreadyInvited | null },
   ): RegionalSimulation;   // champion = standings[0]
   ```
-- `APAC_SCHOOL_RANK_CAP` stays (bronze rule = 학내 3등 이내). The scored-list cap now comes from `quota`.
+- `APAC_SCHOOL_RANK_CAP` stays (bronze rule = 학내 3등 이내). The scored-list cap now comes from `quota`. (Superseded 2026-10-17: the cap was removed, and bronze is now the ceremony-only scored-list star.)
 
 - [ ] **Step 1: Update existing tests to the new default.** In `apac.test.ts` "caps each school at 3" and `apac-published.test.ts`, pass `quota: { base: 3, wfMedalGroups: [] }` (the 2025-26 rule) and the site score 68.98 directly. Keep every assertion value as it is.
 - [ ] **Step 2: Write failing tests in `test/core/apac-2026.test.ts`:**
@@ -381,7 +381,7 @@ next eligible not-taken team share icpcRank → warning naming both team names
 - Config for `ScoreboardView`: `defaultConfig()` + `applyUrlOverrides(..., '')` with `state.display` merged, `animation: false`, `pagination: false`, `apac.enabled = state.mode === 'regional'`.
 - Header: title only. No clock, no mode tag.
 - `preliminary`: rows from `state.preliminary.selected` → `advance`; `ineligibleTeamIds` → `dimmed`. No tag, no inputs, no recompute. Legend "노란색 = 본선 진출".
-- `regional`: banner (exact copy in Global Constraints), `RegionalSimPanel` with local `useState` seeded from `state.regional`, `onReset` restores it, `collapsedByDefault` on mobile (`useMediaQuery(MOBILE_MEDIA_QUERY)`), a link to `https://icpc.jp/apac/2026-27/rules/`, star legend (동색/은색/금색 copy from `PublishView` today).
+- `regional`: banner (exact copy in Global Constraints), `RegionalSimPanel` with local `useState` seeded from `state.regional`, `onReset` restores it, `collapsedByDefault` on mobile (`useMediaQuery(MOBILE_MEDIA_QUERY)`), a link to `https://icpc.jp/apac/2026-27/rules/`, star legend (동색/은색/금색 copy from `PublishView` today; superseded 2026-10-17: the legend no longer mentions 동색).
 - `src/published/**` must not import `@store` or `@core/ingest` (same grep test as Task 5, extended to this folder).
 
 - [ ] **Step 1: Write failing tests:** `off renders the board without inputs`; `preliminary paints saved selections and dims ineligible, and has no input element`; `preliminary does not recompute — a state whose selected list disagrees with K still shows the saved list`; `regional shows the banner, editing the cutoff changes stars, reset restores the seed`; `no @store/@core/ingest import under src/published`.
