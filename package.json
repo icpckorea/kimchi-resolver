@@ -11,7 +11,8 @@
     "test:watch": "vitest",
     "typecheck": "tsc --noEmit",
     "check-assets": "node scripts/check-assets.mjs",
-    "check-config": "node scripts/check-config-security.mjs"
+    "check-config": "node scripts/check-config-security.mjs",
+    "publish": "vite-node scripts/publish.ts --"
   },
   "dependencies": {
     "framer-motion": "^11.18.2",

@@ -6,7 +6,7 @@ The app has three modes:
 
 - **spectator** — live scoreboard with polling, autoplay run feed, events dashboard, desktop notifications.
 - **award** — the award ceremony ("resolver"): frozen runs are revealed one keypress at a time, with slides, gacha effects and a finale spotlight.
-- **publish** — static final scoreboard for announcements, with APAC advancement stars and the invited-cutoff input.
+- **publish** — final scoreboard for announcements in three modes (`off`, `preliminary`, `regional`). The operator prepares it in the browser, and `npm run publish -- <publish-state.json>` builds a static, credential-free `publish-dist/` folder to upload to S3 (see `docs/operations.md` §6 step 4).
 
 Design spec: `docs/superpowers/specs/2026-07-30-kimchi-resolver-design.md`.
 
@@ -52,9 +52,11 @@ Runtime configuration lives in `public/config.json` (served as `config.json` nex
 | `foreign.ids` / `foreign.groups` | `[]` | override the foreign-team detection |
 | `apac.enabled` | `false` | APAC advancement stars (award/publish only) |
 | `publish.enabled` | `false` | boot into publish mode |
-| `publish.siteScore` | `null` | site score (publish gate; required for the board) |
+| `publish.mode` | `"off"` | `"off"` / `"preliminary"` / `"regional"` (URL `publish_mode=` wins) |
+| `publish.preliminary` | `{ totalTeams: null, topN: 30, k: null, ineligibleTeamIds: [] }` | start values of the preliminary selection |
+| `publish.regional` | `{ prelimSchools, prelimTeams, coefficients, wfMedalGroups }` | start values of the regional simulation (site score `S` is computed from them) |
 | `publish.invitedScoreCutoff` | `null` | invited score cutoff for the gold-star rule |
-| `publish.alreadyInvited.teamIds` / `.groups` | `[]` | teams/schools already invited at another regional (see APAC stars) |
+| `publish.alreadyInvited.teamIds` / `.winnerGroups` / `.invitedGroups` | `[]` | teams/schools already invited at another regional (see APAC stars); the old `.groups` key is read as `invitedGroups` |
 | `award.mode` | `false` | boot into award mode |
 | `award.hideName` | `true` | mask unrevealed teams as "Team {id}" |
 | `award.showBalloons` | `false` | balloons on the ceremony board (the live board uses `showBalloons`) |
@@ -70,7 +72,7 @@ Runtime configuration lives in `public/config.json` (served as `config.json` nex
 
 ### APAC stars
 
-With `apac.enabled`, award and publish modes mark APAC Championship advancement next to the rank (per the ICPC APAC rules, at most 3 teams per school — schoolRank ≥ 4 teams never get a star):
+With `apac.enabled` (award mode) or `publish.mode = regional` (publish), the board marks APAC Championship advancement next to the rank (per the ICPC APAC 2026-27 rules: at most 2 teams per school, 3 for a school with a World Finals medal last year, listed in `publish.regional.wfMedalGroups`; the bronze star still uses "top 3 in their school"):
 
 - bronze star — Top 3 in their school
 - silver star — Likely invited to the APAC Championship
@@ -82,16 +84,16 @@ During the ceremony every schoolRank ≤ 3 team wears bronze. Once the final sta
 
 1. a school that **already has an invited team drops out entirely** — every one of its teams. The route does not matter: this regional's champion (auto-qualified) counts the same as a team invited at another regional. The invited team itself is still shown, but takes no rank slot;
 2. teams with **0 solved problems** are excluded;
-3. of what remains, each school keeps its **top 3** in ICPC standing order. `filteredRank` is the 1-based position in that list; foreign teams occupy slots normally, since the 3-per-school cap is per site.
+3. of what remains, each school keeps its **top 2** (**top 3** for a WF medal school) in ICPC standing order; teams from AU and NZ (super-region) are removed first. `filteredRank` is the 1-based position in that list; foreign teams occupy slots normally, since the per-school cap is per site.
 
 Star colors follow from it:
 
 - every **invited** team is gold — the champion, plus anyone listed in `publish.alreadyInvited`;
-- teams in the scored list are silver, and a silver team is promoted to gold when `(filteredRank − 1) / siteScore ≤ invitedScoreCutoff` (publish mode; both numbers required);
+- teams in the scored list are silver, and a silver team is promoted to gold when `(filteredRank − 1) / S ≤ cutoff`, where the site score `S = 0.56·U_r + 0.24·T_r + 0.14·U_p + 0.06·T_p + 0.30·F_r` is computed from the standings and the preliminary counts (the coefficients are config values) (publish `regional` mode; the cutoff is an assumed value);
 - a team that is out of the running but still 학내 3등 이내 keeps bronze — the other teams of an already-invited school, and 0-solve teams. Bronze is never promoted;
 - schoolRank ≥ 4 teams get no star.
 
-"Already invited at another regional" cannot be derived from the contest data, so it comes from `publish.alreadyInvited` (`teamIds` for invited teams competing here, `groups` for the school names) and is editable in the publish controls. While both lists are empty only the champion's school drops out, so the ranks may be optimistic — the publish controls say so.
+"Already invited at another regional" cannot be derived from the contest data, so it comes from `publish.alreadyInvited` (`teamIds` for invited teams competing here, `winnerGroups` and `invitedGroups` for the school names) and is editable in the publish controls. While both lists are empty only the champion's school drops out, so the ranks may be optimistic — the publish controls say so.
 
 ### URL parameters
 
@@ -107,7 +109,7 @@ URL parameters override `config.json` (spec §9/§13):
 | `q=<text>` | initial team search (substring match over name + school) |
 | `t=<team id>` | follow this team (highlight + sticky row) |
 | `publish=true` | publish mode (wins over award) |
-| `site_score=<n>` | publish: site score (opens the gate) |
+| `publish_mode=<mode>` | publish: `off` / `preliminary` / `regional` |
 | `invited_cutoff=<x>` | publish: invited score cutoff |
 
 Example: `index.html?award=true&r=1000` starts the ceremony with runs after id 1000 frozen.

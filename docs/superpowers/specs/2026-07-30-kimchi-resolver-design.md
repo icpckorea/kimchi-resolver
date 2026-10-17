@@ -226,9 +226,9 @@ FeedSource(어댑터) → parse → diff → 표시 대기 큐 → tick 소비 �
   "apac": { "enabled": false },
   "publish": {
     "enabled": false,
-    "siteScore": null,
+    "mode": "off",
     "invitedScoreCutoff": null,
-    "alreadyInvited": { "teamIds": [], "groups": [] }
+    "alreadyInvited": { "teamIds": [], "winnerGroups": [], "invitedGroups": [] }
   },
   "award": {
     "mode": false,
@@ -251,7 +251,7 @@ FeedSource(어댑터) → parse → diff → 표시 대기 큐 → tick 소비 �
 
 스키마는 zod로 검증하고 오류 시 어떤 키가 잘못됐는지 SystemMessage로 표시. 모든 키에 기본값 존재(부분 config 허용).
 
-URL 파라미터 (`URLSearchParams`로 파싱, config보다 우선): `r`, `time`, `award`, `award_rank_begin`, `animation`, `q`(검색어, 원본과 달리 부분 일치), `t`(follow 팀 id), `publish`, `site_score`, `invited_cutoff` (13장).
+URL 파라미터 (`URLSearchParams`로 파싱, config보다 우선): `r`, `time`, `award`, `award_rank_begin`, `animation`, `q`(검색어, 원본과 달리 부분 일치), `t`(follow 팀 id), `publish`, `publish_mode`, `invited_cutoff` (13장). `site_score`는 없어졌습니다.
 
 원본 대비 의도적 삭제: `auto_rundiff`(항상 client diff), predicate 함수 config(선언적 필드로 대체), `environment`(Vite 빌드로 불필요).
 
@@ -275,6 +275,8 @@ URL 파라미터 (`URLSearchParams`로 파싱, config보다 우선): `r`, `time`
 
 ## 13. APAC 진출 표시 (`apac` 플래그)와 publish 모드
 
+> **2026-10-16 갱신**: publish 모드는 `off` / `preliminary` / `regional` 세 모드로 나뉘고, 공개 페이지는 `npm run publish`가 만든 정적 폴더입니다. 자세한 내용은 [publish 모드 확장 설계](2026-10-16-publish-modes-design.md)를 보세요. 이 장의 `publish.siteScore`와 URL `site_score`는 **없어졌습니다** (site score는 공식으로 계산합니다). 학교당 상한 3은 2026-27 규칙에서 2(작년 WF 메달 학교는 3)로 바뀌었습니다. 아래 본문은 2025-26 규칙 기준의 기록입니다.
+
 목적: [ICPC APAC Championship 2025-26 규칙](https://icpc.jp/apac/2025-26/rules/) 기준으로 APAC 진출 가능성이 있는 팀을 시각적으로 인지시킨다. 규칙 요점: 학교당 최대 3팀 진출 가능(교내 4위 이하 제거), 팀 score = `(rank − 1) / site score` (작을수록 상위), score 순 병합 리스트에서 초청.
 
 **전제**: 대회가 종료된 상황(award 모드 또는 publish 모드)에서만 동작. `config.apac.enabled`로 on/off.
@@ -296,12 +298,12 @@ URL 파라미터 (`URLSearchParams`로 파싱, config보다 우선): `r`, `time`
 
    검증 사례: Just Reboot JungSangHwa(부산대)가 filteredRank 13 → `(13−1)/68.98 = 0.1740 ≤ 0.1838` qualify.
 
-   **교차 사이트 입력**: "다른 리저널에서 이미 초청됨"은 contest.json·orgs.json에서 유도 불가능한 외부 정보이므로 config로 받는다 — `publish.alreadyInvited: { teamIds: [], groups: [] }`. 이 리저널 챔피언은 자동으로 초청 처리(규칙 B1)되므로 별도 입력이 필요 없다. 입력이 비어 있으면 챔피언 학교만 제외되며, 그 경우 다른 사이트에서 초청된 학교가 남아 순위가 실제보다 밀릴 수 있다는 점을 UI에 안내한다.
+   **교차 사이트 입력**: "다른 리저널에서 이미 초청됨"은 contest.json·orgs.json에서 유도 불가능한 외부 정보이므로 config로 받는다 — `publish.alreadyInvited: { teamIds: [], winnerGroups: [], invitedGroups: [] }` (옛 `groups`는 `invitedGroups`로 읽습니다). 이 리저널 챔피언은 자동으로 초청 처리(규칙 B1)되므로 별도 입력이 필요 없다. 입력이 비어 있으면 챔피언 학교만 제외되며, 그 경우 다른 사이트에서 초청된 학교가 남아 순위가 실제보다 밀릴 수 있다는 점을 UI에 안내한다.
 
 **publish 모드** (신설, 세 번째 앱 모드):
 
 - 용도: 대회 종료 후 공지용 static scoreboard. 폴링·autoplay·애니메이션 진행 없음, 전체 run 반영된 최종 순위표 + 칭호/별 표시.
-- 진입: `?publish=true` (또는 `config.publish.enabled`). **site score 값이 입력되어야 전환 완료** — URL `site_score=<number>` 또는 화면의 site score 입력 필드. 값이 없으면 안내 메시지와 입력 폼만 표시.
+- 진입: `?publish=true` (또는 `config.publish.enabled`). ~~site score 값이 입력되어야 전환 완료~~ (없어졌습니다: site score gate는 없고, 값은 계수와 입력값으로 계산합니다).
 - 화면에 **invited score cutoff 입력 상자** 존재. 값 입력/변경 시 3번 규칙을 즉시 재평가해 해당 팀의 은색 별을 금색으로 (회전 애니메이션).
 - 모드 배타 규칙: publish는 award와 동시 활성 불가 (publish 우선).
 
@@ -311,13 +313,14 @@ config 추가:
 "apac": { "enabled": false },
 "publish": {
   "enabled": false,
-  "siteScore": null,
+  "mode": "off",
   "invitedScoreCutoff": null,
-  "alreadyInvited": { "teamIds": [], "groups": [] }
+  "alreadyInvited": { "teamIds": [], "winnerGroups": [], "invitedGroups": [] }
+  // preliminary, regional 블록: 새 설계 문서 §3, §6.4
 }
 ```
 
-URL 파라미터 추가: `publish`, `site_score`, `invited_cutoff` (config보다 우선).
+URL 파라미터 추가: `publish`, `publish_mode`, `invited_cutoff` (config보다 우선). (`site_score`는 없어졌습니다.)
 
 ## 14. 모바일 레이아웃 (spectator·publish 모드)
 

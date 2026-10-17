@@ -4,11 +4,6 @@
  * other-mode file must be refused with the zod path in the message.
  */
 import { describe, it, expect, beforeAll } from 'vitest';
-import { readFileSync } from 'node:fs';
-import { resolve } from 'node:path';
-import { createSpotboardSource } from '@core/ingest/spotboard';
-import { createRunFeeder } from '@core/feeder';
-import { computeStandings } from '@core/standings';
 import { DEFAULT_SITE_SCORE_COEFFICIENTS } from '@core/apac';
 import {
   PUBLISH_STATE_VERSION,
@@ -20,37 +15,7 @@ import {
   type RegionalSimInputs,
 } from '@core/publishState';
 import type { Contest, OrgsIndex, Snapshot } from '@core/types';
-
-const ROOT = resolve(__dirname, '../..');
-const contestJson = JSON.parse(
-  readFileSync(resolve(ROOT, 'public/sample/contest.json'), 'utf8'),
-);
-const runsJson = JSON.parse(readFileSync(resolve(ROOT, 'public/sample/runs.json'), 'utf8'));
-const orgs: OrgsIndex = JSON.parse(readFileSync(resolve(ROOT, 'public/orgs/orgs.json'), 'utf8'));
-
-/** fetch stub serving the sample files from disk (same shape as apac-published.test.ts). */
-const fetchStub = (async (input: RequestInfo | URL) => {
-  const url = String(input);
-  const body = url.includes('contest.json')
-    ? contestJson
-    : url.includes('runs.json')
-      ? runsJson
-      : undefined;
-  if (body === undefined) return new Response('not found', { status: 404, statusText: 'Not Found' });
-  return new Response(JSON.stringify(body), {
-    status: 200,
-    headers: { 'Content-Type': 'application/json' },
-  });
-}) as typeof fetch;
-
-const DISPLAY: PublishState['display'] = {
-  showTeamGroup: true,
-  showFirstSolve: true,
-  showBalloons: false,
-  showSchoolLogos: true,
-};
-
-const NOW = new Date('2026-10-16T09:00:00.000Z');
+import { SAMPLE_NOW as NOW, buildSampleState, loadSample } from '../helpers/sampleState';
 
 /** JSON round trip: what the browser downloads and the script reads back. */
 function viaJson(value: unknown): unknown {
@@ -70,35 +35,17 @@ function expectErrors(result: ReturnType<typeof parsePublishState>): string[] {
 describe('publish-state.json contract', () => {
   let contest: Contest;
   let snapshot: Snapshot;
+  let orgs: OrgsIndex;
 
   beforeAll(async () => {
-    const source = createSpotboardSource({
-      apiBase: './sample/',
-      fetchTimeout: 5000,
-      excludeTeamIds: [],
-      foreign: { ids: [], groups: [] },
-      orgs,
-      fetchImpl: fetchStub,
-    });
-    contest = await source.loadContest();
-    const feeder = createRunFeeder(contest);
-    feeder.ingest(await source.fetchRuns(null));
-    feeder.feedAll();
-    snapshot = computeStandings(contest, feeder.appliedRuns);
+    const sample = await loadSample();
+    contest = sample.contest;
+    snapshot = sample.snapshot;
+    orgs = sample.orgs;
   });
 
   function build(extra: Partial<Parameters<typeof buildPublishState>[0]> = {}): PublishState {
-    return buildPublishState({
-      mode: 'off',
-      title: contest.title,
-      display: DISPLAY,
-      problems: contest.problems,
-      orgs,
-      snapshot,
-      manualLabels: null,
-      now: NOW,
-      ...extra,
-    });
+    return buildSampleState({ contest, snapshot, orgs }, extra);
   }
 
   it('round-trips the sample contest', () => {
