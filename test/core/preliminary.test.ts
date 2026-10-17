@@ -263,6 +263,18 @@ describe('selectPreliminary', () => {
     expect(clean.warnings).toEqual([]);
   });
 
+  it('does not warn on a top-N tie when the tied next team is selected by a later step', () => {
+    const snap = snapshotOf([
+      { id: 'a', group: 'A', solved: 2, minute: 50 },
+      { id: 'b', group: 'B', solved: 2, minute: 50 },
+    ]);
+    expect(snap.byTeam.get('a')!.icpcRank).toBe(snap.byTeam.get('b')!.icpcRank);
+
+    const result = selectPreliminary(snap, opts({ topN: 1, totalTeams: 3, k: 1 }));
+    expect(stages(result)).toEqual({ a: 'top', b: 'school' });
+    expect(result.warnings).toEqual([]);
+  });
+
   it('warns on a tie at the totalTeams boundary of the fill step', () => {
     const snap = snapshotOf([
       { id: 't1', group: 'A', solved: 3 },

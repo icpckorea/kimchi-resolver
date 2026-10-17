@@ -85,13 +85,6 @@ export function selectPreliminary(snapshot: Snapshot, opts: PrelimOptions): Prel
     selected.set(eligible[i].team.id, 'top');
   }
   counts.top = topCount;
-  if (topCount > 0 && topCount < eligible.length) {
-    const last = eligible[topCount - 1];
-    const next = eligible[topCount];
-    if (last.icpcRank === next.icpcRank) {
-      warnings.push(tieWarning(`상위 ${topN}팀`, last, next));
-    }
-  }
 
   // Step 3: the best eligible team of each school with no step-2 team.
   // Named schools are decided once (covered by step 2, or judged on their
@@ -134,6 +127,17 @@ export function selectPreliminary(snapshot: Snapshot, opts: PrelimOptions): Prel
       if (next !== undefined && next.icpcRank === lastFill.icpcRank) {
         warnings.push(tieWarning(`진출 ${totalTeams}팀`, lastFill, next));
       }
+    }
+  }
+
+  // The top-N tie is judged after all steps: a tied next team that step 3 or 4
+  // selected anyway is not a lost team, so it needs no warning.
+  if (topCount > 0 && topCount < eligible.length) {
+    const last = eligible[topCount - 1];
+    const next = eligible[topCount];
+    if (last.icpcRank === next.icpcRank && !selected.has(next.team.id)) {
+      // Before the fill-boundary warning, as in the order of the steps.
+      warnings.unshift(tieWarning(`상위 ${topN}팀`, last, next));
     }
   }
 
