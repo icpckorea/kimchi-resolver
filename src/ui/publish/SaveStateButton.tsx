@@ -32,6 +32,8 @@ export interface SaveStateButtonProps {
   disabledHint?: string;
 }
 
+const REVOKE_DELAY_MS = 60_000;
+
 /** Starts the browser download of one JSON file. */
 function downloadJson(value: unknown, fileName: string): void {
   const blob = new Blob([`${JSON.stringify(value, null, 2)}\n`], { type: 'application/json' });
@@ -45,10 +47,11 @@ function downloadJson(value: unknown, fileName: string): void {
     link.click();
   } finally {
     link.remove();
-    // Revoke after the click has started the download.
+    // Some browsers (Safari) read the URL after click() returns, so a revoke on
+    // the next tick can fail the download. Free the Blob after a safe delay.
     setTimeout(() => {
       if (typeof URL.revokeObjectURL === 'function') URL.revokeObjectURL(url);
-    }, 0);
+    }, REVOKE_DELAY_MS);
   }
 }
 

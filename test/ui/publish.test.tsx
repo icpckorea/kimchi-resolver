@@ -746,6 +746,19 @@ describe('stored inputs', () => {
     expect(screen.queryByText('저장된 값을 사용 중')).toBeNull();
   });
 
+  it('"config 값으로 되돌리기" clears invalid field text in the regional panel', () => {
+    seedStore({ mode: 'regional', invitedCutoff: null, fromStorage: true });
+    render(<PublishView />);
+    const cutoff = field('publish-invited-cutoff');
+    fireEvent.change(cutoff, { target: { value: 'abc' } });
+    // Invalid text commits null, so the store value does not change.
+    expect(appStore.getState().regionalInputs.cutoff).toBeNull();
+    expect(field('publish-invited-cutoff').value).toBe('abc');
+
+    fireEvent.click(screen.getByRole('button', { name: 'config 값으로 되돌리기' }));
+    expect(field('publish-invited-cutoff').value).toBe('');
+  });
+
   it('shows no notice when the inputs come from config', () => {
     seedStore({ mode: 'regional' });
     render(<PublishView />);
@@ -830,6 +843,24 @@ describe('SaveStateButton', () => {
       { teamId: 'z1', stage: 'school' },
       { teamId: 'x2', stage: 'fill' },
     ]);
+  });
+
+  it('keeps the object URL alive after the click, and revokes it later', () => {
+    vi.useFakeTimers();
+    try {
+      captureDownload();
+      seedStore({ mode: 'off' });
+      render(<PublishView />);
+      fireEvent.click(saveButton());
+      fireEvent.click(screen.getByRole('button', { name: '다운로드' }));
+      // Safari needs the URL after click(); a 0 ms revoke breaks the download.
+      vi.advanceTimersByTime(1000);
+      expect(URL.revokeObjectURL).not.toHaveBeenCalled();
+      vi.advanceTimersByTime(60_000);
+      expect(URL.revokeObjectURL).toHaveBeenCalledWith('blob:publish-state');
+    } finally {
+      vi.useRealTimers();
+    }
   });
 
   it('saves the regional inputs as they are', async () => {
