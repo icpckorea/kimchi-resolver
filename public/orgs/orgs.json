@@ -201,5 +201,45 @@
   "Kyung Hee University": {
     "country": "KR",
     "logo": "kyung-hee-university.png"
+  },
+  "Daegu Gyeongbuk Institute of Science & Technology": {
+    "country": "KR",
+    "logo": "daegu-gyungbook-institute-of-science-and-technology.png"
+  },
+  "Hankuk University of Foreign Studies": {
+    "country": "KR",
+    "logo": "hankuk-university-of-foreign-studies.png"
+  },
+  "Sunchon National University": {
+    "country": "KR",
+    "logo": "sunchon-national-university.png"
+  },
+  "Hanbat National Unversity": {
+    "country": "KR",
+    "logo": "hanbat-national-university.svg"
+  },
+  "HanShin University": {
+    "country": "KR",
+    "logo": "hanshin-university.png"
+  },
+  "The University of Suwon": {
+    "country": "KR",
+    "logo": "the-university-of-suwon.png"
+  },
+  "Chungbuk National University": {
+    "country": "KR",
+    "logo": "chungbuk-national-university.png"
+  },
+  "Mokpo National University": {
+    "country": "KR",
+    "logo": "mokpo-national-university.png"
+  },
+  "Keimyung University": {
+    "country": "KR",
+    "logo": "keimyung-university.jpg"
+  },
+  "Soonchunhyang University": {
+    "country": "KR",
+    "logo": "soonchunhyang-university.jpg"
   }
 }
