@@ -203,6 +203,13 @@ describe('PublishedApp', () => {
     expect(container.querySelector('.team-row-value')).toBeNull();
   });
 
+  it('ignores awards.json labels saved in an older state file', () => {
+    const state = { ...buildState('off'), manualLabels: { [snapshot.standings[0].team.id]: ['대상 수상자'] } };
+    render(<PublishedApp state={state} />);
+    expect(document.querySelector('.team-badge--manual')).toBeNull();
+    expect(document.body.textContent).not.toContain('대상 수상자');
+  });
+
   it('preliminary does not recompute: a saved list that disagrees with K is shown as saved', () => {
     // topN 3 and K 1 would select x1, x2, y1 (and a fill); the file says only z1.
     const state = buildState('preliminary', {

@@ -13,9 +13,9 @@
  *   the 2026-27 per-school quota: award mode reads the WF medal schools
  *   (Q = 3) from config.publish.regional and has no input fields.
  * - awards.json (spec §6): fetched here from config.award.awardsUrl after boot
- *   for spectator and publish only. Spectator shows manual labels immediately
- *   (a missing file is silent); publish shows them on the final board (missing
- *   → warning). Award mode is loaded by the store DURING boot instead — the
+ *   for spectator only (a missing file is silent; an empty URL fetches
+ *   nothing). Publish never reads awards.json: its boards and the published
+ *   page carry no manual labels. Award mode is loaded by the store DURING boot instead — the
  *   state machine needs the entry ids to decide which finalize raises a slide
  *   (spec §6), so it cannot wait for a post-boot view fetch.
  */
@@ -36,7 +36,7 @@ import { PublishView } from '@ui/publish/PublishView';
 import { parseAwardsJson, type AwardEntry } from '@ui/award/awardsData';
 
 // ---------------------------------------------------------------------------
-// awards.json (spectator + publish; award mode self-fetches in AwardView)
+// awards.json (spectator only; award mode is loaded by the store, publish never)
 // ---------------------------------------------------------------------------
 
 function useAwardsData(): Map<string, AwardEntry> | null {
@@ -46,7 +46,7 @@ function useAwardsData(): Map<string, AwardEntry> | null {
   const [awards, setAwards] = useState<Map<string, AwardEntry> | null>(null);
 
   useEffect(() => {
-    if (status !== 'ready' || mode === 'award') return;
+    if (status !== 'ready' || mode !== 'spectator' || awardsUrl.trim() === '') return;
     let cancelled = false;
     void (async () => {
       try {
@@ -66,18 +66,8 @@ function useAwardsData(): Map<string, AwardEntry> | null {
                 'ceremony. Remove it from this deployment and serve it only from the award build.',
             );
         }
-      } catch (err) {
+      } catch {
         // Missing awards.json is expected in spectator mode → stay silent.
-        if (!cancelled && mode === 'publish') {
-          appStore
-            .getState()
-            .addSystemMessage(
-              'warning',
-              `awards.json could not be loaded (${
-                err instanceof Error ? err.message : String(err)
-              }); manual labels will be omitted.`,
-            );
-        }
       }
     })();
     return () => {
@@ -211,7 +201,7 @@ export default function App() {
   if (mode === 'publish') {
     return (
       <div className="app-shell">
-        <PublishView manualLabels={manualLabels} />
+        <PublishView />
         <SystemMessages />
       </div>
     );

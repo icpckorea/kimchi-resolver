@@ -264,10 +264,9 @@ function RegionalPage(props: BoardProps & PageProps & { state: PublishState & { 
 export function PublishedApp({ state }: { state: PublishState }) {
   const snapshot = useMemo(() => restoreSnapshot(state), [state]);
   const config = useMemo(() => boardConfig(state), [state]);
-  const manualLabels = useMemo(
-    () => new Map(Object.entries(state.manualLabels)),
-    [state.manualLabels],
-  );
+  // Publish never shows awards.json labels. A state file saved before this
+  // rule may still carry some; they are ignored.
+  const manualLabels = useMemo(() => new Map<string, readonly string[]>(), []);
   useEffect(() => {
     document.title = state.title;
   }, [state.title]);

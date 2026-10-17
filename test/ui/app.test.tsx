@@ -40,8 +40,13 @@ const files: Record<string, unknown> = {
   'awards.json': readJson('sample/awards.sample.json'),
 };
 
+/** Every URL the app fetched since the last stubFetch(). */
+let fetchCalls: string[] = [];
+
 function stubFetch(): void {
+  fetchCalls = [];
   vi.stubGlobal('fetch', (async (input: RequestInfo | URL) => {
+    fetchCalls.push(String(input));
     const pathname = String(input).split('?')[0];
     for (const [suffix, body] of Object.entries(files)) {
       if (pathname.endsWith(suffix)) {
@@ -111,6 +116,14 @@ it('?publish=true boots straight into the final publish board', async () => {
   expect(document.getElementById('publish-invited-cutoff')).toBeNull();
   expect(screen.getByRole('button', { name: '확정 결과 저장' })).toBeTruthy();
   expect(document.querySelectorAll('.publish-board .team-row').length).toBe(84);
+});
+
+it('publish never fetches awards.json and shows no manual label', async () => {
+  await bootApp('?publish=true&publish_mode=preliminary');
+  await new Promise((resolve) => setTimeout(resolve, 0));
+  expect(appStore.getState().mode).toBe('publish');
+  expect(fetchCalls.some((url) => url.includes('award'))).toBe(false);
+  expect(document.querySelector('.team-badge--manual')).toBeNull();
 });
 
 it('publish_mode=preliminary boots the preliminary inputs', async () => {
