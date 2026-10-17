@@ -35,6 +35,25 @@ import type { Snapshot, TeamStanding } from './types';
 
 export type PrelimStage = 'top' | 'school' | 'fill';
 
+/** Row tag per stage: shown on the prepare page and on the public page. */
+export const PRELIM_STAGE_TAGS: Record<PrelimStage, string> = {
+  top: '상위',
+  school: '학교',
+  fill: '추가',
+};
+
+/** Public-page legend line per stage, with the saved N and K filled in. */
+export function prelimStageLegend(stage: PrelimStage, topN: number, k: number): string {
+  switch (stage) {
+    case 'top':
+      return `${PRELIM_STAGE_TAGS.top}: 학교와 상관없이 상위 ${topN}팀`;
+    case 'school':
+      return `${PRELIM_STAGE_TAGS.school}: ${k}문제 이상 해결한 학교의 1위 팀`;
+    case 'fill':
+      return `${PRELIM_STAGE_TAGS.fill}: 남은 자리를 순위대로 채운 팀`;
+  }
+}
+
 export interface PrelimOptions {
   /** T ≥ 1: number of teams that advance to the regional. */
   totalTeams: number;

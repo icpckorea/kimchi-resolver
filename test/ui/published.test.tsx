@@ -169,8 +169,16 @@ describe('PublishedApp', () => {
     expect(['x1', 'x2', 'y1', 'y2', 'z1'].filter(isDimmed)).toEqual(['x2']);
     expect(screen.getByText('노란색 = 본선 진출')).toBeTruthy();
     expect(container.querySelectorAll('input, button, select, textarea')).toHaveLength(0);
-    // No stage tag, no "미자격" text, no stars, rank numbers stay as standings.
-    expect(container.querySelector('.team-row-tag')).toBeNull();
+    // Each selected row says why it advanced; the legend explains the tags
+    // with the saved N and K and the per-stage counts.
+    const tagOf = (id: string): string | null =>
+      container.querySelector(`[data-team-id="${id}"] .team-row-tag`)?.textContent ?? null;
+    expect(['x1', 'x2', 'y1', 'y2', 'z1'].map(tagOf)).toEqual(['상위', null, '학교', null, '학교']);
+    const legend = container.querySelector('.published-stage-legend')?.textContent ?? '';
+    expect(legend).toContain('상위: 학교와 상관없이 상위 1팀 (1팀)');
+    expect(legend).toContain('학교: 1문제 이상 해결한 학교의 1위 팀 (2팀)');
+    expect(legend).toContain('추가: 남은 자리를 순위대로 채운 팀 (0팀)');
+    // No "미자격" text, no stars, rank numbers stay as standings.
     expect(container.textContent).not.toContain('미자격');
     expect(container.querySelector('svg.kr-apac-star')).toBeNull();
     expect(container.querySelector('.team-row-value')).toBeNull();

@@ -16,7 +16,7 @@
 import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import type { Snapshot } from '@core/types';
 import type { ApacStarTier } from '@core/apac';
-import { selectPreliminary, type PrelimResult, type PrelimStage } from '@core/preliminary';
+import { PRELIM_STAGE_TAGS, selectPreliminary, type PrelimResult } from '@core/preliminary';
 import { buildPublishState, type PublishDisplay, type PublishMode } from '@core/publishState';
 import { useAppStore } from '@store/appStore';
 import { Scoreboard, type ApacStarInfo, type RowDecor } from '@ui/scoreboard';
@@ -82,8 +82,6 @@ function useStarSpin(stars: Map<string, ApacStarTier>): ApacStarState {
 // ---------------------------------------------------------------------------
 // Shared pieces
 // ---------------------------------------------------------------------------
-
-const STAGE_TAGS: Record<PrelimStage, string> = { top: '상위', school: '학교', fill: '추가' };
 
 const listText = (items: readonly string[]): string => (items.length > 0 ? items.join(', ') : '없음');
 const numberText = (value: number | null): string => (value === null ? '비어 있음' : String(value));
@@ -212,7 +210,7 @@ function PrelimPublish({
       map.set(team.id, {
         advance: stage !== undefined,
         dimmed: isIneligible,
-        tag: stage !== undefined ? STAGE_TAGS[stage] : undefined,
+        tag: stage !== undefined ? PRELIM_STAGE_TAGS[stage] : undefined,
         leading: (
           <input
             type="checkbox"

@@ -25,6 +25,7 @@ import {
   type PublishState,
   type RegionalSimInputs,
 } from '@core/publishState';
+import { PRELIM_STAGE_TAGS, prelimStageLegend, type PrelimStage } from '@core/preliminary';
 import { ScoreboardView } from '@ui/scoreboard/ScoreboardView';
 import type { ApacStarInfo, RowDecor } from '@ui/scoreboard/TeamRow';
 import { MOBILE_MEDIA_QUERY, useMediaQuery } from '@ui/scoreboard/useMediaQuery';
@@ -125,16 +126,29 @@ function PreliminaryPage(props: BoardProps & { state: PublishState & { mode: 'pr
   const { state, snapshot } = props;
   // The saved list is the result: it is never recomputed from T, N or K.
   const rowDecor = useMemo(() => {
-    const selected = new Set(state.preliminary.selected.map((s) => s.teamId));
+    const stageOf = new Map(state.preliminary.selected.map((s) => [s.teamId, s.stage]));
     const ineligible = new Set(state.preliminary.ineligibleTeamIds);
     const map = new Map<string, RowDecor>();
     for (const { team } of snapshot.standings) {
-      const advance = selected.has(team.id);
+      const stage = stageOf.get(team.id);
       const dimmed = ineligible.has(team.id);
-      if (advance || dimmed) map.set(team.id, { advance, dimmed });
+      if (stage !== undefined || dimmed) {
+        map.set(team.id, {
+          advance: stage !== undefined,
+          dimmed,
+          tag: stage !== undefined ? PRELIM_STAGE_TAGS[stage] : undefined,
+        });
+      }
     }
     return map;
   }, [state.preliminary, snapshot]);
+
+  const stageCounts = useMemo(() => {
+    const counts: Record<PrelimStage, number> = { top: 0, school: 0, fill: 0 };
+    for (const { stage } of state.preliminary.selected) counts[stage] += 1;
+    return counts;
+  }, [state.preliminary]);
+  const stages: PrelimStage[] = ['top', 'school', 'fill'];
 
   return (
     <>
@@ -142,6 +156,13 @@ function PreliminaryPage(props: BoardProps & { state: PublishState & { mode: 'pr
         <span className="published-legend-swatch" aria-hidden="true" />
         노란색 = 본선 진출
       </p>
+      <ul className="published-legend published-stage-legend">
+        {stages.map((stage) => (
+          <li key={stage}>
+            {prelimStageLegend(stage, state.preliminary.topN, state.preliminary.k)} ({stageCounts[stage]}팀)
+          </li>
+        ))}
+      </ul>
       <Board {...props} rowDecor={rowDecor} />
     </>
   );

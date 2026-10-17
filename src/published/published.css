@@ -121,3 +121,11 @@
     font-size: 1.2rem;
   }
 }
+
+/* Why each yellow row advanced: one line per stage tag. */
+.published-stage-legend {
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 0;
+  padding-left: 1.2rem;
+}
