@@ -1,0 +1,123 @@
+/* Static public page. The board rows are styled by the shared scoreboard
+   styles; this file owns the page chrome and a light-page look for the
+   shared regional panel (publish.css is written for the prepare page). */
+
+.published-view {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+  min-height: 100vh;
+  padding: 0.75rem 0.75rem 2rem;
+}
+
+.published-header {
+  padding: 0.35rem 0.25rem;
+  border-bottom: 2px solid rgba(0, 0, 0, 0.12);
+}
+
+.published-title {
+  margin: 0;
+  font-size: 1.5rem;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+  overflow-wrap: anywhere;
+}
+
+.published-banner {
+  margin: 0;
+  padding: 0.6rem 0.9rem;
+  border-left: 4px solid #d98a00;
+  border-radius: 0.3rem;
+  background: #fff4d6;
+  color: #4a3200;
+  font-size: 0.95rem;
+  font-weight: 600;
+  line-height: 1.5;
+}
+
+.published-legend {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.4rem;
+  margin: 0;
+  font-size: 0.85rem;
+  line-height: 1.6;
+  color: #3c3c3c;
+}
+
+.published-legend-swatch {
+  display: inline-block;
+  width: 1.1rem;
+  height: 0.8rem;
+  border: 1px solid rgba(0, 0, 0, 0.25);
+  border-radius: 0.15rem;
+  background: var(--row-advance-bg, #fff3b0);
+}
+
+.published-board {
+  width: 100%;
+}
+
+/* -- shared regional panel on a light page ---------------------------------- */
+
+.published-view .regional-sim {
+  background: #fff;
+  border: 1px solid rgba(0, 0, 0, 0.14);
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.08);
+}
+
+.published-view .regional-sim-group {
+  border-color: rgba(0, 0, 0, 0.18);
+}
+
+.published-view .publish-field-input,
+.published-view .publish-schools-toggle {
+  background: #fff;
+  border-color: rgba(0, 0, 0, 0.35);
+  color: #1c1c1c;
+}
+
+.published-view .regional-sim-score-hint,
+.published-view .publish-controls-hint {
+  color: #a03026;
+}
+
+.published-view .publish-button {
+  color: #1c1c1c;
+}
+
+/* -- error panel --------------------------------------------------------------- */
+
+.published-error {
+  max-width: 34rem;
+  margin: 4rem auto 0;
+  padding: 1.25rem 1.5rem;
+  background: #fff;
+  border-left: 4px solid #d9534f;
+  border-radius: 0.4rem;
+  box-shadow: 0 1px 6px rgba(0, 0, 0, 0.12);
+}
+
+.published-error-title {
+  margin: 0 0 0.5rem;
+  font-size: 1.2rem;
+  color: #a03026;
+}
+
+.published-error-list {
+  margin: 0.5rem 0 0;
+  padding-left: 1.2rem;
+  font-size: 0.8rem;
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  overflow-wrap: anywhere;
+}
+
+@media (max-width: 768px) {
+  .published-view {
+    padding: 0.5rem 0.5rem 1.5rem;
+  }
+  .published-title {
+    font-size: 1.2rem;
+  }
+}
