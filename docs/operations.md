@@ -329,9 +329,9 @@ npm run convert -- --contest seoul2026 --out /srv/feed      # another folder
 |---|---|
 | `--contest <id>` | Required. The DOMjudge contest id. |
 | `--out <dir>` | Output folder. Default `feed-out/` (git-ignored). |
-| `--interval <s>` | Poll every `s` seconds. Minimum 10; a lower value is refused. Without it the script runs once. |
+| `--interval <s>` | Poll every `s` seconds. Minimum 10, maximum 2147483; a value outside this range is refused. Without it the script runs once. |
 | `--unfreeze` | Keep the real results of frozen runs. Default off. |
-| `--url <api root>` | Judge API root (with `/api/v4`). Default: `KIMCHI_JUDGE_URL`. |
+| `--url <api root>` | Judge API root (with `/api/v4`). Default: `KIMCHI_JUDGE_URL`. It must not contain a user name or password. |
 
 The judge URL and the credential come from `KIMCHI_JUDGE_URL` and
 `KIMCHI_JUDGE_CRED` (`user:password`, an `api_reader` account, see §2). The
@@ -353,10 +353,13 @@ polls.
 
 **Freeze.** Like the original converter, a run at or after the freeze minute
 (contest duration minus `scoreboard_freeze_duration`) is written as pending.
-The mask ends when DOMjudge thaws the scoreboard (`/state` `thawed`). If the
-freeze time cannot be read, or `/state` fails, the script keeps the mask. It
-never falls back to real results. The script stops by itself when the judge
-sets `end_of_updates`.
+The mask ends when DOMjudge thaws or finalizes the contest (`/state` `thawed`
+or `finalized`). If the freeze time cannot be read, or `/state` fails, the
+script keeps the mask. It never falls back to real results. The script stops by
+itself when the judge sets `end_of_updates`, but not while the mask still
+holds: then it keeps polling (and writes `noMoreUpdate: false`) until the thaw.
+A bad contest reload after the first good poll is logged, and the old contest
+and freeze time stay in use.
 
 **Results.** The feed has no judge text, so it carries `Yes`, `No` and
 `No (no penalty)` (compile error) only. The spotboard source reads these back
@@ -365,9 +368,11 @@ the feed; the board takes them from `orgs.json`.
 
 **Never use `--unfreeze` for a folder that anyone can read.** The output then
 holds the real verdicts of the freeze. The script refuses `--unfreeze` with an
-`--out` inside `public/` (the build copies `public/` into `dist/`). It also
-marks the file with `"kimchiUnfrozen": true`, and `npm run build` fails when a
-`runs.json` with that marker is under `public/`. These two checks do not cover
+`--out` inside `public/` (the build copies `public/` into `dist/`), `dist/` or
+`publish-dist/` (uploaded by hand). Case does not matter. It also marks the
+file with `"kimchiUnfrozen": true`. `npm run build` fails when a `runs.json`
+with that marker is under `public/`, `dist/` or `publish-dist/`, and
+`npm run publish` fails its output scan for it. These checks do not cover
 other places: an S3 bucket, a shared folder or a web root outside the repo are
 your responsibility.
 

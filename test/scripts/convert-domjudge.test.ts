@@ -13,6 +13,7 @@ import {
   ConvertError,
   freezeMinuteFromContest,
   parseEnvFile,
+  redactUrl,
   resolveSettings,
   runCli,
   runConvert,
@@ -209,11 +210,70 @@ describe('resolveSettings', () => {
     symlinkSync(join(root, 'public'), link);
     expect(() => resolveSettings(args(join(link, 'feed')), deps)).toThrow(/inside public\//);
 
+    // dist/ and publish-dist/ are served or uploaded as well.
+    expect(() => resolveSettings(args(join(root, 'dist')), deps)).toThrow(/inside dist\//);
+    expect(() => resolveSettings(args(join(root, 'publish-dist', 'x')), deps)).toThrow(/inside publish-dist\//);
+
     // Outside public/ is fine, and so is a frozen output inside public/.
     expect(resolveSettings(args(join(root, 'feed-out')), deps).unfreeze).toBe(true);
     expect(
       resolveSettings(['--contest', 'c1', '--out', join(root, 'public', 'feed')], deps).unfreeze,
     ).toBe(false);
+  });
+});
+
+describe('resolveSettings: guards', () => {
+  const args = (out: string) => ['--contest', 'c1', '--unfreeze', '--out', out];
+
+  it('treats a folder named "..foo" in public/ as inside, and a sibling "..foo" as outside', () => {
+    const root = makeProject();
+    const deps = { env: goodEnv, projectRoot: root };
+    expect(() => resolveSettings(args(join(root, 'public', '..foo')), deps)).toThrow(/inside public\//);
+    expect(() => resolveSettings(args(join(root, 'public', '..foo', 'x')), deps)).toThrow(/inside public\//);
+    expect(resolveSettings(args(join(root, '..foo')), deps).unfreeze).toBe(true);
+  });
+
+  it('ignores case, as case-insensitive disks do', () => {
+    const root = makeProject();
+    const deps = { env: goodEnv, projectRoot: root };
+    expect(() => resolveSettings(args(join(root, 'PUBLIC', 'x')), deps)).toThrow(/inside public\//);
+    expect(() => resolveSettings(args(join(root, 'Public')), deps)).toThrow(/inside public\//);
+    expect(() => resolveSettings(args(join(root, 'Publish-Dist')), deps)).toThrow(/inside publish-dist\//);
+  });
+
+  it('refuses an interval above the timer limit', () => {
+    const deps = { env: goodEnv, projectRoot: makeProject() };
+    expect(() => resolveSettings(['--contest', 'c1', '--interval', '3000000'], deps)).toThrow(/too long/);
+    expect(resolveSettings(['--contest', 'c1', '--interval', '2147483'], deps).intervalSeconds).toBe(2147483);
+  });
+
+  it('refuses a URL with a login, and never repeats it', () => {
+    const root = makeProject();
+    const secretUrl = 'https://bob:hunter2pw@judge.test/api/v4';
+    for (const deps of [
+      { env: goodEnv, projectRoot: root, extra: ['--url', secretUrl] },
+      { env: { ...goodEnv, KIMCHI_JUDGE_URL: secretUrl }, projectRoot: root, extra: [] as string[] },
+    ]) {
+      let message = '';
+      try {
+        resolveSettings(['--contest', 'c1', ...deps.extra], deps);
+      } catch (e) {
+        message = (e as Error).message;
+      }
+      expect(message).toMatch(/must not contain a user name or password/);
+      expect(message).not.toContain('hunter2pw');
+      expect(message).not.toContain('bob');
+    }
+    expect(() => resolveSettings(['--contest', 'c1', '--url', 'not a url'], { env: goodEnv, projectRoot: root })).toThrow(
+      /not a valid URL/,
+    );
+  });
+});
+
+describe('redactUrl', () => {
+  it('hides a login in a URL', () => {
+    expect(redactUrl('failed (https://bob:pw@judge.test/api)')).toBe('failed (https://***@judge.test/api)');
+    expect(redactUrl('https://judge.test/api')).toBe('https://judge.test/api');
   });
 });
 
@@ -383,6 +443,12 @@ describe('runConvert (once)', () => {
     expect(runs.runs[2].result).toBe('Yes');
   });
 
+  it('lifts the mask once the contest is finalized', async () => {
+    judge.routes[`${ROOT}/state`] = { started: '2026-10-17T10:00:00+00:00', thawed: null, finalized: '2026-10-17T16:00:00+00:00' };
+    await run(settings(out));
+    expect(readJson(join(out, 'runs.json')).runs[2].result).toBe('Yes');
+  });
+
   it('keeps the mask when /state cannot be read', async () => {
     delete judge.routes[`${ROOT}/state`];
     await run(settings(out));
@@ -461,7 +527,11 @@ describe('runConvert (--interval)', () => {
 
   it('stops by itself when the judge ends the feed', async () => {
     const judge = makeJudge();
-    judge.routes[`${ROOT}/state`] = { started: '2026-10-17T10:00:00+00:00', end_of_updates: '2026-10-17T16:00:00+00:00' };
+    judge.routes[`${ROOT}/state`] = {
+      started: '2026-10-17T10:00:00+00:00',
+      finalized: '2026-10-17T16:00:00+00:00',
+      end_of_updates: '2026-10-17T16:00:00+00:00',
+    };
     const out = join(tmp, `out-${counter++}`);
     let slept = 0;
     const code = await runConvert(settings(out, { intervalSeconds: 10 }), {
@@ -476,6 +546,89 @@ describe('runConvert (--interval)', () => {
     expect(code).toBe(0);
     expect(slept).toBe(0);
     expect(readJson(join(out, 'runs.json')).time.noMoreUpdate).toBe(true);
+  });
+
+  it('does not stop on end_of_updates while the freeze mask holds, and stops after the thaw', async () => {
+    const judge = makeJudge();
+    judge.routes[`${ROOT}/state`] = { started: '2026-10-17T10:00:00+00:00', thawed: null, end_of_updates: '2026-10-17T16:00:00+00:00' };
+    const out = join(tmp, `out-${counter++}`);
+    const logs: string[] = [];
+    let slept = 0;
+    const code = await runConvert(settings(out, { intervalSeconds: 10 }), {
+      fetchImpl: judge.fetchImpl,
+      log: (l) => logs.push(l),
+      error: () => {},
+      now: () => NOW,
+      sleep: async () => {
+        slept++;
+        const runs = readJson(join(out, 'runs.json'));
+        if (slept === 1) {
+          // Masked, and the board is not told to stop.
+          expect(runs.time.noMoreUpdate).toBe(false);
+          expect(runs.runs[2].result).toBe('');
+          judge.routes[`${ROOT}/state`] = {
+            started: '2026-10-17T10:00:00+00:00',
+            thawed: '2026-10-17T16:05:00+00:00',
+            end_of_updates: '2026-10-17T16:05:00+00:00',
+          };
+        }
+      },
+    });
+    expect(code).toBe(0);
+    expect(slept).toBe(1);
+    const runs = readJson(join(out, 'runs.json'));
+    expect(runs.time.noMoreUpdate).toBe(true);
+    expect(runs.runs[2].result).toBe('Yes');
+    expect(logs.filter((l) => /still polling/.test(l))).toHaveLength(1);
+  });
+
+  it('keeps the old contest when a later reload says nothing about the freeze (ConvertError)', async () => {
+    const judge = makeJudge();
+    const out = join(tmp, `out-${counter++}`);
+    const controller = new AbortController();
+    const errors: string[] = [];
+    let slept = 0;
+    // RELOAD_EVERY is 10: poll 11 reloads the contest.
+    const code = await runConvert(settings(out, { intervalSeconds: 10 }), {
+      fetchImpl: judge.fetchImpl,
+      log: () => {},
+      error: (l) => errors.push(l),
+      now: () => NOW,
+      signal: controller.signal,
+      sleep: async () => {
+        slept++;
+        if (slept === 10) {
+          delete (judge.routes[ROOT] as Record<string, unknown>).scoreboard_freeze_duration;
+        }
+        if (slept === 11) controller.abort();
+      },
+    });
+    expect(code).toBe(0);
+    expect(errors).toHaveLength(1);
+    expect(errors[0]).toMatch(/contest reload failed, keeping the old one/);
+    // The old freeze minute still masks.
+    expect(readJson(join(out, 'runs.json')).runs[2].result).toBe('');
+  });
+
+  it('says "last files kept" only when a file was written', async () => {
+    const judge = makeJudge();
+    // fetchRuns fails after loadContest succeeded.
+    delete judge.routes[`${ROOT}/submissions`];
+    const out = join(tmp, `out-${counter++}`);
+    const controller = new AbortController();
+    const errors: string[] = [];
+    await runConvert(settings(out, { intervalSeconds: 10 }), {
+      fetchImpl: judge.fetchImpl,
+      log: () => {},
+      error: (l) => errors.push(l),
+      now: () => NOW,
+      signal: controller.signal,
+      sleep: async () => controller.abort(),
+    });
+    expect(errors).toHaveLength(1);
+    expect(errors[0]).toMatch(/poll failed:/);
+    expect(errors[0]).not.toMatch(/last files kept/);
+    expect(existsSync(join(out, 'runs.json'))).toBe(false);
   });
 
   it('retries a failing first poll, and gives up at once on a setup error', async () => {
@@ -536,6 +689,22 @@ describe('check-config-security.mjs', () => {
     const result = check('{"kimchiUnfrozen":true,"time":{},"runs":[]}');
     expect(result.status).toBe(1);
     expect(result.stderr).toContain('public/feed/runs.json');
+  });
+
+  it('also scans dist/ and publish-dist/', () => {
+    for (const folder of ['dist', 'publish-dist']) {
+      const root = makeProject();
+      mkdirSync(join(root, 'scripts'));
+      writeFileSync(join(root, 'scripts', 'check-config-security.mjs'), script);
+      mkdirSync(join(root, folder));
+      writeFileSync(join(root, folder, 'runs.json'), '{"kimchiUnfrozen":true,"runs":[]}');
+      const result = spawnSync(process.execPath, [join(root, 'scripts', 'check-config-security.mjs')], {
+        encoding: 'utf8',
+        env: { PATH: process.env.PATH ?? '' },
+      });
+      expect(result.status).toBe(1);
+      expect(result.stderr).toContain(`${folder}/runs.json`);
+    }
   });
 
   it('passes a frozen runs.json and an empty public/', () => {

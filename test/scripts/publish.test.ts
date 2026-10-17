@@ -297,4 +297,11 @@ describe('scanOutput', () => {
     // The secret itself never appears in the message.
     expect(problems).not.toContain('hunter2-secret');
   });
+
+  it('reports unfrozen converter output', () => {
+    const dir = join(tmp, 'unfrozen');
+    mkdirSync(dir, { recursive: true });
+    writeFileSync(join(dir, 'runs.json'), '{"kimchiUnfrozen":true,"runs":[]}');
+    expect(scanOutput(dir, []).join('\n')).toContain('runs.json: unfrozen converter output');
+  });
 });

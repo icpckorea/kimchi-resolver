@@ -69,6 +69,9 @@ export function scanOutput(outDir: string, secrets: readonly string[]): string[]
     if (secrets.some((secret) => bytes.includes(secret))) {
       problems.push(`${rel}: contains a credential or the judge URL from config.json`);
     }
+    if (basename(file) === 'runs.json' && /"kimchiUnfrozen"\s*:\s*true/.test(bytes.toString('utf8'))) {
+      problems.push(`${rel}: unfrozen converter output ("kimchiUnfrozen": true) shows the verdicts of the freeze`);
+    }
     if (file.endsWith('.js') && bytes.includes(FEED_MARKER)) {
       problems.push(`${rel}: contains feed code (${FEED_MARKER}); the bundle must not import ingest`);
     }

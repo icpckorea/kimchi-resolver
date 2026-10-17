@@ -14,10 +14,11 @@
  *
  * Freeze: a run at or after the freeze minute is written as pending, like the
  * original converter, until DOMjudge itself thaws the scoreboard. --unfreeze
- * keeps the real results; it is refused for an --out folder inside public/.
+ * keeps the real results; it is refused for an --out folder inside public/,
+ * dist/ or publish-dist/.
  */
 import { existsSync, mkdirSync, readFileSync, realpathSync, renameSync, rmSync, writeFileSync } from 'node:fs';
-import { basename, dirname, isAbsolute, join, relative, resolve } from 'node:path';
+import { basename, dirname, isAbsolute, join, relative, resolve, sep } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { createContestApiSource, parseContestTimeSeconds } from '../src/core/ingest/contest-api';
 import { toSpotboardContest, toSpotboardRuns } from '../src/core/ingest/spotboard-export';
@@ -27,9 +28,18 @@ const PROJECT_ROOT = fileURLToPath(new URL('..', import.meta.url));
 const DEFAULT_OUT_DIR = 'feed-out';
 /** Shortest poll interval. The adapter re-reads the whole feed on each poll. */
 export const MIN_INTERVAL_SECONDS = 10;
+/** setTimeout takes at most 2^31-1 ms; a larger value fires after 1 ms (a tight loop on the judge). */
+export const MAX_INTERVAL_SECONDS = 2_147_483;
+/** Folders that are served or uploaded as they are: unfrozen output must not go there. */
+const PUBLIC_FOLDERS = ['public', 'dist', 'publish-dist'];
 /** The contest (teams, problems, judgement types) is reloaded every N polls. */
 const RELOAD_EVERY = 10;
 const FETCH_TIMEOUT_MS = 15_000;
+
+/** Hides a login in a URL before it reaches a log line. */
+export function redactUrl(text: string): string {
+  return text.replace(/(\w+:\/\/)[^/\s@]*@/g, '$1***@');
+}
 
 /** Failure the CLI prints as is (no stack) before it exits with code 1. */
 export class ConvertError extends Error {
@@ -105,36 +115,44 @@ function parseArgs(argv: readonly string[]): RawArgs {
 const USAGE =
   'Usage: npm run convert -- --contest <id> [--out <dir>] [--interval <seconds>] [--unfreeze] [--url <api root>]';
 
-/** Resolves symlinks of the deepest existing ancestor, so a link cannot hide a folder. */
+/**
+ * Resolves symlinks of the deepest existing ancestor, so a link cannot hide a
+ * folder. Lower case: macOS and Windows disks ignore case, so "PUBLIC" is
+ * public/. On a case-sensitive disk this refuses a little more, which is safe.
+ */
 function realResolve(path: string): string {
   const abs = resolve(path);
   const rest: string[] = [];
   let current = abs;
   while (!existsSync(current)) {
     const parent = dirname(current);
-    if (parent === current) return abs;
+    if (parent === current) return abs.toLowerCase();
     rest.unshift(basename(current));
     current = parent;
   }
-  return join(realpathSync(current), ...rest);
+  return join(realpathSync.native(current), ...rest).toLowerCase();
 }
 
 function isInside(child: string, parent: string): boolean {
   const rel = relative(parent, child);
-  return rel === '' || (!rel.startsWith('..') && !isAbsolute(rel));
+  // "..foo" is a normal folder name; only ".." and "../x" leave the parent.
+  return rel === '' || (rel !== '..' && !rel.startsWith(`..${sep}`) && !isAbsolute(rel));
 }
 
 /**
- * Unfrozen output holds the verdicts of the freeze. A folder inside public/ is
- * copied into dist/ by the build and served to everyone.
+ * Unfrozen output holds the verdicts of the freeze. public/ is copied into
+ * dist/ by the build, dist/ is served, and publish-dist/ is uploaded by hand.
  */
 export function assertOutDirAllowed(outDir: string, unfreeze: boolean, projectRoot: string = PROJECT_ROOT): void {
   if (!unfreeze) return;
-  if (isInside(realResolve(outDir), realResolve(join(projectRoot, 'public')))) {
-    throw new ConvertError(
-      `Refusing --unfreeze with --out ${outDir}: it is inside public/, which the build copies into dist/ ` +
-        'and serves to everyone. Use a folder outside public/.',
-    );
+  const target = realResolve(outDir);
+  for (const folder of PUBLIC_FOLDERS) {
+    if (isInside(target, realResolve(join(projectRoot, folder)))) {
+      throw new ConvertError(
+        `Refusing --unfreeze with --out ${outDir}: it is inside ${folder}/, which is served or uploaded ` +
+          'to everyone. Use a folder outside public/, dist/ and publish-dist/.',
+      );
+    }
   }
 }
 
@@ -161,6 +179,9 @@ export function resolveSettings(argv: readonly string[], deps: SettingsDeps = {}
           'because every poll reads the whole feed from the judge.',
       );
     }
+    if (n > MAX_INTERVAL_SECONDS) {
+      throw new ConvertError(`--interval ${raw.interval} is too long. The maximum is ${MAX_INTERVAL_SECONDS} seconds.`);
+    }
     intervalSeconds = n;
   }
 
@@ -183,6 +204,19 @@ export function resolveSettings(argv: readonly string[], deps: SettingsDeps = {}
   const baseUrl = raw.url ?? lookup('KIMCHI_JUDGE_URL');
   if (baseUrl === undefined) {
     throw new ConvertError('No judge URL. Pass --url or set KIMCHI_JUDGE_URL (environment or .env.local).');
+  }
+  // The URL must not carry a login: fetch would echo it in its error text.
+  // Neither the URL nor the login is repeated here.
+  let parsedUrl: URL;
+  try {
+    parsedUrl = new URL(baseUrl);
+  } catch {
+    throw new ConvertError('The judge URL is not a valid URL.');
+  }
+  if (parsedUrl.username !== '' || parsedUrl.password !== '') {
+    throw new ConvertError(
+      'The judge URL must not contain a user name or password. Put them in KIMCHI_JUDGE_CRED ("user:password").',
+    );
   }
   const cred = lookup('KIMCHI_JUDGE_CRED');
   if (cred === undefined) {
@@ -314,7 +348,7 @@ export async function runConvert(settings: ConvertSettings, deps: RunDeps = {}):
       headers: { Authorization: `Basic ${basic}` },
       signal: AbortSignal.timeout(FETCH_TIMEOUT_MS),
     });
-    if (!res.ok) throw new Error(`Judge request failed: ${res.status} ${res.statusText} (${contestBase}${path})`);
+    if (!res.ok) throw new Error(`Judge request failed: ${res.status} ${res.statusText} (${redactUrl(contestBase)}${path})`);
     return res.json();
   }
 
@@ -327,6 +361,8 @@ export async function runConvert(settings: ConvertSettings, deps: RunDeps = {}):
   let cursor: unknown = undefined;
   let polls = 0;
   let noMoreUpdate = false;
+  let wroteOnce = false;
+  let maskedEndLogged = false;
 
   async function pollOnce(): Promise<string> {
     if (contest === null || polls % RELOAD_EVERY === 0) {
@@ -336,28 +372,37 @@ export async function runConvert(settings: ConvertSettings, deps: RunDeps = {}):
         contest = loaded;
         freezeMinute = minute;
       } catch (e) {
-        if (contest === null || e instanceof ConvertError) throw e;
-        error(`[${stamp(now)}] contest reload failed, keeping the old one: ${(e as Error).message}`);
+        // Only the first load is fatal. A later bad reload keeps the old contest and freeze.
+        if (contest === null) throw e;
+        error(`[${stamp(now)}] contest reload failed, keeping the old one: ${redactUrl((e as Error).message)}`);
       }
     }
     polls++;
     const result = await source.fetchRuns(cursor);
 
-    // DOMjudge thawed the scoreboard: its own public scoreboard shows the real
-    // results, so the freeze mask ends. An unreadable /state keeps the mask.
+    // DOMjudge thawed or finalized the contest: its own scoreboard shows the
+    // real results, so the freeze mask ends. An unreadable /state keeps the mask.
     let effectiveFreeze = freezeMinute;
     if (!settings.unfreeze && freezeMinute !== null) {
       try {
-        const state = (await getJson('/state')) as { thawed?: unknown } | null;
-        if (state?.thawed != null) effectiveFreeze = null;
+        const state = (await getJson('/state')) as { thawed?: unknown; finalized?: unknown } | null;
+        if (state?.thawed != null || state?.finalized != null) effectiveFreeze = null;
       } catch {
         // keep the mask
       }
     }
+    const masking = !settings.unfreeze && effectiveFreeze !== null;
+    // While the mask holds, the feed is not done: end_of_updates without a thaw
+    // must not stop the converter or tell the board to stop. A later thaw still has to arrive.
+    const noMore = result.noMoreUpdate && !masking;
+    if (result.noMoreUpdate && masking && !maskedEndLogged) {
+      maskedEndLogged = true;
+      log(`[${stamp(now)}] the judge set end_of_updates but the freeze is not thawed or finalized; still polling.`);
+    }
 
     const runsFile = toSpotboardRuns(result.runs, {
       contestTimeSeconds: result.contestTimeSec,
-      noMoreUpdate: result.noMoreUpdate,
+      noMoreUpdate: noMore,
       freezeMinute: effectiveFreeze,
       unfreeze: settings.unfreeze,
       timestamp: Math.floor(now() / 1000),
@@ -367,11 +412,12 @@ export async function runConvert(settings: ConvertSettings, deps: RunDeps = {}):
     writeFileAtomic(contestPath, `${JSON.stringify(contestFile, null, 2)}\n`);
     writeFileAtomic(runsPath, `${JSON.stringify(runsFile)}\n`);
     cursor = result.cursor;
+    wroteOnce = true;
 
     const judged = result.runs.filter((r) => r.verdict !== 'pending').length;
     const shown = runsFile.runs.filter((r) => r.result !== '').length;
     const mode = settings.unfreeze ? 'UNFROZEN' : effectiveFreeze === null ? 'no freeze' : `freeze at minute ${effectiveFreeze}`;
-    if (result.noMoreUpdate) noMoreUpdate = true;
+    if (noMore) noMoreUpdate = true;
     return (
       `teams=${contestFile.teams.length} problems=${contestFile.problems.length} runs=${runsFile.runs.length} ` +
       `masked=${settings.unfreeze ? 0 : judged - shown} (${mode})`
@@ -386,8 +432,8 @@ export async function runConvert(settings: ConvertSettings, deps: RunDeps = {}):
     try {
       log(`[${stamp(now)}] ok ${await pollOnce()} -> ${settings.outDir}`);
     } catch (e) {
-      const message = e instanceof Error ? e.message : String(e);
-      const kept = settings.intervalSeconds !== null && contest !== null ? ' (last files kept)' : '';
+      const message = redactUrl(e instanceof Error ? e.message : String(e));
+      const kept = settings.intervalSeconds !== null && wroteOnce ? ' (last files kept)' : '';
       error(`[${stamp(now)}] poll failed${kept}: ${message}`);
       // A fatal setup problem (or a one-shot run) must not look like success.
       if (settings.intervalSeconds === null || e instanceof ConvertError) return 1;

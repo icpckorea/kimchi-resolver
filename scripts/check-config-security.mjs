@@ -66,7 +66,7 @@ if (existsSync(publicDir)) {
   }
 }
 
-// --- 3. unfrozen converter output under public/ ----------------------------
+// --- 3. unfrozen converter output under public/, dist/, publish-dist/ -------
 // scripts/convert-domjudge.ts marks `--unfreeze` output with a top-level
 // "kimchiUnfrozen": true. Any runs.json carrying it must not be served.
 function findUnfrozenRuns(dir) {
@@ -80,8 +80,10 @@ function findUnfrozenRuns(dir) {
   }
   return found;
 }
-if (existsSync(publicDir)) {
-  for (const file of findUnfrozenRuns(publicDir)) {
+// dist/ is served and publish-dist/ is uploaded by hand, so they are scanned too.
+for (const dir of [publicDir, join(root, 'dist'), join(root, 'publish-dist')]) {
+  if (!existsSync(dir)) continue;
+  for (const file of findUnfrozenRuns(dir)) {
     problems.push(
       `${relative(root, file)} is unfrozen converter output ("kimchiUnfrozen": true). It ships in the\n` +
         '  build and shows the verdicts of the freeze to every visitor. Delete it, or convert without\n' +
