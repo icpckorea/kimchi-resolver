@@ -230,6 +230,8 @@ describe('npm run publish', () => {
       const message = (error as PublishError).message;
       expect(message).toContain('failed the safety scan');
       expect(message).toContain('index.html');
+      // Fail closed: the leaky build must not stay on disk.
+      expect(existsSync(dir)).toBe(false);
       // The message names the file, never the secret.
       for (const hidden of Object.values(secrets)) expect(message).not.toContain(hidden);
     }

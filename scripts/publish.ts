@@ -224,6 +224,8 @@ export async function runPublish(opts: {
     readSecrets(opts.configPath ?? join(PROJECT_ROOT, 'public', 'config.json'), warnings),
   );
   if (problems.length > 0) {
+    // Fail closed: a folder with a leaked secret must not stay for an upload.
+    rmSync(outDir, { recursive: true, force: true });
     throw new PublishError(`The output failed the safety scan:\n${problems.join('\n')}`);
   }
   return { outDir, warnings };
