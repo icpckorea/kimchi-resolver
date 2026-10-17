@@ -9,7 +9,7 @@ import { existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, 
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import { parsePublishState, type PublishState } from '@core/publishState';
-import { PublishError, runPublish, scanOutput } from '../../scripts/publish';
+import { PublishError, readSecrets, runPublish, scanOutput } from '../../scripts/publish';
 import { buildSampleState, loadSample, type Sample } from '../helpers/sampleState';
 
 const NASTY_NAME = 'x</script><b>';
@@ -172,6 +172,62 @@ describe('npm run publish', () => {
     expect(result.warnings.some((w) => w.includes('../config.json'))).toBe(true);
     expect(listFiles(dir)).not.toContain('config.json');
   }, 120_000);
+
+  it('fails the safety scan when a secret from config.json is in the output', async () => {
+    const secrets = { user: 'judge-user-7Q', pass: 'p4ss-w0rd-Zx9', url: 'https://judge.example/api/contests/x9' };
+    const configPath = join(tmp, 'secret-config.json');
+    writeFileSync(
+      configPath,
+      JSON.stringify({ source: { baseUrl: secrets.url, auth: { username: secrets.user, password: secrets.pass } } }),
+    );
+    for (const secret of Object.values(secrets)) {
+      const leaky = JSON.parse(JSON.stringify(state)) as PublishState;
+      leaky.snapshot.standings[0].team.name = `team ${secret}`;
+      const dir = join(tmp, 'out-leaky');
+      const error = await runPublish({ statePath: writeState('leaky.json', leaky), outDir: dir, configPath }).then(
+        () => null,
+        (e: unknown) => e,
+      );
+      expect(error).toBeInstanceOf(PublishError);
+      const message = (error as PublishError).message;
+      expect(message).toContain('failed the safety scan');
+      expect(message).toContain('index.html');
+      // The message names the file, never the secret.
+      for (const hidden of Object.values(secrets)) expect(message).not.toContain(hidden);
+    }
+  }, 240_000);
+
+  it('warns, and still builds, when config.json is not valid JSON', async () => {
+    const configPath = join(tmp, 'broken-config.json');
+    writeFileSync(configPath, '{ not json');
+    const dir = join(tmp, 'out-broken-config');
+    const result = await runPublish({ statePath: writeState('ok.json', state), outDir: dir, configPath });
+    expect(result.warnings.some((w) => w.includes(configPath) && w.includes('not valid JSON'))).toBe(true);
+    expect(existsSync(join(dir, 'index.html'))).toBe(true);
+  }, 120_000);
+});
+
+describe('readSecrets', () => {
+  const tmp = mkdtempSync(join(tmpdir(), 'kimchi-secrets-'));
+  afterAll(() => rmSync(tmp, { recursive: true, force: true }));
+
+  it('reads source.auth.username, source.auth.password and source.baseUrl', () => {
+    const path = join(tmp, 'config.json');
+    writeFileSync(
+      path,
+      JSON.stringify({ source: { baseUrl: 'https://j.example', auth: { username: 'u1', password: 'p1' } }, other: 'x' }),
+    );
+    expect(readSecrets(path, [])).toEqual(['u1', 'p1', 'https://j.example']);
+  });
+
+  it('returns nothing for a missing file or a config without credentials', () => {
+    const warnings: string[] = [];
+    expect(readSecrets(join(tmp, 'absent.json'), warnings)).toEqual([]);
+    const path = join(tmp, 'plain.json');
+    writeFileSync(path, JSON.stringify({ source: { auth: null } }));
+    expect(readSecrets(path, warnings)).toEqual([]);
+    expect(warnings).toEqual([]);
+  });
 });
 
 describe('scanOutput', () => {

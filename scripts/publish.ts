@@ -74,15 +74,17 @@ export function scanOutput(outDir: string, secrets: readonly string[]): string[]
   return problems;
 }
 
-/** Credential and judge URL strings from public/config.json (when it exists). */
-function readSecrets(warnings: string[]): string[] {
-  const path = join(PROJECT_ROOT, 'public', 'config.json');
+/**
+ * Credential and judge URL strings from a config.json (when it exists). The
+ * default path is public/config.json; tests pass another one.
+ */
+export function readSecrets(path: string, warnings: string[]): string[] {
   if (!existsSync(path)) return [];
   let source: { baseUrl?: unknown; auth?: { username?: unknown; password?: unknown } | null };
   try {
     source = JSON.parse(readFileSync(path, 'utf8'))?.source ?? {};
   } catch {
-    warnings.push('public/config.json is not valid JSON; the secret scan skipped it');
+    warnings.push(`${path} is not valid JSON; the secret scan skipped it`);
     return [];
   }
   const secrets = [source.auth?.username, source.auth?.password, source.baseUrl];
@@ -151,6 +153,8 @@ function copyLogos(state: PublishState, outDir: string, warnings: string[]): voi
 export async function runPublish(opts: {
   statePath: string;
   outDir?: string;
+  /** config.json to read secrets from. Default: public/config.json. */
+  configPath?: string;
 }): Promise<PublishRunResult> {
   const warnings: string[] = [];
   const state = readState(resolve(opts.statePath));
@@ -175,7 +179,10 @@ export async function runPublish(opts: {
 
   copyLogos(state, outDir, warnings);
 
-  const problems = scanOutput(outDir, readSecrets(warnings));
+  const problems = scanOutput(
+    outDir,
+    readSecrets(opts.configPath ?? join(PROJECT_ROOT, 'public', 'config.json'), warnings),
+  );
   if (problems.length > 0) {
     throw new PublishError(`The output failed the safety scan:\n${problems.join('\n')}`);
   }
