@@ -79,7 +79,7 @@ kimchi-resolver/
 - **이중 랭킹**: 같은 comparator를 두 모집단에 적용 — `icpcRank`(전체), `domesticRank`(foreign 제외, foreign 팀은 null).
 - **교내 순위**: 각 group 내 icpcRank 순서로 `schoolRank`(1부터) 파생. APAC 별 판정(13장)의 입력. 별도 왕관 표시는 없음(취소됨).
 - **first solve**: 문제별 accepted run의 최소 시각. 동시각 복수 팀 모두 first solve (원본 동일).
-- **last solve**: 문제별 accepted run 중 가장 늦은 것 (분 → run id 순 비교, 단일 셀). **contest-last solve**: 대회 전체 accepted run 중 가장 늦은 것 (단일 셀). **contest-first solve**: 대회 전체 accepted run 중 가장 빠른 것 (분 → run id 순, 단일 셀). spectator에서는 "현재까지" 기준 파생값. **award 모드에서는 숨겨진 run까지 포함한 최종 데이터 기준으로 고정 계산** — 공개가 진행되어도 파랑/보라가 옮겨 다니지 않고, 해당 셀이 공개(accepted)된 뒤에야 표시된다. (같은 규칙이 last-solve 기반 자동 칭호에도 적용.)
+- **last solve**: 문제별 accepted run 중 가장 늦은 것 (분 → run id 순 비교, 단일 셀). 그 셀이 first solve이기도 하면 (그 문제를 푼 팀이 한 팀뿐이거나, 모두 첫 분에 동시에 푼 경우) last solve는 표시하지 않는다 — first solve가 우선. **contest-last solve**: 대회 전체 accepted run 중 가장 늦은 것 (단일 셀). **contest-first solve**: 대회 전체 accepted run 중 가장 빠른 것 (분 → run id 순, 단일 셀). spectator에서는 "현재까지" 기준 파생값. **award 모드에서는 숨겨진 run까지 포함한 최종 데이터 기준으로 고정 계산** — 공개가 진행되어도 파랑/보라가 옮겨 다니지 않고, 해당 셀이 공개(accepted)된 뒤에야 표시된다. (같은 규칙이 last-solve 기반 자동 칭호에도 적용.)
 - **자동 칭호** (awards.json과 무관, 스냅샷에서 파생되어 팀 행 배지로 표시):
 
   | 조건 | 배지 텍스트 |

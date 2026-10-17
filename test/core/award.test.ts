@@ -704,7 +704,8 @@ describe('static last-solve / contest first-last flags', () => {
   /**
    * Final truth of the fixture:
    *   A: t1@10 Y (contest FIRST yes), t2@20 Y, hidden t3@100 Y (A's LAST solve)
-   *   B: hidden t1@110 Y (B's last solve AND the contest LAST yes)
+   *   B: hidden t1@110 Y (the contest LAST yes; B's sole solver, so it is
+   *      B's first solve and NOT a last solve — first wins)
    * Visible order at boot: t1 (1 solved, 10), t2 (1 solved, 20), t3 (0).
    */
   function staticFlagsFixture() {
@@ -776,12 +777,11 @@ describe('static last-solve / contest first-last flags', () => {
       problemId: '1',
       effect: { gacha: true, finale: true },
     });
-    expect(cellOf(machine, 't1', '1').isLastSolve).toBe(true);
+    expect(cellOf(machine, 't1', '1').isLastSolve).toBe(false); // sole solver: first wins
     expect(cellOf(machine, 't1', '1').isContestLastSolve).toBe(true);
     expect(machine.snapshot.contestLastYes).toEqual({ teamId: 't1', problemId: '1' });
     expect(labelsOf(machine, 't1')).toEqual([
       { kind: 'contestFirstYes' },
-      { kind: 'lastToSolve', problemLabels: ['B'] },
       { kind: 'contestLastYes' },
     ]);
   });

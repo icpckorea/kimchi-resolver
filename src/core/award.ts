@@ -228,6 +228,7 @@ export function createAwardMachine(opts: CreateAwardMachineOptions): AwardMachin
       seq: number;
     }
     const lastPerProblem = new Map<string, Accepting>();
+    const firstMinutePerProblem = new Map<string, number>();
     let first: Accepting | null = null;
     let last: Accepting | null = null;
     for (const [, runs] of allRunsByCell) {
@@ -240,6 +241,10 @@ export function createAwardMachine(opts: CreateAwardMachineOptions): AwardMachin
         minute: acc.minute,
         seq: acc.seq,
       };
+      const firstMinute = firstMinutePerProblem.get(cur.problemId);
+      if (firstMinute === undefined || cur.minute < firstMinute) {
+        firstMinutePerProblem.set(cur.problemId, cur.minute);
+      }
       const problemLast = lastPerProblem.get(cur.problemId);
       if (
         problemLast === undefined ||
@@ -256,6 +261,9 @@ export function createAwardMachine(opts: CreateAwardMachineOptions): AwardMachin
       }
     }
     for (const acc of lastPerProblem.values()) {
+      // A last solve that is also a first solve (sole solver, or all tied at
+      // the first minute) is not marked: first to solve wins.
+      if (acc.minute === firstMinutePerProblem.get(acc.problemId)) continue;
       finalLastSolveCells.add(cellKey(acc.teamId, acc.problemId));
     }
     if (first !== null) finalContestFirst = { teamId: first.teamId, problemId: first.problemId };

@@ -85,7 +85,7 @@ function priorityFixture(): { contest: Contest; snapshot: Snapshot } {
     r('t2', 'A', 8, 'failed'),
     r('t2', 'A', 10, 'accepted'),
     r('t3', 'A', 20, 'accepted'), // last solve of A
-    r('t1', 'B', 30, 'accepted'), // contest-last (also first+last of B)
+    r('t1', 'B', 30, 'accepted'), // contest-last + first of B (sole solver: not last)
     r('t2', 'B', 40, 'failed'),
     r('t3', 'B', 45, 'pending'),
   ];
@@ -338,8 +338,8 @@ describe('Badges', () => {
 
     const overflow = col.querySelector('.team-badge--overflow') as HTMLElement;
     expect(overflow).not.toBeNull();
-    // t1: 4 auto labels + 1 manual = 5, two of which fit.
-    expect(overflow.textContent).toBe(`+${5 - BOARD_MAX_BADGES}`);
+    // t1: 3 auto labels + 1 manual = 4, two of which fit.
+    expect(overflow.textContent).toBe(`+${4 - BOARD_MAX_BADGES}`);
     // The hidden texts stay reachable as the chip's tooltip.
     expect(overflow.title).toContain('금상 수상자');
     expect(col.textContent).not.toContain('금상 수상자');

@@ -409,12 +409,25 @@ describe('last solve (per problem)', () => {
     expect(snap.byTeam.get('3')!.cells.get('p1')!.isLastSolve).toBe(true);
   });
 
-  it('a sole solver is both first and last solve of the problem', () => {
+  it('a sole solver is first solve only — first wins over last', () => {
     const contest = makeContest([{ id: '1' }]);
     const snap = computeStandings(contest, [run('1', 'p1', 10, 'accepted')]);
-    const cell = snap.byTeam.get('1')!.cells.get('p1')!;
+    const standing = snap.byTeam.get('1')!;
+    const cell = standing.cells.get('p1')!;
     expect(cell.isFirstSolve).toBe(true);
-    expect(cell.isLastSolve).toBe(true);
+    expect(cell.isLastSolve).toBe(false);
+    expect(labelKinds(standing.autoLabels)).toContain('firstToSolve');
+    expect(labelKinds(standing.autoLabels)).not.toContain('lastToSolve');
+  });
+
+  it('marks no last solve when every solver is tied at the first minute', () => {
+    const contest = makeContest([{ id: '1' }, { id: '2' }]);
+    const snap = computeStandings(contest, [
+      run('1', 'p1', 15, 'accepted', { seq: 1 }),
+      run('2', 'p1', 15, 'accepted', { seq: 2 }),
+    ]);
+    expect(snap.byTeam.get('1')!.cells.get('p1')!.isLastSolve).toBe(false);
+    expect(snap.byTeam.get('2')!.cells.get('p1')!.isLastSolve).toBe(false);
   });
 });
 
