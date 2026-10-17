@@ -548,9 +548,11 @@ export function createAppStore(deps: StoreDeps = {}): AppStore {
      * awards.json for AWARD mode (spec §6). Awaited during boot because the
      * state machine takes the entry ids at construction: it raises a slide
      * only for a team that has one. A missing file downgrades to a slide-less
-     * ceremony with a warning — never to invisible slides.
+     * ceremony with a warning — never to invisible slides. An empty URL means
+     * "no awards.json": nothing is fetched and there is no warning.
      */
     async function loadAwardsJson(url: string): Promise<Map<string, AwardEntry>> {
+      if (url.trim() === '') return new Map<string, AwardEntry>();
       try {
         return parseAwardsJson(await fetchJson(url));
       } catch (err) {

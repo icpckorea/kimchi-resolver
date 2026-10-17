@@ -67,6 +67,7 @@ const awardSchema = z
      */
     showBalloons: z.boolean().default(false),
     rankBegin: z.number().int().positive().nullable().default(null),
+    /** awards.json URL; '' = no awards.json (no fetch, no slides or medals). */
     awardsUrl: z.string().default('./sample/awards.sample.json'),
     /** Problem labels or ids, highest priority first. */
     revealOrder: z.array(idSchema).default([]),

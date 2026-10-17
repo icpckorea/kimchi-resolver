@@ -897,6 +897,18 @@ describe('award mode', () => {
     ]);
   });
 
+  it('an empty awardsUrl fetches nothing and warns about nothing', async () => {
+    const { store, calls } = makeHarness({
+      ...smallFiles(),
+      'config.json': { award: { awardsUrl: '' } },
+    });
+    await store.getState().boot('?award=true&r=3');
+    expect(store.getState().mode).toBe('award');
+    expect(store.getState().awards.size).toBe(0);
+    expect(calls.some((url) => url.includes('award'))).toBe(false);
+    expect(messages(store).some((text) => text.includes('awards.json'))).toBe(false);
+  });
+
   it('warns and runs a slide-less ceremony when awards.json is missing', async () => {
     const { store } = makeHarness(smallFiles()); // no awards.json → 404
     await store.getState().boot('?award=true&r=3');
