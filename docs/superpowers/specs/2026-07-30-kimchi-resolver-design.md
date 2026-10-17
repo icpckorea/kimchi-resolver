@@ -78,8 +78,8 @@ kimchi-resolver/
 - **랭킹 comparator**: solved 내림차순 → penalty 오름차순 → 마지막 solve 시각 오름차순 → team id 오름차순(명시적 최종 tie-break). 완전 동점은 rank 공유, 다음 rank는 인원수만큼 건너뜀 (competition ranking: 1,2,2,2,5).
 - **이중 랭킹**: 같은 comparator를 두 모집단에 적용 — `icpcRank`(전체), `domesticRank`(foreign 제외, foreign 팀은 null).
 - **교내 순위**: 각 group 내 icpcRank 순서로 `schoolRank`(1부터) 파생. APAC 별 판정(13장)의 입력. 별도 왕관 표시는 없음(취소됨).
-- **first solve**: 문제별 accepted run의 최소 시각. 동시각 복수 팀 모두 first solve (원본 동일).
-- **last solve**: 문제별 accepted run 중 가장 늦은 것 (분 → run id 순 비교, 단일 셀). 그 셀이 first solve이기도 하면 (그 문제를 푼 팀이 한 팀뿐이거나, 모두 첫 분에 동시에 푼 경우) last solve는 표시하지 않는다 — first solve가 우선. **contest-last solve**: 대회 전체 accepted run 중 가장 늦은 것 (단일 셀). **contest-first solve**: 대회 전체 accepted run 중 가장 빠른 것 (분 → run id 순, 단일 셀). spectator(live board)에서는 last solve와 contest-last solve를 표시하지 않는다 ("지금까지 가장 늦은 것"은 새 정답마다 옮겨 다니므로 의미가 없다). 관련 자동 칭호도 붙이지 않는다. first solve와 contest-first solve는 그대로 표시한다. **award 모드에서는 숨겨진 run까지 포함한 최종 데이터 기준으로 고정 계산** — 공개가 진행되어도 파랑/보라가 옮겨 다니지 않고, 해당 셀이 공개(accepted)된 뒤에야 표시된다. (같은 규칙이 last-solve 기반 자동 칭호에도 적용.)
+- **first solve**: 문제별 accepted run 중 가장 이른 것 (분 → run id 순 비교, 단일 셀). 같은 분에 여러 팀이 풀면 run id가 작은 팀 하나만 first solve이다.
+- **last solve**: 문제별 accepted run 중 가장 늦은 것 (분 → run id 순 비교, 단일 셀). 그 셀이 first solve이기도 하면 (그 문제를 푼 팀이 한 팀뿐인 경우) last solve는 표시하지 않는다 — first solve가 우선. **contest-last solve**: 대회 전체 accepted run 중 가장 늦은 것 (단일 셀). **contest-first solve**: 대회 전체 accepted run 중 가장 빠른 것 (분 → run id 순, 단일 셀). spectator(live board)에서는 last solve와 contest-last solve를 표시하지 않는다 ("지금까지 가장 늦은 것"은 새 정답마다 옮겨 다니므로 의미가 없다). 관련 자동 칭호도 붙이지 않는다. first solve와 contest-first solve는 그대로 표시한다. **award 모드에서는 숨겨진 run까지 포함한 최종 데이터 기준으로 고정 계산** — 공개가 진행되어도 파랑/보라가 옮겨 다니지 않고, 해당 셀이 공개(accepted)된 뒤에야 표시된다. (같은 규칙이 last-solve 기반 자동 칭호에도 적용.)
 - **자동 칭호** (awards.json과 무관, 스냅샷에서 파생되어 팀 행 배지로 표시):
 
   | 조건 | 배지 텍스트 |

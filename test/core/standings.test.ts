@@ -375,16 +375,16 @@ describe('schoolRank', () => {
 // ---------------------------------------------------------------------------
 
 describe('first solve', () => {
-  it('marks ALL teams tied at the minimum minute as first solvers', () => {
+  it('breaks a same-minute tie by run id: one first solver only', () => {
     const contest = makeContest([{ id: '1' }, { id: '2' }, { id: '3' }]);
     const snap = computeStandings(contest, [
       run('1', 'p1', 15, 'accepted', { seq: 1 }),
       run('2', 'p1', 15, 'accepted', { seq: 2 }),
       run('3', 'p1', 16, 'accepted', { seq: 3 }),
     ]);
-    expect(snap.firstSolvers.get('p1')).toEqual(['1', '2']);
+    expect(snap.firstSolvers.get('p1')).toEqual(['1']);
     expect(snap.byTeam.get('1')!.cells.get('p1')!.isFirstSolve).toBe(true);
-    expect(snap.byTeam.get('2')!.cells.get('p1')!.isFirstSolve).toBe(true);
+    expect(snap.byTeam.get('2')!.cells.get('p1')!.isFirstSolve).toBe(false);
     expect(snap.byTeam.get('3')!.cells.get('p1')!.isFirstSolve).toBe(false);
   });
 
@@ -420,14 +420,16 @@ describe('last solve (per problem)', () => {
     expect(labelKinds(standing.autoLabels)).not.toContain('lastToSolve');
   });
 
-  it('marks no last solve when every solver is tied at the first minute', () => {
+  it('two solves in the same minute: lower run id is first, higher is last', () => {
     const contest = makeContest([{ id: '1' }, { id: '2' }]);
     const snap = computeStandings(contest, [
-      run('1', 'p1', 15, 'accepted', { seq: 1 }),
       run('2', 'p1', 15, 'accepted', { seq: 2 }),
+      run('1', 'p1', 15, 'accepted', { seq: 1 }),
     ]);
-    expect(snap.byTeam.get('1')!.cells.get('p1')!.isLastSolve).toBe(false);
-    expect(snap.byTeam.get('2')!.cells.get('p1')!.isLastSolve).toBe(false);
+    const c1 = snap.byTeam.get('1')!.cells.get('p1')!;
+    const c2 = snap.byTeam.get('2')!.cells.get('p1')!;
+    expect([c1.isFirstSolve, c1.isLastSolve]).toEqual([true, false]);
+    expect([c2.isFirstSolve, c2.isLastSolve]).toEqual([false, true]);
   });
 });
 
@@ -718,12 +720,11 @@ describe('golden: 2025 ICPC Seoul sample', () => {
     expect(labelKinds(snap.byTeam.get('79')!.autoLabels)).toContain('contestLastYes');
   });
 
-  it('pins problem L first solve as a two-team tie at minute 9 (teams 64 and 39)', () => {
+  it('breaks the minute-9 tie on problem L by run id: team 64 (run 72) before team 39 (run 74)', () => {
     const lId = problemByLabel.get('L')!;
-    const solvers = snap.firstSolvers.get(lId)!;
-    expect(new Set(solvers)).toEqual(new Set(['64', '39']));
+    expect(snap.firstSolvers.get(lId)).toEqual(['64']);
     expect(snap.byTeam.get('64')!.cells.get(lId)!.isFirstSolve).toBe(true);
-    expect(snap.byTeam.get('39')!.cells.get(lId)!.isFirstSolve).toBe(true);
+    expect(snap.byTeam.get('39')!.cells.get(lId)!.isFirstSolve).toBe(false);
   });
 
   it('leaves unsolved problems A and B without first solvers or last-solve flags', () => {
