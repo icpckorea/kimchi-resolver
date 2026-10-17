@@ -4,10 +4,11 @@ Logos in `public/orgs/logos/` were collected from Wikipedia / Wikimedia Commons
 (English and Korean Wikipedia page images, resolved through the Wikipedia and
 Commons APIs). Collected 2026-07-30, QA pass on the same day.
 
-**Status: 49 of 51 schools in `public/orgs/orgs.json` have a logo (30 SVG, 12 PNG, 7 JPEG).**
+**Status: 50 of 51 schools in `public/orgs/orgs.json` have a logo (30 SVG, 13 PNG, 7 JPEG).**
 
-License note: all images come from Wikipedia / Wikimedia Commons; trademarks
-belong to the respective universities. Used for identification only.
+License note: all images come from Wikipedia / Wikimedia Commons, except
+`jeju-national-university.png`, which comes from the university's own site;
+trademarks belong to the respective universities. Used for identification only.
 
 ## QA rules applied
 
@@ -22,15 +23,14 @@ belong to the respective universities. Used for identification only.
 - SVG files are kept as-is. `yonsei-university.svg` embeds three small PNG layers;
   it renders correctly, so it is kept.
 
-## Not available (2 schools)
+## Not available (1 school)
 
 | School | Reason |
 | --- | --- |
 | Korea Aerospace University | No seal, emblem, or wordmark exists on Commons, English Wikipedia, or Korean Wikipedia. `Category:Korea Aerospace University` holds only campus and facility photos. The Korean infobox `로고` field is empty and Wikidata (Q6431586) has no P154 / P158 / P18 claim. |
-| Jeju National University | No seal, emblem, or wordmark exists on Commons or either Wikipedia. `Category:Jeju National University` holds only campus, hospital, and historical photos. Wikidata (Q487855) P18 points at `Jnuimage.jpg`, a 1024x683 campus photo, not a logo. |
 
-Both are left without a `logo` field in `orgs.json`; the UI falls back to its
-no-logo rendering. Re-check if Commons ever gains a free seal for them.
+It is left without a `logo` field in `orgs.json`; the UI falls back to its
+no-logo rendering. Re-check if Commons ever gains a free seal for it.
 
 ## Notes on individual files
 
@@ -102,4 +102,4 @@ no-logo rendering. Re-check if Commons ever gains a free seal for them.
 | University of Seoul | KR | university-of-seoul.svg | 7331 | https://commons.wikimedia.org/wiki/File:University_of_Seoul.svg |
 | Yonsei University | KR | yonsei-university.svg | 182256 | https://en.wikipedia.org/wiki/File:YonseiUniversityEmblem.svg |
 | Korea Aerospace University | KR | — | — | none available, see above |
-| Jeju National University | KR | — | — | none available, see above |
+| Jeju National University | KR | jeju-national-university.png | 27903 | https://cms.jejunu.ac.kr/pub/site/jejunu/images/sub/in_emblem.png (official university site; added 2026-10-17, downscaled to 256 px) |
