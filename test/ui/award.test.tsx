@@ -1119,7 +1119,10 @@ describe('static last-solve / contest-last flags during the ceremony', () => {
     expect(resultClassOf('award-cell-2-0')).not.toContain('contest-last-solve');
     const row3 = screen.getByTestId('award-row-3');
     expect(within(row3).getByText('got last yes of this contest!')).toBeTruthy();
-    expect(within(row3).getByText('B last to solve!')).toBeTruthy();
+    // Team 3 is B's sole solver: first to solve wins over last to solve.
+    expect(within(row3).getByText('B first to solve!')).toBeTruthy();
+    expect(within(row3).queryByText('B last to solve!')).toBeNull();
+    expect(resultClassOf('award-cell-3-1')).not.toContain(' last-solve');
   });
 });
 

@@ -1,5 +1,6 @@
-export { Scoreboard, filterStandings, type ScoreboardProps } from './Scoreboard';
-export { TeamRow, type TeamRowProps, type ApacStarInfo } from './TeamRow';
+export { Scoreboard, type ScoreboardProps } from './Scoreboard';
+export { ScoreboardView, filterStandings, type ScoreboardViewProps } from './ScoreboardView';
+export { TeamRow, type TeamRowProps, type ApacStarInfo, type RowDecor } from './TeamRow';
 export {
   ProblemCell,
   cellStateClass,

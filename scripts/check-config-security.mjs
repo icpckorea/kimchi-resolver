@@ -8,7 +8,9 @@
  *
  *   1. credentials in config.json (source.auth) — a reader account is enough to
  *      query unfrozen judgements straight from DOMjudge during the freeze;
- *   2. awards.json sitting in the public deployment — it names the winners.
+ *   2. awards.json sitting in the public deployment — it names the winners;
+ *   3. a runs.json written by `npm run convert -- --unfreeze` — it carries the
+ *      verdicts of the freeze (marked "kimchiUnfrozen": true by the converter).
  *
  * Run as part of `npm run build`. Override deliberately with ALLOW_PUBLIC_AUTH=1
  * (e.g. the operator's own award machine, which is not publicly served).
@@ -60,6 +62,32 @@ if (existsSync(publicDir)) {
       `${relative(root, file)} ships in the build and names the winners.\n` +
         '  Serve it only from the award machine, never from the public scoreboard.\n' +
         '  If this build is the award build, set ALLOW_PUBLIC_AUTH=1.',
+    );
+  }
+}
+
+// --- 3. unfrozen converter output under public/, dist/, publish-dist/ -------
+// scripts/convert-domjudge.ts marks `--unfreeze` output with a top-level
+// "kimchiUnfrozen": true. Any runs.json carrying it must not be served.
+function findUnfrozenRuns(dir) {
+  const found = [];
+  for (const entry of readdirSync(dir, { withFileTypes: true })) {
+    const full = join(dir, entry.name);
+    if (entry.isDirectory()) found.push(...findUnfrozenRuns(full));
+    else if (entry.name === 'runs.json' && /"kimchiUnfrozen"\s*:\s*true/.test(readFileSync(full, 'utf8'))) {
+      found.push(full);
+    }
+  }
+  return found;
+}
+// dist/ is served and publish-dist/ is uploaded by hand, so they are scanned too.
+for (const dir of [publicDir, join(root, 'dist'), join(root, 'publish-dist')]) {
+  if (!existsSync(dir)) continue;
+  for (const file of findUnfrozenRuns(dir)) {
+    problems.push(
+      `${relative(root, file)} is unfrozen converter output ("kimchiUnfrozen": true). It ships in the\n` +
+        '  build and shows the verdicts of the freeze to every visitor. Delete it, or convert without\n' +
+        '  --unfreeze. If this build is NOT publicly served, set ALLOW_PUBLIC_AUTH=1.',
     );
   }
 }

@@ -6,7 +6,7 @@ The app has three modes:
 
 - **spectator** — live scoreboard with polling, autoplay run feed, events dashboard, desktop notifications.
 - **award** — the award ceremony ("resolver"): frozen runs are revealed one keypress at a time, with slides, gacha effects and a finale spotlight.
-- **publish** — static final scoreboard for announcements, with APAC advancement stars and the invited-cutoff input.
+- **publish** — final scoreboard for announcements in three modes (`off`, `preliminary`, `regional`). The operator prepares it in the browser, and `npm run publish -- <publish-state.json>` builds a static, credential-free `publish-dist/` folder to upload to S3 (see `docs/operations.md` §6 step 4).
 
 Design spec: `docs/superpowers/specs/2026-07-30-kimchi-resolver-design.md`.
 
@@ -21,6 +21,7 @@ npm test             # vitest, single run
 npm run test:watch   # vitest, watch mode
 npm run typecheck    # tsc --noEmit only
 npm run check-assets # verify orgs.json / logo coverage for the configured data
+npm run convert -- --contest <id>  # DOMjudge -> spotboard contest.json + runs.json (docs/operations.md §5)
 ```
 
 ## Configuration
@@ -52,9 +53,11 @@ Runtime configuration lives in `public/config.json` (served as `config.json` nex
 | `foreign.ids` / `foreign.groups` | `[]` | override the foreign-team detection |
 | `apac.enabled` | `false` | APAC advancement stars (award/publish only) |
 | `publish.enabled` | `false` | boot into publish mode |
-| `publish.siteScore` | `null` | site score (publish gate; required for the board) |
+| `publish.mode` | `"off"` | `"off"` / `"preliminary"` / `"regional"` (URL `publish_mode=` wins) |
+| `publish.preliminary` | `{ totalTeams: null, topN: 30, k: null, ineligibleTeamIds: [] }` | start values of the preliminary selection |
+| `publish.regional` | `{ prelimSchools, prelimTeams, coefficients, wfMedalGroups }` | start values of the regional simulation (site score `S` is computed from them) |
 | `publish.invitedScoreCutoff` | `null` | invited score cutoff for the gold-star rule |
-| `publish.alreadyInvited.teamIds` / `.groups` | `[]` | teams/schools already invited at another regional (see APAC stars) |
+| `publish.alreadyInvited.teamIds` / `.winnerGroups` / `.invitedGroups` | `[]` | teams/schools already invited at another regional (see APAC stars); the old `.groups` key is read as `invitedGroups` |
 | `award.mode` | `false` | boot into award mode |
 | `award.hideName` | `true` | mask unrevealed teams as "Team {id}" |
 | `award.showBalloons` | `false` | balloons on the ceremony board (the live board uses `showBalloons`) |
@@ -70,28 +73,27 @@ Runtime configuration lives in `public/config.json` (served as `config.json` nex
 
 ### APAC stars
 
-With `apac.enabled`, award and publish modes mark APAC Championship advancement next to the rank (per the ICPC APAC rules, at most 3 teams per school — schoolRank ≥ 4 teams never get a star):
+With `apac.enabled` (award mode) or `publish.mode = regional` (publish), the board marks APAC Championship advancement next to the rank (per the ICPC APAC 2026-27 rules: at most 2 teams per school, 3 for a school with a World Finals medal last year, listed in `publish.regional.wfMedalGroups`):
 
-- bronze star — Top 3 in their school
+- bronze star — In the APAC Championship list so far (ceremony only)
 - silver star — Likely invited to the APAC Championship
 - gold star — Invited to the APAC Championship
 
 (the wording of the star tooltips on the board; the publish-mode legend keeps the Korean phrasing)
 
-During the ceremony every schoolRank ≤ 3 team wears bronze. Once the final standings are known (ceremony fully revealed, or publish mode), the **scored list** decides the colors. It is built like this (validated against the 58 published rows of 2025-26 Seoul at icpcapac.solved.ac/2026):
+During the ceremony, an `alreadyInvited.teamIds` team is gold and every team in the **scored list** of the current snapshot wears bronze; every other team has no star. The champion is not known yet, so it is not applied. Once the final standings are known (ceremony fully revealed, or publish mode), the scored list decides the colors. It is built like this (validated against the 58 published rows of 2025-26 Seoul at icpcapac.solved.ac/2026):
 
 1. a school that **already has an invited team drops out entirely** — every one of its teams. The route does not matter: this regional's champion (auto-qualified) counts the same as a team invited at another regional. The invited team itself is still shown, but takes no rank slot;
 2. teams with **0 solved problems** are excluded;
-3. of what remains, each school keeps its **top 3** in ICPC standing order. `filteredRank` is the 1-based position in that list; foreign teams occupy slots normally, since the 3-per-school cap is per site.
+3. of what remains, each school keeps its **top 2** (**top 3** for a WF medal school) in ICPC standing order; teams from AU and NZ (super-region) are removed first. `filteredRank` is the 1-based position in that list; foreign teams occupy slots normally, since the per-school cap is per site.
 
 Star colors follow from it:
 
 - every **invited** team is gold — the champion, plus anyone listed in `publish.alreadyInvited`;
-- teams in the scored list are silver, and a silver team is promoted to gold when `(filteredRank − 1) / siteScore ≤ invitedScoreCutoff` (publish mode; both numbers required);
-- a team that is out of the running but still 학내 3등 이내 keeps bronze — the other teams of an already-invited school, and 0-solve teams. Bronze is never promoted;
-- schoolRank ≥ 4 teams get no star.
+- teams in the scored list are silver, and a silver team is promoted to gold when `(filteredRank − 1) / S ≤ cutoff`, where the site score `S = 0.56·U_r + 0.24·T_r + 0.14·U_p + 0.06·T_p + 0.30·F_r` is computed from the standings and the preliminary counts (the coefficients are config values) (publish `regional` mode; the cutoff is an assumed value);
+- every other team has no star — the other teams of an already-invited school, 0-solve teams, teams over the school quota, and AU/NZ teams. There is no bronze star after the final standings are known.
 
-"Already invited at another regional" cannot be derived from the contest data, so it comes from `publish.alreadyInvited` (`teamIds` for invited teams competing here, `groups` for the school names) and is editable in the publish controls. While both lists are empty only the champion's school drops out, so the ranks may be optimistic — the publish controls say so.
+"Already invited at another regional" cannot be derived from the contest data, so it comes from `publish.alreadyInvited` (`teamIds` for invited teams competing here, `winnerGroups` and `invitedGroups` for the school names) and is editable in the publish controls. While both lists are empty only the champion's school drops out, so the ranks may be optimistic — the publish controls say so.
 
 ### URL parameters
 
@@ -107,7 +109,7 @@ URL parameters override `config.json` (spec §9/§13):
 | `q=<text>` | initial team search (substring match over name + school) |
 | `t=<team id>` | follow this team (highlight + sticky row) |
 | `publish=true` | publish mode (wins over award) |
-| `site_score=<n>` | publish: site score (opens the gate) |
+| `publish_mode=<mode>` | publish: `off` / `preliminary` / `regional` |
 | `invited_cutoff=<x>` | publish: invited score cutoff |
 
 Example: `index.html?award=true&r=1000` starts the ceremony with runs after id 1000 frozen.
@@ -123,7 +125,7 @@ Data the adapter derives from that feed, and the rules it follows:
 - **Access**: the boot `/access` read decides whether this account may see `judgements` at all. If not, the app refuses to start with an error naming `api_reader` instead of showing a board that can never leave pending. An `/access` endpoint that is missing entirely only warns. At runtime, "submissions from many teams but judgements from at most one" — the shape of a team-filtered token — raises a one-off warning as an on-screen system message.
 - **Clock and end of feed** come from `/state`: elapsed time is now − `started` clamped to `[0, duration]` (`--:--` before the start, stopped at the end), corrected by the judge's `Date` header rather than the local clock, and `end_of_updates != null` stops polling and finalizes the header. A judge without `/state` degrades to `start_time` + local clock and never self-terminates; it is never a poll failure.
 - **Teams**: `?public=true` plus a `hidden` check keeps jury/test teams — and their submissions — off the board. Your `api_reader` token would otherwise see them.
-- **School** (`group`, which drives `schoolRank` and the APAC stars): organization `formal_name` → organization `name` → the team's own `affiliation` string. Only a team with none of those gets the empty group, which means "no school" — never a shared bucket.
+- **School** (`group`, which drives `schoolRank` and the per-school quota of the APAC scored list): organization `formal_name` → organization `name` → the team's own `affiliation` string. Only a team with none of those gets the empty group, which means "no school" — never a shared bucket.
 - **Country**: organization `country` → team `nationality`, both ISO 3166-1 alpha-3 (alpha-2 accepted, common IOC codes aliased); `orgs.json` overrides both. An unresolvable code yields **no flag** and a warning rather than a guessed one.
 - **Verdicts**: a judgement type missing from the snapshot taken at load is scored as a penalized rejection with a warning, not left pending forever. Among several judgements the adapter skips `valid: false` (superseded by a rejudging) and takes the greatest `end_contest_time`, then the greatest id — never array order.
 

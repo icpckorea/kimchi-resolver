@@ -551,10 +551,48 @@ describe('spectator loop', () => {
 // Publish mode (spec §13)
 // ---------------------------------------------------------------------------
 
+describe('last solve on the live board', () => {
+  function sampleHarness() {
+    const read = (f: string) => JSON.parse(readFileSync(resolve(ROOT, f), 'utf8'));
+    return makeHarness({
+      'contest.json': read('public/sample/contest.json'),
+      'runs.json': read('public/sample/runs.json'),
+      'orgs/orgs.json': read('public/orgs/orgs.json'),
+    });
+  }
+  const cells = (state: ReturnType<ReturnType<typeof makeHarness>['store']['getState']>) =>
+    state.snapshot!.standings.flatMap((s) => [...s.cells.values()]);
+  const labelKinds = (state: ReturnType<ReturnType<typeof makeHarness>['store']['getState']>) =>
+    state.snapshot!.standings.flatMap((s) => s.autoLabels.map((l) => l.kind));
+
+  it('spectator mode shows no last solve, no contest-last yes, and no labels for them', async () => {
+    const { store } = sampleHarness();
+    await store.getState().boot('');
+    const state = store.getState();
+    expect(state.mode).toBe('spectator');
+    expect(cells(state).some((c) => c.isLastSolve || c.isContestLastSolve)).toBe(false);
+    expect(labelKinds(state)).not.toContain('lastToSolve');
+    expect(labelKinds(state)).not.toContain('contestLastYes');
+    expect(state.snapshot!.contestLastYes).toBeNull();
+    // First solve stays.
+    expect(cells(state).some((c) => c.isFirstSolve)).toBe(true);
+    expect(state.snapshot!.contestFirstYes).not.toBeNull();
+  });
+
+  it('publish mode (final results) keeps last solve', async () => {
+    const { store } = sampleHarness();
+    await store.getState().boot('?publish=true');
+    const state = store.getState();
+    expect(state.mode).toBe('publish');
+    expect(cells(state).some((c) => c.isLastSolve)).toBe(true);
+    expect(state.snapshot!.contestLastYes).not.toBeNull();
+  });
+});
+
 describe('publish mode', () => {
-  it('feeds everything at boot, starts no timers, tracks site score state', async () => {
+  it('feeds everything at boot, starts no timers, seeds the cutoff from the URL', async () => {
     const { store, timers, ws } = makeHarness(smallFiles());
-    await store.getState().boot('?publish=true&site_score=3&invited_cutoff=1.5');
+    await store.getState().boot('?publish=true&invited_cutoff=1.5');
     const state = store.getState();
 
     expect(state.mode).toBe('publish');
@@ -563,13 +601,11 @@ describe('publish mode', () => {
     expect(timers.active()).toHaveLength(0);
     expect(ws.sockets).toHaveLength(0);
     expect(state.playing).toBe(false);
-    expect(state.siteScore).toBe(3);
-    expect(state.invitedCutoff).toBe(1.5);
+    expect(state.regionalInputs.cutoff).toBe(1.5);
+    expect('siteScore' in state).toBe(false);
 
-    store.getState().setSiteScore(5);
-    store.getState().setInvitedCutoff(2);
-    expect(store.getState().siteScore).toBe(5);
-    expect(store.getState().invitedCutoff).toBe(2);
+    store.getState().setRegionalInputs({ cutoff: 2 });
+    expect(store.getState().regionalInputs.cutoff).toBe(2);
   });
 
   it('publish wins over award when both are requested', async () => {
@@ -577,6 +613,182 @@ describe('publish mode', () => {
     await store.getState().boot('?publish=true&award=true');
     expect(store.getState().mode).toBe('publish');
     expect(store.getState().awardMachine).toBeNull();
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Publish inputs: config seed, per-contest persistence (publish-modes spec §4)
+// ---------------------------------------------------------------------------
+
+describe('publish inputs', () => {
+  const publishConfig = {
+    publish: {
+      enabled: true,
+      mode: 'regional',
+      invitedScoreCutoff: 0.5,
+      alreadyInvited: { teamIds: [9], winnerGroups: ['W U'], invitedGroups: ['Invited U'] },
+      preliminary: { totalTeams: 40, topN: 20, k: 2, ineligibleTeamIds: ['3'] },
+      regional: {
+        prelimSchools: 30,
+        prelimTeams: 90,
+        coefficients: { foreignTeams: 0.5 },
+        wfMedalGroups: ['KAIST'],
+      },
+    },
+  };
+
+  const filesWith = (config: unknown): Record<string, StubValue> => ({
+    ...smallFiles(),
+    'config.json': config,
+  });
+
+  /** In-memory StorageLike; `data` is inspectable. */
+  function makeStorage(initial: Record<string, unknown> = {}) {
+    const data = new Map<string, string>(
+      Object.entries(initial).map(([k, v]) => [k, typeof v === 'string' ? v : JSON.stringify(v)]),
+    );
+    return {
+      data,
+      storage: {
+        getItem: (k: string) => data.get(k) ?? null,
+        setItem: (k: string, v: string) => void data.set(k, v),
+        removeItem: (k: string) => void data.delete(k),
+      },
+    };
+  }
+
+  const KEY = (mode: string) => `kimchi.publish:${mode}:./sample/:Store Test Contest`;
+
+  const expectedRegional = {
+    prelimSchools: 30,
+    prelimTeams: 90,
+    coefficients: {
+      regionalSchools: 0.56,
+      regionalTeams: 0.24,
+      prelimSchools: 0.14,
+      prelimTeams: 0.06,
+      foreignTeams: 0.5,
+    },
+    regionalOverride: { schools: null, teams: null, foreign: null },
+    wfMedalGroups: ['KAIST'],
+    winnerGroups: ['W U'],
+    invitedGroups: ['Invited U'],
+    invitedTeamIds: ['9'],
+    cutoff: 0.5,
+  };
+
+  it('boot seeds prelimInputs/regionalInputs from config', async () => {
+    const { storage } = makeStorage();
+    const { store } = makeHarness(filesWith(publishConfig), { storage });
+    await store.getState().boot('');
+    const state = store.getState();
+    expect(state.prelimInputs).toEqual({
+      totalTeams: 40,
+      topN: 20,
+      k: 2,
+      ineligibleTeamIds: ['3'],
+    });
+    expect(state.regionalInputs).toEqual(expectedRegional);
+    expect(state.publishInputsFromStorage).toBe(false);
+  });
+
+  it('URL invited_cutoff seeds the regional cutoff over config', async () => {
+    const { storage } = makeStorage();
+    const { store } = makeHarness(filesWith(publishConfig), { storage });
+    await store.getState().boot('?invited_cutoff=2');
+    expect(store.getState().regionalInputs.cutoff).toBe(2);
+  });
+
+  it('stored inputs win and set publishInputsFromStorage', async () => {
+    const stored = { ...expectedRegional, prelimTeams: 7, cutoff: 3, invitedGroups: [] };
+    const { storage } = makeStorage({ [KEY('regional')]: stored });
+    const { store } = makeHarness(filesWith(publishConfig), { storage });
+    await store.getState().boot('');
+    expect(store.getState().regionalInputs).toEqual(stored);
+    expect(store.getState().publishInputsFromStorage).toBe(true);
+    // The other mode's inputs still come from config.
+    expect(store.getState().prelimInputs.topN).toBe(20);
+  });
+
+  it('inputs stored for the other mode or another contest are ignored', async () => {
+    const { storage } = makeStorage({
+      [KEY('preliminary')]: { totalTeams: 1, topN: 1, k: 1, ineligibleTeamIds: [] },
+      'kimchi.publish:regional:./sample/:Another Contest': { ...expectedRegional, cutoff: 9 },
+    });
+    const { store } = makeHarness(filesWith(publishConfig), { storage });
+    await store.getState().boot('');
+    expect(store.getState().regionalInputs).toEqual(expectedRegional);
+    expect(store.getState().prelimInputs.topN).toBe(20);
+    expect(store.getState().publishInputsFromStorage).toBe(false);
+  });
+
+  it('preliminary mode reads its own key', async () => {
+    const stored = { totalTeams: 12, topN: 5, k: 1, ineligibleTeamIds: ['2'] };
+    const { storage } = makeStorage({ [KEY('preliminary')]: stored });
+    const { store } = makeHarness(filesWith(publishConfig), { storage });
+    await store.getState().boot('?publish_mode=preliminary');
+    expect(store.getState().prelimInputs).toEqual(stored);
+    expect(store.getState().publishInputsFromStorage).toBe(true);
+  });
+
+  it('a stored value of a stale shape is dropped with a warning', async () => {
+    const { storage } = makeStorage({ [KEY('regional')]: { siteScore: 3 } });
+    const { store } = makeHarness(filesWith(publishConfig), { storage });
+    await store.getState().boot('');
+    expect(store.getState().regionalInputs).toEqual(expectedRegional);
+    expect(store.getState().publishInputsFromStorage).toBe(false);
+    expect(messages(store).some((m) => m.includes('Saved publish inputs'))).toBe(true);
+  });
+
+  it('edits are saved under the current mode key only', async () => {
+    const { storage, data } = makeStorage();
+    const { store } = makeHarness(filesWith(publishConfig), { storage });
+    await store.getState().boot('');
+    store.getState().setRegionalInputs({ cutoff: 1, wfMedalGroups: ['SNU'] });
+    expect(store.getState().regionalInputs.cutoff).toBe(1);
+    expect(store.getState().regionalInputs.prelimTeams).toBe(90); // patch keeps the rest
+    expect(JSON.parse(data.get(KEY('regional'))!)).toEqual(store.getState().regionalInputs);
+    expect(store.getState().publishInputsFromStorage).toBe(true);
+
+    store.getState().setPrelimInputs({ topN: 3 });
+    expect(store.getState().prelimInputs.topN).toBe(3);
+    expect(data.has(KEY('preliminary'))).toBe(false);
+  });
+
+  it('resetPublishInputs restores config values and clears storage', async () => {
+    const stored = { ...expectedRegional, cutoff: 3 };
+    const { storage, data } = makeStorage({ [KEY('regional')]: stored });
+    const { store } = makeHarness(filesWith(publishConfig), { storage });
+    await store.getState().boot('?invited_cutoff=2');
+    store.getState().setPrelimInputs({ topN: 3 });
+    store.getState().resetPublishInputs();
+    const state = store.getState();
+    // Config + URL values (invited_cutoff=2), not the stored 3.
+    expect(state.regionalInputs).toEqual({ ...expectedRegional, cutoff: 2 });
+    expect(state.prelimInputs.topN).toBe(20);
+    expect(state.publishInputsFromStorage).toBe(false);
+    expect(data.has(KEY('regional'))).toBe(false);
+  });
+
+  it('outside publish mode nothing is read from or written to storage', async () => {
+    const { storage, data } = makeStorage({ [KEY('regional')]: { ...expectedRegional, cutoff: 3 } });
+    const { store } = makeHarness(filesWith(publishConfig), { storage });
+    await store.getState().boot('?publish=false');
+    expect(store.getState().mode).toBe('spectator');
+    expect(store.getState().regionalInputs.cutoff).toBe(0.5);
+    store.getState().setRegionalInputs({ cutoff: 1 });
+    expect(JSON.parse(data.get(KEY('regional'))!).cutoff).toBe(3);
+    store.getState().dispose();
+  });
+
+  it('off mode persists nothing', async () => {
+    const { storage, data } = makeStorage();
+    const { store } = makeHarness(filesWith(publishConfig), { storage });
+    await store.getState().boot('?publish_mode=off');
+    store.getState().setRegionalInputs({ cutoff: 1 });
+    store.getState().setPrelimInputs({ topN: 1 });
+    expect(data.size).toBe(0);
+    expect(store.getState().publishInputsFromStorage).toBe(false);
   });
 });
 
@@ -683,6 +895,18 @@ describe('award mode', () => {
       { teamId: '2', showSlide: false },
       { teamId: '1', showSlide: true },
     ]);
+  });
+
+  it('an empty awardsUrl fetches nothing and warns about nothing', async () => {
+    const { store, calls } = makeHarness({
+      ...smallFiles(),
+      'config.json': { award: { awardsUrl: '' } },
+    });
+    await store.getState().boot('?award=true&r=3');
+    expect(store.getState().mode).toBe('award');
+    expect(store.getState().awards.size).toBe(0);
+    expect(calls.some((url) => url.includes('award'))).toBe(false);
+    expect(messages(store).some((text) => text.includes('awards.json'))).toBe(false);
   });
 
   it('warns and runs a slide-less ceremony when awards.json is missing', async () => {

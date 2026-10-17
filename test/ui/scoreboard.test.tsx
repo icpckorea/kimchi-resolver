@@ -4,9 +4,9 @@
  * followed sticky, spine colors and the cell flip hook.
  */
 import { describe, it, expect, beforeAll, vi } from 'vitest';
-import { act, render, renderHook } from '@testing-library/react';
-import { readFileSync } from 'node:fs';
-import { resolve } from 'node:path';
+import { act, fireEvent, render, renderHook } from '@testing-library/react';
+import { existsSync, readdirSync, readFileSync, statSync } from 'node:fs';
+import { dirname, resolve } from 'node:path';
 
 import type { Contest, OrgsIndex, Run, Snapshot, Team, Verdict } from '@core/types';
 import { computeStandings } from '@core/standings';
@@ -16,7 +16,8 @@ import { applyUrlOverrides, defaultConfig, type ResolvedConfig } from '@core/con
 
 import { appStore } from '@store/appStore';
 import { Scoreboard } from '@ui/scoreboard/Scoreboard';
-import { APAC_STAR_TITLES, LIVE_FLIP_MS } from '@ui/scoreboard/TeamRow';
+import { ScoreboardView } from '@ui/scoreboard/ScoreboardView';
+import { APAC_STAR_TITLES, LIVE_FLIP_MS, type RowDecor } from '@ui/scoreboard/TeamRow';
 import { BOARD_MAX_BADGES, Badges, autoLabelText } from '@ui/scoreboard/Badges';
 import { ProblemCell, cellAttemptsText } from '@ui/scoreboard/ProblemCell';
 import { useCellFlip } from '@ui/scoreboard/useCellFlip';
@@ -84,7 +85,7 @@ function priorityFixture(): { contest: Contest; snapshot: Snapshot } {
     r('t2', 'A', 8, 'failed'),
     r('t2', 'A', 10, 'accepted'),
     r('t3', 'A', 20, 'accepted'), // last solve of A
-    r('t1', 'B', 30, 'accepted'), // contest-last (also first+last of B)
+    r('t1', 'B', 30, 'accepted'), // contest-last + first of B (sole solver: not last)
     r('t2', 'B', 40, 'failed'),
     r('t3', 'B', 45, 'pending'),
   ];
@@ -324,10 +325,25 @@ describe('Badges', () => {
     expect((title.querySelector('.team-group') as HTMLElement).textContent).toBe('KAIST');
   });
 
-  it('hides the badges that do not fit behind a +N chip (spectator/publish)', () => {
+  it('live board (store mode spectator): 2+ badges cycle bottom→top, no +N chip', () => {
     const { contest, snapshot } = priorityFixture();
     const { container } = renderBoard(contest, snapshot, cfg(), {
       manualLabels: new Map([['t1', ['금상 수상자']]]),
+    });
+    const col = container.querySelector('[data-team-id="t1"] .team-badge-col') as HTMLElement;
+    const carousel = col.querySelector('.team-badges--carousel') as HTMLElement;
+    expect(carousel).not.toBeNull();
+    // t1: 3 auto labels + 1 manual = 4, all in the carousel track.
+    expect(carousel.getAttribute('data-carousel-count')).toBe('4');
+    expect(col.querySelectorAll('.team-badges__track .team-badge')).toHaveLength(4);
+    expect(col.querySelector('.team-badge--overflow')).toBeNull();
+  });
+
+  it('hides the badges that do not fit behind a +N chip (publish)', () => {
+    const { contest, snapshot } = priorityFixture();
+    const { container } = renderBoard(contest, snapshot, cfg(), {
+      manualLabels: new Map([['t1', ['금상 수상자']]]),
+      badgeCarousel: false,
     });
     const col = container.querySelector(
       '[data-team-id="t1"] .team-badge-col',
@@ -337,8 +353,8 @@ describe('Badges', () => {
 
     const overflow = col.querySelector('.team-badge--overflow') as HTMLElement;
     expect(overflow).not.toBeNull();
-    // t1: 4 auto labels + 1 manual = 5, two of which fit.
-    expect(overflow.textContent).toBe(`+${5 - BOARD_MAX_BADGES}`);
+    // t1: 3 auto labels + 1 manual = 4, two of which fit.
+    expect(overflow.textContent).toBe(`+${4 - BOARD_MAX_BADGES}`);
     // The hidden texts stay reachable as the chip's tooltip.
     expect(overflow.title).toContain('금상 수상자');
     expect(col.textContent).not.toContain('금상 수상자');
@@ -1015,9 +1031,221 @@ describe('APAC star tooltip', () => {
     const star = container.querySelector('svg.kr-apac-star');
     expect(star?.querySelector('title')?.textContent).toBe(APAC_STAR_TITLES.gold);
     expect(APAC_STAR_TITLES).toEqual({
-      bronze: 'Top 3 in their school',
+      bronze: 'In the APAC Championship list so far',
       silver: 'Likely invited to the APAC Championship',
       gold: 'Invited to the APAC Championship',
     });
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Store-free ScoreboardView and per-row decoration (publish modes, Task 5)
+// ---------------------------------------------------------------------------
+
+describe('ScoreboardView and row decoration', () => {
+  function viewProps(contest: Contest, snapshot: Snapshot) {
+    return { snapshot, problems: contest.problems, config: cfg(), orgs: {} as OrgsIndex };
+  }
+
+  function row(container: HTMLElement, teamId: string): HTMLElement {
+    const el = container.querySelector(`.team-row[data-team-id="${teamId}"]`);
+    expect(el, `row ${teamId}`).not.toBeNull();
+    return el as HTMLElement;
+  }
+
+  it('ScoreboardView renders without the store', () => {
+    const { contest, snapshot } = priorityFixture();
+    const getState = vi.spyOn(appStore, 'getState');
+    const subscribe = vi.spyOn(appStore, 'subscribe');
+    try {
+      const { container, unmount } = render(<ScoreboardView {...viewProps(contest, snapshot)} />);
+      expect(container.querySelectorAll('.team-row')).toHaveLength(3);
+      expect(getState).not.toHaveBeenCalled();
+      expect(subscribe).not.toHaveBeenCalled();
+      unmount();
+
+      // Control: the store wrapper does read the store, so the spies work.
+      render(<Scoreboard {...viewProps(contest, snapshot)} />);
+      expect(subscribe).toHaveBeenCalled();
+    } finally {
+      getState.mockRestore();
+      subscribe.mockRestore();
+    }
+  });
+
+  it('advance adds team-row--advance', () => {
+    const { contest, snapshot } = priorityFixture();
+    const rowDecor = new Map<string, RowDecor>([['t1', { advance: true }]]);
+    const { container } = render(
+      <ScoreboardView {...viewProps(contest, snapshot)} rowDecor={rowDecor} />,
+    );
+    expect(row(container, 't1').classList.contains('team-row--advance')).toBe(true);
+    expect(row(container, 't2').classList.contains('team-row--advance')).toBe(false);
+    expect(row(container, 't1').classList.contains('team-row--dimmed')).toBe(false);
+  });
+
+  it('dimmed adds team-row--dimmed', () => {
+    const { contest, snapshot } = priorityFixture();
+    const rowDecor = new Map<string, RowDecor>([['t2', { dimmed: true }]]);
+    // Through the store wrapper: Scoreboard forwards rowDecor.
+    const { container } = renderBoard(contest, snapshot, cfg(), { rowDecor });
+    expect(row(container, 't2').classList.contains('team-row--dimmed')).toBe(true);
+    expect(row(container, 't1').classList.contains('team-row--dimmed')).toBe(false);
+  });
+
+  it('notice badge and leading header render only when given', () => {
+    const { contest, snapshot } = priorityFixture();
+    const rowDecor = new Map<string, RowDecor>([
+      ['t1', { dimmed: true, notice: 'NOTICE', leading: <input type="checkbox" aria-label="x" /> }],
+      ['t2', { dimmed: true, leading: <input type="checkbox" aria-label="y" /> }],
+    ]);
+    const { container } = render(
+      <ScoreboardView
+        {...viewProps(contest, snapshot)}
+        rowDecor={rowDecor}
+        leadingHeader={<span>HEAD</span>}
+      />,
+    );
+    expect(row(container, 't1').querySelector('.team-row-notice')?.textContent).toBe('NOTICE');
+    expect(row(container, 't1').classList.contains('team-row--excluded')).toBe(true);
+    expect(row(container, 't2').querySelector('.team-row-notice')).toBeNull();
+    expect(row(container, 't2').classList.contains('team-row--excluded')).toBe(false);
+    expect(container.querySelector('.team-row-leading-header')?.textContent).toBe('HEAD');
+
+    // No leading column on the board: no header either.
+    const plain = render(
+      <ScoreboardView {...viewProps(contest, snapshot)} leadingHeader={<span>HEAD</span>} />,
+    );
+    expect(plain.container.querySelector('.team-row-leading-header')).toBeNull();
+  });
+
+  it('value and stage icon render', () => {
+    const { contest, snapshot } = priorityFixture();
+    const rowDecor = new Map<string, RowDecor>([
+      ['t1', { stageIcon: { stage: 'top', label: 'TOP-LABEL' }, value: '0.1740' }],
+      ['t2', { stageIcon: { stage: 'school', label: 'SCHOOL-LABEL' } }],
+    ]);
+    const { container } = render(
+      <ScoreboardView {...viewProps(contest, snapshot)} rowDecor={rowDecor} />,
+    );
+    const icon = (id: string): Element | null => row(container, id).querySelector('svg[data-stage]');
+    expect(icon('t1')?.getAttribute('data-stage')).toBe('top');
+    expect(icon('t1')?.getAttribute('aria-label')).toBe('TOP-LABEL');
+    expect(icon('t1')?.getAttribute('role')).toBe('img');
+    expect(icon('t2')?.getAttribute('data-stage')).toBe('school');
+    expect(icon('t2')?.getAttribute('aria-label')).toBe('SCHOOL-LABEL');
+    expect(icon('t3')).toBeNull();
+    // No text tag any more.
+    expect(container.querySelector('.team-row-tag')).toBeNull();
+    expect(row(container, 't1').querySelector('.team-row-value')?.textContent).toBe('0.1740');
+    // Rows without a value keep an empty slot so the columns stay aligned.
+    const empty = row(container, 't3').querySelector('.team-row-value');
+    expect(empty).not.toBeNull();
+    expect(empty?.textContent).toBe('');
+
+    // No value anywhere → no value column at all.
+    const plain = render(<ScoreboardView {...viewProps(contest, snapshot)} />);
+    expect(plain.container.querySelector('.team-row-value')).toBeNull();
+    expect(plain.container.querySelector('svg[data-stage]')).toBeNull();
+  });
+
+  it('leading click does not open the mobile detail modal', () => {
+    vi.stubGlobal('matchMedia', (query: string) => ({
+      matches: /max-width:\s*768px/.test(query),
+      media: query,
+      onchange: null,
+      addEventListener: () => {},
+      removeEventListener: () => {},
+      addListener: () => {},
+      removeListener: () => {},
+      dispatchEvent: () => false,
+    }));
+    try {
+      const { contest, snapshot } = priorityFixture();
+      const onChange = vi.fn();
+      const rowDecor = new Map<string, RowDecor>([
+        ['t1', { leading: <input type="checkbox" aria-label="미자격" onChange={onChange} /> }],
+      ]);
+      const { container } = render(
+        <ScoreboardView {...viewProps(contest, snapshot)} rowDecor={rowDecor} />,
+      );
+      const box = row(container, 't1').querySelector('input[type="checkbox"]') as HTMLInputElement;
+      expect(box).not.toBeNull();
+
+      fireEvent.click(box);
+      expect(onChange).toHaveBeenCalledTimes(1);
+      expect(box.checked).toBe(true);
+      expect(container.querySelector('[role="dialog"]')).toBeNull();
+
+      // Space on the focused checkbox must not reach the row's key handler.
+      const keyDown = fireEvent.keyDown(box, { key: ' ' });
+      expect(keyDown).toBe(true); // not prevented by the row
+      expect(container.querySelector('[role="dialog"]')).toBeNull();
+
+      // Control: a tap on the row itself still opens the modal.
+      fireEvent.click(row(container, 't1'));
+      expect(container.querySelector('[role="dialog"]')).not.toBeNull();
+    } finally {
+      vi.unstubAllGlobals();
+    }
+  });
+
+  it('keeps @store out of ScoreboardView, TeamRow and everything they import', () => {
+    const SRC = resolve(__dirname, '../../src');
+    const DIR = resolve(SRC, 'ui/scoreboard');
+    const ALIASES: Record<string, string> = {
+      '@core/': resolve(SRC, 'core') + '/',
+      '@store/': resolve(SRC, 'store') + '/',
+      '@ui/': resolve(SRC, 'ui') + '/',
+    };
+
+    function resolveFile(base: string): string | null {
+      for (const candidate of [
+        base,
+        `${base}.ts`,
+        `${base}.tsx`,
+        `${base}/index.ts`,
+        `${base}/index.tsx`,
+      ]) {
+        if (existsSync(candidate) && statSync(candidate).isFile()) return candidate;
+      }
+      return null;
+    }
+
+    function resolveSpec(from: string, spec: string): string | null {
+      if (spec.startsWith('.')) return resolveFile(resolve(dirname(from), spec));
+      for (const [prefix, dir] of Object.entries(ALIASES)) {
+        if (spec.startsWith(prefix)) return resolveFile(dir + spec.slice(prefix.length));
+      }
+      return null; // a package
+    }
+
+    const roots = readdirSync(DIR)
+      .filter((name) => /\.tsx?$/.test(name))
+      .filter((name) => name !== 'Scoreboard.tsx' && name !== 'index.ts')
+      .map((name) => resolve(DIR, name));
+    expect(roots.map((p) => p.slice(DIR.length + 1))).toEqual(
+      expect.arrayContaining(['ScoreboardView.tsx', 'TeamRow.tsx']),
+    );
+
+    const offenders: string[] = [];
+    const seen = new Set<string>();
+    const queue = [...roots];
+    while (queue.length > 0) {
+      const file = queue.pop() as string;
+      if (seen.has(file)) continue;
+      seen.add(file);
+      const text = readFileSync(file, 'utf8');
+      for (const match of text.matchAll(/(?:from|import)\s*['"]([^'"]+)['"]/g)) {
+        const spec = match[1];
+        if (spec.startsWith('@store/') || spec === '@store') {
+          offenders.push(`${file.slice(SRC.length + 1)} → ${spec}`);
+          continue;
+        }
+        const target = resolveSpec(file, spec);
+        if (target !== null && /\.tsx?$/.test(target)) queue.push(target);
+      }
+    }
+    expect(offenders).toEqual([]);
   });
 });

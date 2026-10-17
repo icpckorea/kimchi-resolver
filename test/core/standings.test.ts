@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import sampleContestJson from '../../public/sample/contest.json';
 import sampleRunsJson from '../../public/sample/runs.json';
 import type { AutoLabel, Contest, Problem, Run, Team, Verdict } from '@core/types';
-import { computeStandings, compareTeamIds, PENALTY_PER_FAILURE } from '@core/standings';
+import { computeStandings, compareTeamIds, PENALTY_PER_FAILURE, withoutLastSolve } from '@core/standings';
 import { normalizeSpotboardResult } from '@core/verdict';
 
 // ---------------------------------------------------------------------------
@@ -375,16 +375,16 @@ describe('schoolRank', () => {
 // ---------------------------------------------------------------------------
 
 describe('first solve', () => {
-  it('marks ALL teams tied at the minimum minute as first solvers', () => {
+  it('breaks a same-minute tie by run id: one first solver only', () => {
     const contest = makeContest([{ id: '1' }, { id: '2' }, { id: '3' }]);
     const snap = computeStandings(contest, [
       run('1', 'p1', 15, 'accepted', { seq: 1 }),
       run('2', 'p1', 15, 'accepted', { seq: 2 }),
       run('3', 'p1', 16, 'accepted', { seq: 3 }),
     ]);
-    expect(snap.firstSolvers.get('p1')).toEqual(['1', '2']);
+    expect(snap.firstSolvers.get('p1')).toEqual(['1']);
     expect(snap.byTeam.get('1')!.cells.get('p1')!.isFirstSolve).toBe(true);
-    expect(snap.byTeam.get('2')!.cells.get('p1')!.isFirstSolve).toBe(true);
+    expect(snap.byTeam.get('2')!.cells.get('p1')!.isFirstSolve).toBe(false);
     expect(snap.byTeam.get('3')!.cells.get('p1')!.isFirstSolve).toBe(false);
   });
 
@@ -409,12 +409,27 @@ describe('last solve (per problem)', () => {
     expect(snap.byTeam.get('3')!.cells.get('p1')!.isLastSolve).toBe(true);
   });
 
-  it('a sole solver is both first and last solve of the problem', () => {
+  it('a sole solver is first solve only — first wins over last', () => {
     const contest = makeContest([{ id: '1' }]);
     const snap = computeStandings(contest, [run('1', 'p1', 10, 'accepted')]);
-    const cell = snap.byTeam.get('1')!.cells.get('p1')!;
+    const standing = snap.byTeam.get('1')!;
+    const cell = standing.cells.get('p1')!;
     expect(cell.isFirstSolve).toBe(true);
-    expect(cell.isLastSolve).toBe(true);
+    expect(cell.isLastSolve).toBe(false);
+    expect(labelKinds(standing.autoLabels)).toContain('firstToSolve');
+    expect(labelKinds(standing.autoLabels)).not.toContain('lastToSolve');
+  });
+
+  it('two solves in the same minute: lower run id is first, higher is last', () => {
+    const contest = makeContest([{ id: '1' }, { id: '2' }]);
+    const snap = computeStandings(contest, [
+      run('2', 'p1', 15, 'accepted', { seq: 2 }),
+      run('1', 'p1', 15, 'accepted', { seq: 1 }),
+    ]);
+    const c1 = snap.byTeam.get('1')!.cells.get('p1')!;
+    const c2 = snap.byTeam.get('2')!.cells.get('p1')!;
+    expect([c1.isFirstSolve, c1.isLastSolve]).toEqual([true, false]);
+    expect([c2.isFirstSolve, c2.isLastSolve]).toEqual([false, true]);
   });
 });
 
@@ -705,12 +720,11 @@ describe('golden: 2025 ICPC Seoul sample', () => {
     expect(labelKinds(snap.byTeam.get('79')!.autoLabels)).toContain('contestLastYes');
   });
 
-  it('pins problem L first solve as a two-team tie at minute 9 (teams 64 and 39)', () => {
+  it('breaks the minute-9 tie on problem L by run id: team 64 (run 72) before team 39 (run 74)', () => {
     const lId = problemByLabel.get('L')!;
-    const solvers = snap.firstSolvers.get(lId)!;
-    expect(new Set(solvers)).toEqual(new Set(['64', '39']));
+    expect(snap.firstSolvers.get(lId)).toEqual(['64']);
     expect(snap.byTeam.get('64')!.cells.get(lId)!.isFirstSolve).toBe(true);
-    expect(snap.byTeam.get('39')!.cells.get(lId)!.isFirstSolve).toBe(true);
+    expect(snap.byTeam.get('39')!.cells.get(lId)!.isFirstSolve).toBe(false);
   });
 
   it('leaves unsolved problems A and B without first solvers or last-solve flags', () => {
@@ -770,5 +784,24 @@ describe('golden: 2025 ICPC Seoul sample', () => {
       seen.set(s.team.group, next);
       expect(s.schoolRank).toBe(next);
     }
+  });
+});
+
+describe('withoutLastSolve', () => {
+  it('clears last solve, contest-last yes and their labels; keeps first solve', () => {
+    const contest = makeContest([{ id: '1' }, { id: '2' }]);
+    const snap = withoutLastSolve(
+      computeStandings(contest, [
+        run('1', 'p1', 10, 'accepted', { seq: 1 }),
+        run('2', 'p1', 20, 'accepted', { seq: 2 }),
+      ]),
+    );
+    const c2 = snap.byTeam.get('2')!.cells.get('p1')!;
+    expect(c2.isLastSolve).toBe(false);
+    expect(c2.isContestLastSolve).toBe(false);
+    expect(snap.contestLastYes).toBeNull();
+    expect(labelKinds(snap.byTeam.get('2')!.autoLabels)).toEqual([]);
+    expect(snap.byTeam.get('1')!.cells.get('p1')!.isFirstSolve).toBe(true);
+    expect(labelKinds(snap.byTeam.get('1')!.autoLabels)).toContain('firstToSolve');
   });
 });

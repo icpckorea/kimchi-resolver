@@ -1,18 +1,24 @@
 /**
  * One scoreboard row (spec §7):
- * [solved-count color spine][ICPC rank][domestic rank][APAC star slot]
- * [flag][school logo][team name / group][badge column][balloons][cells][penalty]
+ * [leading control][solved-count color spine][ICPC rank][domestic rank]
+ * [APAC star slot][flag][school logo][team name + tag / group][badge column]
+ * [balloons][cells][penalty][value]
+ *
+ * The leading control, the stage icon, the value and the advance/dimmed row states
+ * come from an optional `RowDecor` (publish modes); without one the row is
+ * the plain spectator row.
  *
  * Row reordering animates via framer-motion layout (FLIP) with a spring that
  * mimics the original move-up feel; config.animation=false renders with
  * layout={false} (no animation).
  */
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useRef, useState, type ReactNode } from 'react';
 import { motion, type Transition } from 'framer-motion';
 
 import type { CellState, OrgsIndex, Problem, TeamStanding } from '@core/types';
 import type { ResolvedConfig } from '@core/config';
-import { ApacStar, FlagIcon, type ApacStarTier } from '@ui/icons';
+import type { PrelimStage } from '@core/preliminary';
+import { ApacStar, FlagIcon, StageIcon, type ApacStarTier } from '@ui/icons';
 
 import { BOARD_MAX_BADGES, Badges } from './Badges';
 import { Balloons } from './Balloons';
@@ -27,10 +33,37 @@ export interface ApacStarInfo {
   spinning?: boolean;
 }
 
+/** Per-row decoration for the publish prepare page and the public page. */
+export interface RowDecor {
+  /** Selected for the regional: yellow background (`team-row--advance`). */
+  advance?: boolean;
+  /** Ineligible: row at opacity 0.5 (`team-row--dimmed`). */
+  dimmed?: boolean;
+  /**
+   * Preliminary: why the team advances, as a small icon after the name.
+   * `label` is its tooltip and accessible name (the caller translates it).
+   */
+  stageIcon?: { stage: PrelimStage; label: string };
+  /**
+   * Prepare page only: a visible badge after the name, e.g. '미자격' for a team
+   * that is excluded. It also grays and strikes through the ranks
+   * (`team-row--excluded`). The public page never sets it.
+   */
+  notice?: string;
+  /** Right-aligned note, e.g. the APAC value '0.1740'. */
+  value?: string;
+  /**
+   * Control before the solved spine (the ineligible checkbox). Its clicks
+   * and key presses never reach the row, so it does not open the mobile
+   * detail modal.
+   */
+  leading?: ReactNode;
+}
+
 /** APAC star semantics per tier (spec §13) — tooltip text, shared with the
  * award board (AwardView imports it). */
 export const APAC_STAR_TITLES: Record<ApacStarTier, string> = {
-  bronze: 'Top 3 in their school',
+  bronze: 'In the APAC Championship list so far',
   silver: 'Likely invited to the APAC Championship',
   gold: 'Invited to the APAC Championship',
 };
@@ -148,6 +181,20 @@ export interface TeamRowProps {
   mobile?: boolean;
   /** Tap handler for the compact row — opens the team detail modal. */
   onOpenDetail?: (teamId: string) => void;
+  /** Publish-mode decoration for this row. */
+  decor?: RowDecor;
+  /**
+   * Reserve the value column even when this row has no value, so every row
+   * of a board that shows values keeps the same columns (ScoreboardView
+   * sets it when any row has one).
+   */
+  valueSlot?: boolean;
+  /**
+   * 2+ badges cycle bottom→top in the badge column, one at a time (the award
+   * carousel), instead of BOARD_MAX_BADGES plus a `+N` chip. The live board
+   * sets it.
+   */
+  badgeCarousel?: boolean;
 }
 
 export function TeamRow({
@@ -163,12 +210,19 @@ export function TeamRow({
   flipCells = null,
   mobile = false,
   onOpenDetail,
+  decor,
+  valueSlot = false,
+  badgeCarousel = false,
 }: TeamRowProps) {
   const { team } = standing;
   const org = orgs[team.group];
   const logo = config.showSchoolLogos ? org?.logo : undefined;
   const animate = config.animation;
   const tappable = mobile && onOpenDetail !== undefined;
+  const leading = decor?.leading;
+  const stageIcon = decor?.stageIcon;
+  const notice = decor?.notice;
+  const value = decor?.value;
 
   return (
     <motion.div
@@ -180,6 +234,9 @@ export function TeamRow({
         team.foreign && 'foreign',
         followed && 'followed',
         followed && config.useFollowedTeamSticky && 'sticky',
+        decor?.advance === true && 'team-row--advance',
+        decor?.dimmed === true && 'team-row--dimmed',
+        notice !== undefined && notice !== '' && 'team-row--excluded',
       )}
       data-team-id={team.id}
       data-solved={standing.solved}
@@ -198,6 +255,18 @@ export function TeamRow({
           : undefined
       }
     >
+      {leading !== undefined && leading !== null ? (
+        // Keep the control's own clicks and keys away from the row's
+        // open-detail handlers (and the row's preventDefault on Space).
+        <div
+          className="team-row-leading"
+          onClick={(event) => event.stopPropagation()}
+          onKeyDown={(event) => event.stopPropagation()}
+        >
+          {leading}
+        </div>
+      ) : null}
+
       <div
         className={cls('solved-count', spineFirst && 'spine-first', spineLast && 'spine-last')}
         style={{ backgroundColor: solvedSpineColor(standing.solved, problems.length) }}
@@ -242,6 +311,16 @@ export function TeamRow({
           <span className="team-name" style={nameFitStyle(team.name)}>
             {team.name}
           </span>
+          {notice !== undefined && notice !== '' ? (
+            <span className="team-row-notice">{notice}</span>
+          ) : null}
+          {stageIcon !== undefined ? (
+            <StageIcon
+              stage={stageIcon.stage}
+              title={stageIcon.label}
+              className="team-row-stage"
+            />
+          ) : null}
         </div>
         {config.showTeamGroup ? (
           <div className="team-group" style={groupFitStyle(team.group)}>
@@ -259,6 +338,7 @@ export function TeamRow({
             autoLabels={standing.autoLabels}
             manualLabels={manualLabels}
             maxVisible={BOARD_MAX_BADGES}
+            carousel={badgeCarousel}
           />
         </div>
       ) : null}
@@ -298,6 +378,12 @@ export function TeamRow({
           <span className="penalty-unit"> min.</span>
         </div>
       )}
+
+      {/* Mobile has no room for a 4-decimal column next to the name (spec
+       * §14); the compact row drops it and the detail modal shows it. */}
+      {!mobile && (valueSlot || value !== undefined) ? (
+        <div className="team-row-value">{value ?? ''}</div>
+      ) : null}
     </motion.div>
   );
 }

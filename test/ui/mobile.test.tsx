@@ -182,6 +182,39 @@ describe('mobile compact rows', () => {
   });
 });
 
+describe('mobile row value (publish regional)', () => {
+  const rowDecor = new Map([
+    ['t1', { value: '0.1740' }],
+    ['t2', {}],
+  ]);
+
+  it('drops the value column from the compact row (the name keeps the room)', () => {
+    stubViewport(true);
+    const { container } = renderBoard(cfg(), { rowDecor });
+    expect(container.querySelector('.team-row-value')).toBeNull();
+    expect(container.querySelector('.scoreboard--has-value')).toBeNull();
+  });
+
+  it('shows the value in the detail modal instead', () => {
+    stubViewport(true);
+    const { container } = renderBoard(cfg(), { rowDecor });
+    fireEvent.click(row(container, 't1'));
+    expect(screen.getByRole('dialog').querySelector('.team-detail-value')?.textContent).toContain(
+      '0.1740',
+    );
+    fireEvent.keyDown(document, { key: 'Escape' });
+    fireEvent.click(row(container, 't2'));
+    expect(screen.getByRole('dialog').querySelector('.team-detail-value')).toBeNull();
+  });
+
+  it('keeps the value column on desktop', () => {
+    stubViewport(false);
+    const { container } = renderBoard(cfg(), { rowDecor });
+    expect(row(container, 't1').querySelector('.team-row-value')?.textContent).toBe('0.1740');
+    expect(container.querySelector('.scoreboard--has-value')).not.toBeNull();
+  });
+});
+
 // ---------------------------------------------------------------------------
 // Detail modal
 // ---------------------------------------------------------------------------

@@ -1,5 +1,10 @@
 import { describe, expect, it } from 'vitest';
-import { normalizeJudgementType, normalizeSpotboardResult } from '@core/verdict';
+import {
+  SPOTBOARD_NO_PENALTY_RESULT,
+  normalizeJudgementType,
+  normalizeSpotboardResult,
+  toSpotboardResult,
+} from '@core/verdict';
 
 describe('normalizeSpotboardResult', () => {
   it('maps "Yes" to accepted', () => {
@@ -51,6 +56,26 @@ describe('normalizeSpotboardResult', () => {
     ]) {
       expect(normalizeSpotboardResult(result)).toEqual({ verdict: 'failed', penaltyCounts: true });
     }
+  });
+});
+
+describe('SPOTBOARD_NO_PENALTY_RESULT', () => {
+  it('maps to failed without penalty, also with a suffix', () => {
+    expect(normalizeSpotboardResult(SPOTBOARD_NO_PENALTY_RESULT)).toEqual({ verdict: 'failed', penaltyCounts: false });
+    expect(normalizeSpotboardResult(`${SPOTBOARD_NO_PENALTY_RESULT} - Compile Error`).penaltyCounts).toBe(false);
+  });
+
+  it('does not change classic "No - *" strings', () => {
+    expect(normalizeSpotboardResult('No - Compile Error')).toEqual({ verdict: 'failed', penaltyCounts: true });
+  });
+});
+
+describe('toSpotboardResult', () => {
+  it('writes strings that normalizeSpotboardResult reads back', () => {
+    expect(toSpotboardResult('accepted', false)).toBe('Yes');
+    expect(toSpotboardResult('pending', false)).toBe('');
+    expect(toSpotboardResult('failed', true)).toBe('No');
+    expect(toSpotboardResult('failed', false)).toBe(SPOTBOARD_NO_PENALTY_RESULT);
   });
 });
 

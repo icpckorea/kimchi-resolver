@@ -21,6 +21,11 @@ import {
   Play,
   RefreshCw,
   Search,
+  StageFill,
+  StageIcon,
+  StageSchool,
+  StageTop,
+  STAGE_COLORS,
   StepForward,
   ThumbsUp,
   Trophy,
@@ -227,5 +232,42 @@ describe('iconRegistry', () => {
       const svg = getSvg(render(<Icon />).container);
       expect(svg, `registry icon ${name}`).not.toBeNull();
     }
+  });
+});
+
+describe('stage icons (preliminary: top / school / fill)', () => {
+  it('each icon is a labeled img with its own silhouette and color', () => {
+    const shapes = new Set<string>();
+    for (const [Icon, stage] of [
+      [StageTop, 'top'],
+      [StageSchool, 'school'],
+      [StageFill, 'fill'],
+    ] as const) {
+      const { container, unmount } = render(<Icon title={`label ${stage}`} />);
+      const svg = getSvg(container);
+      expect(svg.getAttribute('role')).toBe('img');
+      expect(svg.getAttribute('aria-label')).toBe(`label ${stage}`);
+      expect(svg.querySelector('title')?.textContent).toBe(`label ${stage}`);
+      expect(svg.getAttribute('data-stage')).toBe(stage);
+      expect(svg.getAttribute('width')).toBe('1em');
+      expect(svg.getAttribute('height')).toBe('1em');
+      expect(svg.innerHTML).toContain(STAGE_COLORS[stage]);
+      shapes.add(svg.innerHTML);
+      unmount();
+    }
+    expect(shapes.size).toBe(3);
+    expect(new Set(Object.values(STAGE_COLORS)).size).toBe(3);
+  });
+
+  it('is aria-hidden without a title, and StageIcon picks the icon by stage', () => {
+    const { container } = render(<StageIcon stage="school" />);
+    const svg = getSvg(container);
+    expect(svg.getAttribute('aria-hidden')).toBe('true');
+    expect(svg.getAttribute('aria-label')).toBeNull();
+    expect(svg.getAttribute('data-stage')).toBe('school');
+    const sized = render(<StageIcon stage="fill" size={30} className="x" title="t" />);
+    const s2 = getSvg(sized.container);
+    expect(s2.getAttribute('width')).toBe('30');
+    expect(s2.getAttribute('class')).toContain('x');
   });
 });

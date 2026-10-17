@@ -7,9 +7,16 @@ import { createSpotboardSource } from '@core/ingest/spotboard';
 import {
   computeApacFilteredRanks,
   computeApacStars,
-  APAC_SCHOOL_RANK_CAP,
   type ApacStarOptions,
+  type SchoolQuota,
 } from '@core/apac';
+
+/**
+ * The 2025-26 per-school cap (every school keeps 3). These tests pin the
+ * 2025-26 behavior and the published Seoul list; the 2026-27 quota (2, or 3
+ * for a WF medal school) is covered in apac-2026.test.ts.
+ */
+const QUOTA_2025_26: SchoolQuota = { base: 3, wfMedalGroups: [] };
 
 // ---------------------------------------------------------------------------
 // Fixture helpers
@@ -118,6 +125,7 @@ function opts(partial: Partial<ApacStarOptions> = {}): ApacStarOptions {
     championTeamId: null,
     siteScore: null,
     invitedScoreCutoff: null,
+    quota: QUOTA_2025_26,
     ...partial,
   };
 }
@@ -127,11 +135,15 @@ function asObject(map: Map<string, string | number>): Record<string, string | nu
 }
 
 // ---------------------------------------------------------------------------
-// Ceremony phase — bronze for schoolRank ≤ 3 (unchanged by the filtering rules)
+// Ceremony phase — alreadyInvited gold, the scored list of the current
+// snapshot bronze, everyone else no star
 // ---------------------------------------------------------------------------
 
 describe('computeApacStars — ceremony phase', () => {
-  it('gives bronze to every schoolRank ≤ 3 team and nothing to the rest', () => {
+  /** The 2026-27 quota: 2 per school, 3 for a WF medal school. */
+  const QUOTA_2026_27: SchoolQuota = { base: 2, wfMedalGroups: [] };
+
+  it('gives bronze to every team of the scored list and nothing to the rest', () => {
     const stars = computeApacStars(fixtureSnapshot(), opts());
     expect(asObject(stars)).toEqual({
       x1: 'bronze',
@@ -140,28 +152,116 @@ describe('computeApacStars — ceremony phase', () => {
       y1: 'bronze',
       y2: 'bronze',
       y3: 'bronze',
-      z1: 'bronze', // schoolRank 1 even with 0 solved
     });
-    expect(stars.has('x4')).toBe(false); // schoolRank 4 > cap
+    expect(stars.has('x4')).toBe(false); // over the school quota
+    expect(stars.has('z1')).toBe(false); // 0 solved
   });
 
-  it('ignores champion/siteScore/cutoff/alreadyInvited inputs in ceremony phase', () => {
+  it('ignores champion/siteScore/cutoff inputs in ceremony phase', () => {
     const stars = computeApacStars(
       fixtureSnapshot(),
-      opts({
-        championTeamId: 'x1',
-        siteScore: 2,
-        invitedScoreCutoff: 100,
-        alreadyInvited: { groups: ['Y'] },
-      }),
+      opts({ championTeamId: 'x1', siteScore: 2, invitedScoreCutoff: 100 }),
     );
-    for (const tier of stars.values()) expect(tier).toBe('bronze');
-    expect(stars.get('x1')).toBe('bronze');
-    expect(stars.get('y1')).toBe('bronze');
+    expect(asObject(stars)).toEqual({
+      x1: 'bronze', // not gold: the champion is not known yet
+      x2: 'bronze', // not removed with the champion's school
+      x3: 'bronze',
+      y1: 'bronze',
+      y2: 'bronze',
+      y3: 'bronze',
+    });
   });
 
-  it('exposes the per-school cap constant', () => {
-    expect(APAC_SCHOOL_RANK_CAP).toBe(3);
+  it('does not apply the champion: its schoolmates stay bronze', () => {
+    const stars = computeApacStars(fixtureSnapshot(), opts({ championTeamId: 'x1' }));
+    expect(stars.get('x1')).toBe('bronze');
+    expect(stars.get('x2')).toBe('bronze');
+    expect(stars.get('x3')).toBe('bronze');
+  });
+
+  it('gives an alreadyInvited team gold and its schoolmates no star', () => {
+    const stars = computeApacStars(
+      fixtureSnapshot(),
+      opts({ alreadyInvited: { teamIds: ['y2'] } }),
+    );
+    expect(asObject(stars)).toEqual({
+      x1: 'bronze',
+      x2: 'bronze',
+      x3: 'bronze',
+      y2: 'gold', // settled at another site
+    });
+    expect(stars.has('y1')).toBe(false); // schoolmates of an invited team
+    expect(stars.has('y3')).toBe(false);
+  });
+
+  it('gives teams of an invited school (groups) no star, and the rest bronze', () => {
+    const stars = computeApacStars(
+      fixtureSnapshot(),
+      opts({ alreadyInvited: { groups: ['Y'] } }),
+    );
+    expect(asObject(stars)).toEqual({ x1: 'bronze', x2: 'bronze', x3: 'bronze' });
+    expect(stars.has('y1')).toBe(false);
+    expect(stars.has('y2')).toBe(false);
+    expect(stars.has('y3')).toBe(false);
+  });
+
+  it('keeps an alreadyInvited team gold even when it has 0 solves or is over the quota', () => {
+    const stars = computeApacStars(
+      fixtureSnapshot(),
+      opts({ quota: QUOTA_2026_27, alreadyInvited: { teamIds: ['z1', 'x4'] } }),
+    );
+    expect(stars.get('z1')).toBe('gold'); // 0 solved
+    expect(stars.get('x4')).toBe('gold'); // 4th of school X, over the quota
+    // School X is out of the scored list because x4 is invited.
+    expect(stars.has('x1')).toBe(false);
+    expect(stars.has('x2')).toBe(false);
+    expect(stars.has('x3')).toBe(false);
+    expect(stars.get('y1')).toBe('bronze');
+    expect(stars.get('y2')).toBe('bronze');
+    expect(stars.has('y3')).toBe(false); // over the quota of 2
+  });
+
+  it('gives no bronze to the 3rd team of a school with quota base 2', () => {
+    const stars = computeApacStars(fixtureSnapshot(), opts({ quota: QUOTA_2026_27 }));
+    expect(asObject(stars)).toEqual({
+      x1: 'bronze',
+      x2: 'bronze',
+      y1: 'bronze',
+      y2: 'bronze',
+    });
+    expect(stars.has('x3')).toBe(false);
+    expect(stars.has('y3')).toBe(false);
+  });
+
+  it('gives the 3rd team bronze when the school is in wfMedalGroups', () => {
+    const stars = computeApacStars(
+      fixtureSnapshot(),
+      opts({ quota: { base: 2, wfMedalGroups: ['X'] } }),
+    );
+    expect(stars.get('x3')).toBe('bronze'); // WF medal school keeps 3
+    expect(stars.has('x4')).toBe(false); // …but not a 4th
+    expect(stars.has('y3')).toBe(false); // school Y keeps 2
+  });
+
+  it('gives a 0-solve team no bronze', () => {
+    const stars = computeApacStars(fixtureSnapshot(), opts());
+    expect(stars.has('z1')).toBe(false);
+  });
+
+  it('gives an AU/NZ team no bronze', () => {
+    const contest = makeContest([
+      { id: 'k1', group: 'K' },
+      { id: 'au1', group: 'A' },
+      { id: 'nz1', group: 'N' },
+    ]);
+    contest.teams.get('au1')!.countryCode = 'AU';
+    contest.teams.get('nz1')!.countryCode = 'NZ';
+    const snap = computeStandings(contest, [
+      run('au1', 'p1', 10),
+      run('nz1', 'p1', 20),
+      run('k1', 'p1', 30),
+    ]);
+    expect(asObject(computeApacStars(snap, opts()))).toEqual({ k1: 'bronze' });
   });
 
   it('ties share icpcRank but still push schoolRank sequentially', () => {
@@ -208,19 +308,26 @@ describe('computeApacStars — ceremony phase', () => {
 
 describe('computeApacFilteredRanks — scored list construction', () => {
   it("drops the champion's whole school and every 0-solve team", () => {
-    const ranks = computeApacFilteredRanks(fixtureSnapshot(), { championTeamId: 'x1' });
+    const ranks = computeApacFilteredRanks(fixtureSnapshot(), {
+      quota: QUOTA_2025_26,
+      championTeamId: 'x1',
+    });
     // School X is gone entirely (champion school), z1 has 0 solves.
     expect(asObject(ranks)).toEqual({ y1: 1, y2: 2, y3: 3 });
   });
 
   it('keeps every school when there is no champion and no cross-site input', () => {
-    const ranks = computeApacFilteredRanks(fixtureSnapshot(), { championTeamId: null });
+    const ranks = computeApacFilteredRanks(fixtureSnapshot(), {
+      quota: QUOTA_2025_26,
+      championTeamId: null,
+    });
     // x4 (4th of school X) and z1 (0 solves) stay out; everyone else is in.
     expect(asObject(ranks)).toEqual({ x1: 1, x2: 2, y1: 3, y2: 4, x3: 5, y3: 6 });
   });
 
   it('removes a school named in alreadyInvited.groups, all of its teams', () => {
     const ranks = computeApacFilteredRanks(fixtureSnapshot(), {
+      quota: QUOTA_2025_26,
       championTeamId: null,
       alreadyInvited: { groups: ['X'] },
     });
@@ -230,6 +337,7 @@ describe('computeApacFilteredRanks — scored list construction', () => {
   it("removes the school of a team named in alreadyInvited.teamIds — the invited team's schoolmates included", () => {
     // y2 is invited elsewhere → y1/y2/y3 all leave the list; y2 takes no slot.
     const ranks = computeApacFilteredRanks(fixtureSnapshot(), {
+      quota: QUOTA_2025_26,
       championTeamId: null,
       alreadyInvited: { teamIds: ['y2'] },
     });
@@ -245,7 +353,7 @@ describe('computeApacFilteredRanks — scored list construction', () => {
     ];
     const ranks = computeApacFilteredRanks(
       snapshotOf(specs, ['a1', 'a2', 'a3', 'a4', 'a5', 'b1']),
-      { championTeamId: null },
+      { quota: QUOTA_2025_26, championTeamId: null },
     );
     expect(asObject(ranks)).toEqual({ a1: 1, a2: 2, a3: 3, b1: 4 });
   });
@@ -258,6 +366,7 @@ describe('computeApacFilteredRanks — scored list construction', () => {
       { id: 'k2', group: 'K' },
     ];
     const ranks = computeApacFilteredRanks(snapshotOf(specs, ['f1', 'k1', 'f2', 'k2']), {
+      quota: QUOTA_2025_26,
       championTeamId: null,
     });
     expect(asObject(ranks)).toEqual({ f1: 1, k1: 2, f2: 3, k2: 4 });
@@ -272,6 +381,7 @@ describe('computeApacFilteredRanks — scored list construction', () => {
       { id: 'k1', group: 'K' },
     ];
     const ranks = computeApacFilteredRanks(snapshotOf(specs, ['n1', 'n2', 'k1']), {
+      quota: QUOTA_2025_26,
       championTeamId: 'n1',
     });
     expect(asObject(ranks)).toEqual({ n2: 1, k1: 2 });
@@ -286,7 +396,10 @@ describe('computeApacFilteredRanks — scored list construction', () => {
       ...Array.from({ length: 4 }, (_, i) => ({ id: `a${i + 1}`, group: 'A' })),
     ];
     const order = ['n1', 'a1', 'n2', 'a2', 'n3', 'a3', 'n4', 'a4', 'n5'];
-    const ranks = computeApacFilteredRanks(snapshotOf(specs, order), { championTeamId: null });
+    const ranks = computeApacFilteredRanks(snapshotOf(specs, order), {
+      quota: QUOTA_2025_26,
+      championTeamId: null,
+    });
     expect(asObject(ranks)).toEqual({
       n1: 1,
       a1: 2,
@@ -316,6 +429,7 @@ describe('computeApacFilteredRanks — scored list construction', () => {
       // n4 solves nothing → last place.
     ]);
     const ranks = computeApacFilteredRanks(snap, {
+      quota: QUOTA_2025_26,
       championTeamId: null,
       alreadyInvited: { teamIds: ['n2'] },
     });
@@ -326,49 +440,48 @@ describe('computeApacFilteredRanks — scored list construction', () => {
 
   it('does not mutate the snapshot and is deterministic', () => {
     const snap = fixtureSnapshot();
-    const a = computeApacFilteredRanks(snap, { championTeamId: 'x1' });
-    const b = computeApacFilteredRanks(snap, { championTeamId: 'x1' });
+    const a = computeApacFilteredRanks(snap, { quota: QUOTA_2025_26, championTeamId: 'x1' });
+    const b = computeApacFilteredRanks(snap, { quota: QUOTA_2025_26, championTeamId: 'x1' });
     expect(asObject(a)).toEqual(asObject(b));
     expect([...a.keys()]).toEqual([...b.keys()]);
   });
 });
 
 // ---------------------------------------------------------------------------
-// Final phase — gold invited, silver scored list, bronze the rest
+// Final phase — gold invited, silver scored list, no star for the rest
 // ---------------------------------------------------------------------------
 
 describe('computeApacStars — final phase', () => {
-  it("champion gold, champion's schoolmates bronze, the scored list silver", () => {
+  it("champion gold, champion's schoolmates no star, the scored list silver", () => {
     const stars = computeApacStars(
       fixtureSnapshot(),
       opts({ phase: 'final', championTeamId: 'x1' }),
     );
     expect(asObject(stars)).toEqual({
       x1: 'gold', // champion — World Finals direct entry
-      x2: 'bronze', // champion's school is out of the running entirely…
-      x3: 'bronze', // …but both are still 학내 3등 이내
       y1: 'silver',
       y2: 'silver',
       y3: 'silver',
-      z1: 'bronze', // 0 solved → excluded from the scored list
     });
-    expect(stars.has('x4')).toBe(false); // schoolRank 4 → no star at all
+    // Out of the running → no star at all (bronze never occurs in final phase).
+    expect(stars.has('x2')).toBe(false); // champion's school is out entirely
+    expect(stars.has('x3')).toBe(false);
+    expect(stars.has('x4')).toBe(false);
+    expect(stars.has('z1')).toBe(false); // 0 solved → not in the scored list
   });
 
-  it('gives every already-invited team gold and its schoolmates bronze', () => {
+  it('gives every already-invited team gold and its schoolmates no star', () => {
     const stars = computeApacStars(
       fixtureSnapshot(),
       opts({ phase: 'final', championTeamId: 'x1', alreadyInvited: { teamIds: ['y2'] } }),
     );
     expect(asObject(stars)).toEqual({
       x1: 'gold',
-      x2: 'bronze',
-      x3: 'bronze',
-      y1: 'bronze', // school Y already has an invited team → out of the running
       y2: 'gold', // the invited team itself
-      y3: 'bronze',
-      z1: 'bronze',
     });
+    // School Y already has an invited team → its schoolmates are out of the running.
+    expect(stars.has('y1')).toBe(false);
+    expect(stars.has('y3')).toBe(false);
   });
 
   it('an alreadyInvited group with no invited team present still empties the school', () => {
@@ -378,10 +491,10 @@ describe('computeApacStars — final phase', () => {
       fixtureSnapshot(),
       opts({ phase: 'final', championTeamId: 'x1', alreadyInvited: { groups: ['Y'] } }),
     );
-    expect(stars.get('y1')).toBe('bronze');
-    expect(stars.get('y2')).toBe('bronze');
-    expect(stars.get('y3')).toBe('bronze');
-    expect(stars.get('z1')).toBe('bronze'); // 0 solved
+    expect(stars.has('y1')).toBe(false);
+    expect(stars.has('y2')).toBe(false);
+    expect(stars.has('y3')).toBe(false);
+    expect(stars.has('z1')).toBe(false); // 0 solved
   });
 
   it('with championTeamId null and no invitations, every scored team is silver', () => {
@@ -393,8 +506,8 @@ describe('computeApacStars — final phase', () => {
       y1: 'silver',
       y2: 'silver',
       y3: 'silver',
-      z1: 'bronze', // 0 solved is excluded regardless of the champion
     });
+    expect(stars.has('z1')).toBe(false); // 0 solved is excluded regardless of the champion
   });
 });
 
@@ -424,12 +537,12 @@ describe('computeApacStars — invited-score promotion (filteredRank)', () => {
     expect(stars.get('y3')).toBe('silver');
   });
 
-  it('never promotes bronze — invited schools and 0-solve teams stay bronze', () => {
-    // A cutoff large enough to promote everything still leaves them bronze.
+  it('never promotes out-of-running teams — invited schools and 0-solve teams stay without a star', () => {
+    // A cutoff large enough to promote everything still leaves them bare.
     const stars = computeApacStars(fixtureSnapshot(), finalOpts(2, 100));
-    expect(stars.get('x2')).toBe('bronze'); // champion's schoolmate
-    expect(stars.get('x3')).toBe('bronze');
-    expect(stars.get('z1')).toBe('bronze'); // 0 solved
+    expect(stars.has('x2')).toBe(false); // champion's schoolmate
+    expect(stars.has('x3')).toBe(false);
+    expect(stars.has('z1')).toBe(false); // 0 solved
     expect(stars.get('y3')).toBe('gold');
   });
 
@@ -438,7 +551,11 @@ describe('computeApacStars — invited-score promotion (filteredRank)', () => {
     // would be fr 4 (score 1.5 > 1 → silver). It is fr 1 instead.
     const stars = computeApacStars(fixtureSnapshot(), finalOpts(2, 1));
     expect(stars.get('y1')).toBe('gold');
-    expect(computeApacFilteredRanks(fixtureSnapshot(), { championTeamId: 'x1' }).get('y1')).toBe(1);
+    const ranks = computeApacFilteredRanks(fixtureSnapshot(), {
+      quota: QUOTA_2025_26,
+      championTeamId: 'x1',
+    });
+    expect(ranks.get('y1')).toBe(1);
   });
 
   it('does not promote when siteScore is missing', () => {
@@ -580,6 +697,7 @@ describe('computeApacStars — 2025-26 Seoul regression (siteScore 68.98, cutoff
 
   it('the scored list drops both invited schools and the 0-solve team', () => {
     const ranks = computeApacFilteredRanks(seoulSnapshot(), {
+      quota: QUOTA_2025_26,
       championTeamId: 'snu1',
       alreadyInvited: { teamIds: ['ntu1'] },
     });
@@ -597,19 +715,22 @@ describe('computeApacStars — 2025-26 Seoul regression (siteScore 68.98, cutoff
     expect(stars.get('next')).toBe('silver');
   });
 
-  it('both invited teams are gold and their schoolmates are bronze, never promoted', () => {
+  it('both invited teams are gold and their schoolmates have no star, never promoted', () => {
     const stars = computeApacStars(seoulSnapshot(), seoulOpts());
     expect(stars.get('snu1')).toBe('gold'); // champion
     expect(stars.get('ntu1')).toBe('gold'); // invited at another regional
-    expect(stars.get('snu2')).toBe('bronze');
-    expect(stars.get('snu3')).toBe('bronze');
-    expect(stars.get('ntu2')).toBe('bronze');
-    expect(stars.get('zero')).toBe('bronze'); // 0 solved
+    expect(stars.has('snu2')).toBe(false);
+    expect(stars.has('snu3')).toBe(false);
+    expect(stars.has('ntu2')).toBe(false);
+    expect(stars.has('zero')).toBe(false); // 0 solved
   });
 
   it('forgetting the cross-site invitation pushes the target past the cutoff (optimistic ranks)', () => {
     // Without alreadyInvited, NTU keeps two slots → target slides to 15.
-    const ranks = computeApacFilteredRanks(seoulSnapshot(), { championTeamId: 'snu1' });
+    const ranks = computeApacFilteredRanks(seoulSnapshot(), {
+      quota: QUOTA_2025_26,
+      championTeamId: 'snu1',
+    });
     expect(ranks.get('target')).toBe(15);
     const stars = computeApacStars(
       seoulSnapshot(),
@@ -677,6 +798,7 @@ describe('computeApacFilteredRanks — published 2025-26 Seoul list', () => {
     expect(champion.team.group).toBe('Seoul National University');
 
     const ranks = computeApacFilteredRanks(snapshot, {
+      quota: QUOTA_2025_26,
       championTeamId: champion.team.id,
       alreadyInvited: { groups: [NTU] },
     });
@@ -710,6 +832,7 @@ describe('computeApacFilteredRanks — published 2025-26 Seoul list', () => {
     expect(target.team.group).toBe('Pusan National University');
 
     const ranks = computeApacFilteredRanks(snapshot, {
+      quota: QUOTA_2025_26,
       championTeamId: champion.team.id,
       alreadyInvited: { groups: [NTU] },
     });
@@ -717,6 +840,7 @@ describe('computeApacFilteredRanks — published 2025-26 Seoul list', () => {
     expect((13 - 1) / SITE_SCORE).toBeCloseTo(0.174, 4);
 
     const stars = computeApacStars(snapshot, {
+      quota: QUOTA_2025_26,
       phase: 'final',
       championTeamId: champion.team.id,
       siteScore: SITE_SCORE,

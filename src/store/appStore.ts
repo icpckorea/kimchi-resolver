@@ -10,8 +10,10 @@
  * - Spectator loop: poll timer (autoRefreshInterval), autoplay tick
  *   (autoPlayDelay, one run per tick), manual pollNow() with timer reset,
  *   WebSocket poll-nudge ("doorbell", no reconnect).
- * - Publish mode: everything applied at boot, no timers, siteScore /
- *   invitedCutoff state.
+ * - Publish mode: everything applied at boot, no timers. Prepare-page
+ *   inputs (preliminary + regional, publish-modes spec §4/§5/§6) are seeded
+ *   from config/URL, then from this browser's localStorage under a key per
+ *   mode and contest; edits are saved back under the same key.
  * - Derived state: memoized Snapshot (recomputed only when applied runs
  *   change), pendingCount, contestTimeSec, noMoreUpdate, system messages,
  *   recent judge events (dashboard, capped at maxNotifications) plus a
@@ -45,11 +47,24 @@ import {
   type ResolvedConfig,
 } from '@core/config';
 import { createRunFeeder } from '@core/feeder';
-import { computeStandings } from '@core/standings';
+import { computeStandings, withoutLastSolve } from '@core/standings';
 import { createAwardMachine } from '@core/award';
 import { parseAwardsJson, type AwardEntry } from '@core/awards';
 import { createSpotboardSource } from '@core/ingest/spotboard';
 import { createContestApiSource } from '@core/ingest/contest-api';
+import type { RegionalSimInputs } from '@core/publishState';
+import {
+  clearPublishInputs,
+  loadPublishInputs,
+  parseStoredPrelimInputs,
+  parseStoredRegionalInputs,
+  publishStorageKey,
+  savePublishInputs,
+  type PrelimInputs,
+  type StorageLike,
+} from '@ui/publish/persist';
+
+export type { PrelimInputs } from '@ui/publish/persist';
 
 // ---------------------------------------------------------------------------
 // Public types
@@ -112,20 +127,14 @@ export interface StoreDeps {
   scheduler?: Scheduler;
   rng?: Rng;
   createWebSocket?: WebSocketFactory;
+  /**
+   * Storage for the prepare-page inputs. Omitted → the browser's
+   * localStorage; null → nothing is persisted.
+   */
+  storage?: StorageLike | null;
 }
 
 export type BootStatus = 'idle' | 'booting' | 'ready' | 'error';
-
-/**
- * Cross-site APAC invitations held in the store (spec §13 rule 3.1) — both
- * lists are always present, unlike the optional core `AlreadyInvited` input.
- */
-export interface AlreadyInvitedState {
-  /** Team ids of teams invited at another regional. */
-  teamIds: readonly string[];
-  /** School (group) names that already have an invited team. */
-  groups: readonly string[];
-}
 
 export interface AppState {
   status: BootStatus;
@@ -159,14 +168,23 @@ export interface AppState {
   recentEvents: JudgeEvent[];
   /** Most recent live-applied batch (spectator cell flip); null before any. */
   lastAppliedFlips: LiveFlipBatch | null;
-  /** Publish mode (spec §13). */
-  siteScore: number | null;
-  invitedCutoff: number | null;
   /**
-   * Teams already invited to APAC elsewhere (spec §13 rule 3.1). Seeded from
-   * `config.publish.alreadyInvited`; editable in the publish controls.
+   * Preliminary prepare-page inputs (publish-modes spec §5.2). Seeded from
+   * `config.publish.preliminary`, then from localStorage in preliminary mode.
    */
-  alreadyInvited: AlreadyInvitedState;
+  prelimInputs: PrelimInputs;
+  /**
+   * Regional simulation inputs (publish-modes spec §6.4). Seeded from
+   * `config.publish.regional`, `alreadyInvited` and the `invitedScoreCutoff`
+   * (URL `invited_cutoff` included), then from localStorage in regional mode.
+   */
+  regionalInputs: RegionalSimInputs;
+  /**
+   * True when the inputs of the current publish mode come from this
+   * browser's storage (loaded at boot, or saved by an edit): the prepare page
+   * shows "저장된 값을 사용 중" with a reset button.
+   */
+  publishInputsFromStorage: boolean;
 
   // -- actions --------------------------------------------------------------
   /** Full boot sequence. `search` is window.location.search (injected for tests). */
@@ -191,10 +209,12 @@ export interface AppState {
   awardCommitSnapshot(): void;
   addSystemMessage(level: SystemMessageLevel, text: string): void;
   dismissSystemMessage(id: number): void;
-  setSiteScore(value: number | null): void;
-  setInvitedCutoff(value: number | null): void;
-  /** Publish mode: cross-site APAC invitations (spec §13 rule 3.1). */
-  setAlreadyInvited(value: AlreadyInvitedState): void;
+  /** Merge a patch into prelimInputs; saved in preliminary publish mode. */
+  setPrelimInputs(patch: Partial<PrelimInputs>): void;
+  /** Merge a patch into regionalInputs; saved in regional publish mode. */
+  setRegionalInputs(patch: Partial<RegionalSimInputs>): void;
+  /** Back to the config/URL values; removes the stored inputs of this mode. */
+  resetPublishInputs(): void;
   /** Desktop-notification stream; returns the unsubscribe function. */
   subscribeTeamUpdated(listener: TeamUpdatedListener): () => void;
   /** Stop timers, close the WebSocket. Safe to call repeatedly. */
@@ -225,6 +245,49 @@ function initialResolvedConfig(): ResolvedConfig {
   };
 }
 
+/** Prepare-page preliminary inputs as config.json (and the URL) define them. */
+function prelimInputsFromConfig(config: AppConfig): PrelimInputs {
+  const prelim = config.publish.preliminary;
+  return {
+    totalTeams: prelim.totalTeams,
+    topN: prelim.topN,
+    k: prelim.k,
+    ineligibleTeamIds: [...prelim.ineligibleTeamIds],
+  };
+}
+
+/** Prepare-page regional inputs as config.json (and the URL) define them. */
+function regionalInputsFromConfig(config: AppConfig): RegionalSimInputs {
+  const { regional, alreadyInvited, invitedScoreCutoff } = config.publish;
+  return {
+    prelimSchools: regional.prelimSchools,
+    prelimTeams: regional.prelimTeams,
+    coefficients: { ...regional.coefficients },
+    regionalOverride: { schools: null, teams: null, foreign: null },
+    wfMedalGroups: [...regional.wfMedalGroups],
+    winnerGroups: [...alreadyInvited.winnerGroups],
+    invitedGroups: [...alreadyInvited.invitedGroups],
+    invitedTeamIds: [...alreadyInvited.teamIds],
+    cutoff: invitedScoreCutoff,
+  };
+}
+
+function copyPrelimInputs(value: PrelimInputs): PrelimInputs {
+  return { ...value, ineligibleTeamIds: [...value.ineligibleTeamIds] };
+}
+
+function copyRegionalInputs(value: RegionalSimInputs): RegionalSimInputs {
+  return {
+    ...value,
+    coefficients: { ...value.coefficients },
+    regionalOverride: { ...value.regionalOverride },
+    wfMedalGroups: [...value.wfMedalGroups],
+    winnerGroups: [...value.winnerGroups],
+    invitedGroups: [...value.invitedGroups],
+    invitedTeamIds: [...value.invitedTeamIds],
+  };
+}
+
 function errorText(err: unknown): string {
   return err instanceof Error ? err.message : String(err);
 }
@@ -238,6 +301,7 @@ export function createAppStore(deps: StoreDeps = {}): AppStore {
   const scheduler = deps.scheduler ?? defaultScheduler;
   const rng: Rng = deps.rng ?? Math.random;
   const wsFactory = deps.createWebSocket ?? defaultWebSocketFactory;
+  const storage = deps.storage;
 
   // Non-reactive internals (never rendered directly).
   let source: FeedSource | null = null;
@@ -251,6 +315,11 @@ export function createAppStore(deps: StoreDeps = {}): AppStore {
   let nextMessageId = 1;
   let nextEventId = 1;
   let nextFlipId = 1;
+  /**
+   * localStorage key of the current publish mode's inputs; null outside
+   * publish mode, in mode 'off', and before the contest title is known.
+   */
+  let publishKey: string | null = null;
   const teamUpdatedListeners = new Set<TeamUpdatedListener>();
 
   return createStore<AppState>()((set, get) => {
@@ -302,7 +371,10 @@ export function createAppStore(deps: StoreDeps = {}): AppStore {
     function recomputeSnapshot(): void {
       const contest = get().contest;
       if (contest === null || feeder === null) return;
-      set({ snapshot: computeStandings(contest, feeder.appliedRuns) });
+      const snapshot = computeStandings(contest, feeder.appliedRuns);
+      // Live board: "last solve" is only "latest so far" and moves with every
+      // solve, so it is not shown. Publish (final results) keeps it.
+      set({ snapshot: get().mode === 'spectator' ? withoutLastSolve(snapshot) : snapshot });
     }
 
     /** Record applied runs for the dashboard and notify listeners. */
@@ -476,9 +548,11 @@ export function createAppStore(deps: StoreDeps = {}): AppStore {
      * awards.json for AWARD mode (spec §6). Awaited during boot because the
      * state machine takes the entry ids at construction: it raises a slide
      * only for a team that has one. A missing file downgrades to a slide-less
-     * ceremony with a warning — never to invisible slides.
+     * ceremony with a warning — never to invisible slides. An empty URL means
+     * "no awards.json": nothing is fetched and there is no warning.
      */
     async function loadAwardsJson(url: string): Promise<Map<string, AwardEntry>> {
+      if (url.trim() === '') return new Map<string, AwardEntry>();
       try {
         return parseAwardsJson(await fetchJson(url));
       } catch (err) {
@@ -559,6 +633,46 @@ export function createAppStore(deps: StoreDeps = {}): AppStore {
       return createSpotboardSource({ apiBase: config.source.apiBase, ...common });
     }
 
+    // -- publish inputs -------------------------------------------------------
+    /**
+     * Publish mode (not 'off'): the stored inputs of this mode and contest win
+     * over the config seed. A stored value of the wrong shape is dropped.
+     */
+    function loadStoredPublishInputs(config: ResolvedConfig, contest: Contest): void {
+      const publishMode = config.publish.mode;
+      if (publishMode === 'off') return;
+      publishKey = publishStorageKey(config, contest.title, publishMode);
+      const raw = loadPublishInputs<unknown>(publishKey, storage);
+      if (raw === null) return;
+      if (publishMode === 'preliminary') {
+        const stored = parseStoredPrelimInputs(raw);
+        if (stored !== null) {
+          set({ prelimInputs: stored, publishInputsFromStorage: true });
+          return;
+        }
+      } else {
+        const stored = parseStoredRegionalInputs(raw);
+        if (stored !== null) {
+          set({ regionalInputs: stored, publishInputsFromStorage: true });
+          return;
+        }
+      }
+      addMessage(
+        'warning',
+        'Saved publish inputs in this browser have an unexpected shape; using config values.',
+      );
+    }
+
+    /** Save the current mode's inputs (publish mode only). */
+    function saveCurrentPublishInputs(): void {
+      if (publishKey === null) return;
+      const state = get();
+      const value =
+        state.config.publish.mode === 'preliminary' ? state.prelimInputs : state.regionalInputs;
+      savePublishInputs(publishKey, value, storage);
+      set({ publishInputsFromStorage: true });
+    }
+
     // -- the store ------------------------------------------------------------
     return {
       status: 'idle',
@@ -578,9 +692,9 @@ export function createAppStore(deps: StoreDeps = {}): AppStore {
       awardTick: 0,
       recentEvents: [],
       lastAppliedFlips: null,
-      siteScore: null,
-      invitedCutoff: null,
-      alreadyInvited: { teamIds: [], groups: [] },
+      prelimInputs: prelimInputsFromConfig(defaultConfig()),
+      regionalInputs: regionalInputsFromConfig(defaultConfig()),
+      publishInputsFromStorage: false,
 
       async boot(search: string): Promise<void> {
         if (get().status !== 'idle') return;
@@ -602,12 +716,9 @@ export function createAppStore(deps: StoreDeps = {}): AppStore {
           config,
           orgs,
           mode,
-          siteScore: config.publish.siteScore,
-          invitedCutoff: config.publish.invitedScoreCutoff,
-          alreadyInvited: {
-            teamIds: [...config.publish.alreadyInvited.teamIds],
-            groups: [...config.publish.alreadyInvited.groups],
-          },
+          prelimInputs: prelimInputsFromConfig(config),
+          regionalInputs: regionalInputsFromConfig(config),
+          publishInputsFromStorage: false,
         });
 
         // 4. Contest (fatal on failure).
@@ -621,6 +732,8 @@ export function createAppStore(deps: StoreDeps = {}): AppStore {
         }
         set({ contest });
         checkAssets(contest, orgs, config);
+        // The storage key needs the contest title, so stored inputs load here.
+        if (mode === 'publish') loadStoredPublishInputs(config, contest);
 
         // 5. Initial fetch + ingest (non-fatal; spectator retries by polling).
         feeder = createRunFeeder(contest);
@@ -768,16 +881,28 @@ export function createAppStore(deps: StoreDeps = {}): AppStore {
         }));
       },
 
-      setSiteScore(value: number | null): void {
-        set({ siteScore: value });
+      setPrelimInputs(patch: Partial<PrelimInputs>): void {
+        set((state) => ({
+          prelimInputs: copyPrelimInputs({ ...state.prelimInputs, ...patch }),
+        }));
+        if (get().config.publish.mode === 'preliminary') saveCurrentPublishInputs();
       },
 
-      setInvitedCutoff(value: number | null): void {
-        set({ invitedCutoff: value });
+      setRegionalInputs(patch: Partial<RegionalSimInputs>): void {
+        set((state) => ({
+          regionalInputs: copyRegionalInputs({ ...state.regionalInputs, ...patch }),
+        }));
+        if (get().config.publish.mode === 'regional') saveCurrentPublishInputs();
       },
 
-      setAlreadyInvited(value: AlreadyInvitedState): void {
-        set({ alreadyInvited: { teamIds: [...value.teamIds], groups: [...value.groups] } });
+      resetPublishInputs(): void {
+        const config = get().config;
+        if (publishKey !== null) clearPublishInputs(publishKey, storage);
+        set({
+          prelimInputs: prelimInputsFromConfig(config),
+          regionalInputs: regionalInputsFromConfig(config),
+          publishInputsFromStorage: false,
+        });
       },
 
       subscribeTeamUpdated(listener: TeamUpdatedListener): () => void {

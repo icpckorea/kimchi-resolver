@@ -78,8 +78,8 @@ kimchi-resolver/
 - **랭킹 comparator**: solved 내림차순 → penalty 오름차순 → 마지막 solve 시각 오름차순 → team id 오름차순(명시적 최종 tie-break). 완전 동점은 rank 공유, 다음 rank는 인원수만큼 건너뜀 (competition ranking: 1,2,2,2,5).
 - **이중 랭킹**: 같은 comparator를 두 모집단에 적용 — `icpcRank`(전체), `domesticRank`(foreign 제외, foreign 팀은 null).
 - **교내 순위**: 각 group 내 icpcRank 순서로 `schoolRank`(1부터) 파생. APAC 별 판정(13장)의 입력. 별도 왕관 표시는 없음(취소됨).
-- **first solve**: 문제별 accepted run의 최소 시각. 동시각 복수 팀 모두 first solve (원본 동일).
-- **last solve**: 문제별 accepted run 중 가장 늦은 것 (분 → run id 순 비교, 단일 셀). **contest-last solve**: 대회 전체 accepted run 중 가장 늦은 것 (단일 셀). **contest-first solve**: 대회 전체 accepted run 중 가장 빠른 것 (분 → run id 순, 단일 셀). spectator에서는 "현재까지" 기준 파생값. **award 모드에서는 숨겨진 run까지 포함한 최종 데이터 기준으로 고정 계산** — 공개가 진행되어도 파랑/보라가 옮겨 다니지 않고, 해당 셀이 공개(accepted)된 뒤에야 표시된다. (같은 규칙이 last-solve 기반 자동 칭호에도 적용.)
+- **first solve**: 문제별 accepted run 중 가장 이른 것 (분 → run id 순 비교, 단일 셀). 같은 분에 여러 팀이 풀면 run id가 작은 팀 하나만 first solve이다.
+- **last solve**: 문제별 accepted run 중 가장 늦은 것 (분 → run id 순 비교, 단일 셀). 그 셀이 first solve이기도 하면 (그 문제를 푼 팀이 한 팀뿐인 경우) last solve는 표시하지 않는다 — first solve가 우선. **contest-last solve**: 대회 전체 accepted run 중 가장 늦은 것 (단일 셀). **contest-first solve**: 대회 전체 accepted run 중 가장 빠른 것 (분 → run id 순, 단일 셀). spectator(live board)에서는 last solve와 contest-last solve를 표시하지 않는다 ("지금까지 가장 늦은 것"은 새 정답마다 옮겨 다니므로 의미가 없다). 관련 자동 칭호도 붙이지 않는다. first solve와 contest-first solve는 그대로 표시한다. **award 모드에서는 숨겨진 run까지 포함한 최종 데이터 기준으로 고정 계산** — 공개가 진행되어도 파랑/보라가 옮겨 다니지 않고, 해당 셀이 공개(accepted)된 뒤에야 표시된다. (같은 규칙이 last-solve 기반 자동 칭호에도 적용.)
 - **자동 칭호** (awards.json과 무관, 스냅샷에서 파생되어 팀 행 배지로 표시):
 
   | 조건 | 배지 텍스트 |
@@ -226,9 +226,9 @@ FeedSource(어댑터) → parse → diff → 표시 대기 큐 → tick 소비 �
   "apac": { "enabled": false },
   "publish": {
     "enabled": false,
-    "siteScore": null,
+    "mode": "off",
     "invitedScoreCutoff": null,
-    "alreadyInvited": { "teamIds": [], "groups": [] }
+    "alreadyInvited": { "teamIds": [], "winnerGroups": [], "invitedGroups": [] }
   },
   "award": {
     "mode": false,
@@ -251,7 +251,7 @@ FeedSource(어댑터) → parse → diff → 표시 대기 큐 → tick 소비 �
 
 스키마는 zod로 검증하고 오류 시 어떤 키가 잘못됐는지 SystemMessage로 표시. 모든 키에 기본값 존재(부분 config 허용).
 
-URL 파라미터 (`URLSearchParams`로 파싱, config보다 우선): `r`, `time`, `award`, `award_rank_begin`, `animation`, `q`(검색어, 원본과 달리 부분 일치), `t`(follow 팀 id), `publish`, `site_score`, `invited_cutoff` (13장).
+URL 파라미터 (`URLSearchParams`로 파싱, config보다 우선): `r`, `time`, `award`, `award_rank_begin`, `animation`, `q`(검색어, 원본과 달리 부분 일치), `t`(follow 팀 id), `publish`, `publish_mode`, `invited_cutoff` (13장). `site_score`는 없어졌습니다.
 
 원본 대비 의도적 삭제: `auto_rundiff`(항상 client diff), predicate 함수 config(선언적 필드로 대체), `environment`(Vite 빌드로 불필요).
 
@@ -275,18 +275,21 @@ URL 파라미터 (`URLSearchParams`로 파싱, config보다 우선): `r`, `time`
 
 ## 13. APAC 진출 표시 (`apac` 플래그)와 publish 모드
 
+> **2026-10-16 갱신**: publish 모드는 `off` / `preliminary` / `regional` 세 모드로 나뉘고, 공개 페이지는 `npm run publish`가 만든 정적 폴더입니다. 자세한 내용은 [publish 모드 확장 설계](2026-10-16-publish-modes-design.md)를 보세요. 이 장의 `publish.siteScore`와 URL `site_score`는 **없어졌습니다** (site score는 공식으로 계산합니다). 학교당 상한 3은 2026-27 규칙에서 2(작년 WF 메달 학교는 3)로 바뀌었습니다. 동색 별도 "학내 3등 이내"가 아니라 **그 시점 APAC 리스트(scored list)에 든 팀**으로 바뀌었고, 최종 순위 공개 후에는 동색 별이 없습니다 (아래 "별 의미"와 "별 아이콘 규칙" 1~2번에 반영). 나머지 본문은 2025-26 규칙 기준의 기록입니다.
+
 목적: [ICPC APAC Championship 2025-26 규칙](https://icpc.jp/apac/2025-26/rules/) 기준으로 APAC 진출 가능성이 있는 팀을 시각적으로 인지시킨다. 규칙 요점: 학교당 최대 3팀 진출 가능(교내 4위 이하 제거), 팀 score = `(rank − 1) / site score` (작을수록 상위), score 순 병합 리스트에서 초청.
 
 **전제**: 대회가 종료된 상황(award 모드 또는 publish 모드)에서만 동작. `config.apac.enabled`로 on/off.
 
-**별 의미**: 동색 = 학내 3등 이내, 은색 = APAC championship **초대 가능**(후보), 금색 = APAC championship **진출**. 범례는 이 문구를 쓰고, 보드/시상식 **툴팁과 README는 영어**를 쓴다 — bronze `Top 3 in their school`, silver `Likely invited to the APAC Championship`, gold `Invited to the APAC Championship` (`APAC_STAR_TITLES`).
+**별 의미**: 동색 = 지금까지 APAC 리스트에 든 팀(시상식 중에만), 은색 = APAC championship **초대 가능**(후보), 금색 = APAC championship **진출**. 범례는 이 문구를 쓰고, 보드/시상식 **툴팁과 README는 영어**를 쓴다 — bronze `In the APAC Championship list so far`, silver `Likely invited to the APAC Championship`, gold `Invited to the APAC Championship` (`APAC_STAR_TITLES`).
 
 **별 아이콘 규칙** (별 부여·색상 변경 시 항상 별이 한 바퀴 회전하는 애니메이션 포함):
 
-1. **award 모드, 최종 순위 미공개 상태**: 모든 학교의 교내 1~3위(현재 스냅샷의 ICPC 랭킹 기준) 팀의 랭킹 칸 옆에 **동색 별**. 공개가 진행되어 교내 순위가 바뀌면 별도 이동(회전 애니메이션 재생).
+1. **award 모드, 최종 순위 미공개 상태**: `alreadyInvited.teamIds`의 팀은 **금색 별**(다른 사이트에서 정해진 결과라 스포일러가 아님). 현재 스냅샷의 scored list(아래 filteredRank 산출 규칙, 챔피언은 아직 모르므로 적용하지 않음)에 든 팀은 **동색 별**. 그 외 팀은 별이 없다. scored list는 현재 스냅샷으로 다시 계산하므로, 공개가 진행되어 순위가 바뀌면 별도 생기고 사라지고 이동한다(회전 애니메이션 재생). 학교당 상한은 2(작년 WF 메달 학교는 3)이다. champion, site score, cutoff는 이 단계에서 쓰지 않는다.
 2. **award 모드에서 최종 순위 전부 공개 완료 시, 또는 publish 모드**:
    - 대회 전체 1등 팀(챔피언)의 별을 **금색**으로 변경 (World Finals 직행 = APAC 진출 확정).
-   - 챔피언 학교를 **제외한** 모든 학교의 교내 1~3위 별을 **은색**으로 변경 — 초청 후보. **챔피언 학교의 2·3위는 동색 유지** (WF는 학교당 1팀이므로 초청 대상 아님).
+   - `alreadyInvited.teamIds`의 팀도 **금색**.
+   - scored list에 든 팀(챔피언 학교와 이미 초청된 학교는 통째로 빠짐)의 별을 **은색**으로 변경 — 초청 후보. **그 외 모든 팀은 별이 없다** (챔피언 학교의 나머지 팀, 0솔브 팀, 학교 상한을 넘은 팀, AU/NZ 팀). 이 단계에서 동색 별은 나오지 않는다.
 3. **publish 모드의 invited 판정**: `(filteredRank − 1) / siteScore ≤ invited score cutoff`인 **은색 별** 팀을 **금색**으로 변경.
 
    **filteredRank 산출 규칙** (icpcapac.solved.ac/2026의 2025-26 Seoul 58줄을 팀명·점수 4자리까지 완전 재현하도록 검증됨):
@@ -296,12 +299,12 @@ URL 파라미터 (`URLSearchParams`로 파싱, config보다 우선): `r`, `time`
 
    검증 사례: Just Reboot JungSangHwa(부산대)가 filteredRank 13 → `(13−1)/68.98 = 0.1740 ≤ 0.1838` qualify.
 
-   **교차 사이트 입력**: "다른 리저널에서 이미 초청됨"은 contest.json·orgs.json에서 유도 불가능한 외부 정보이므로 config로 받는다 — `publish.alreadyInvited: { teamIds: [], groups: [] }`. 이 리저널 챔피언은 자동으로 초청 처리(규칙 B1)되므로 별도 입력이 필요 없다. 입력이 비어 있으면 챔피언 학교만 제외되며, 그 경우 다른 사이트에서 초청된 학교가 남아 순위가 실제보다 밀릴 수 있다는 점을 UI에 안내한다.
+   **교차 사이트 입력**: "다른 리저널에서 이미 초청됨"은 contest.json·orgs.json에서 유도 불가능한 외부 정보이므로 config로 받는다 — `publish.alreadyInvited: { teamIds: [], winnerGroups: [], invitedGroups: [] }` (옛 `groups`는 `invitedGroups`로 읽습니다). 이 리저널 챔피언은 자동으로 초청 처리(규칙 B1)되므로 별도 입력이 필요 없다. 입력이 비어 있으면 챔피언 학교만 제외되며, 그 경우 다른 사이트에서 초청된 학교가 남아 순위가 실제보다 밀릴 수 있다는 점을 UI에 안내한다.
 
 **publish 모드** (신설, 세 번째 앱 모드):
 
 - 용도: 대회 종료 후 공지용 static scoreboard. 폴링·autoplay·애니메이션 진행 없음, 전체 run 반영된 최종 순위표 + 칭호/별 표시.
-- 진입: `?publish=true` (또는 `config.publish.enabled`). **site score 값이 입력되어야 전환 완료** — URL `site_score=<number>` 또는 화면의 site score 입력 필드. 값이 없으면 안내 메시지와 입력 폼만 표시.
+- 진입: `?publish=true` (또는 `config.publish.enabled`). ~~site score 값이 입력되어야 전환 완료~~ (없어졌습니다: site score gate는 없고, 값은 계수와 입력값으로 계산합니다).
 - 화면에 **invited score cutoff 입력 상자** 존재. 값 입력/변경 시 3번 규칙을 즉시 재평가해 해당 팀의 은색 별을 금색으로 (회전 애니메이션).
 - 모드 배타 규칙: publish는 award와 동시 활성 불가 (publish 우선).
 
@@ -311,13 +314,14 @@ config 추가:
 "apac": { "enabled": false },
 "publish": {
   "enabled": false,
-  "siteScore": null,
+  "mode": "off",
   "invitedScoreCutoff": null,
-  "alreadyInvited": { "teamIds": [], "groups": [] }
+  "alreadyInvited": { "teamIds": [], "winnerGroups": [], "invitedGroups": [] }
+  // preliminary, regional 블록: 새 설계 문서 §3, §6.4
 }
 ```
 
-URL 파라미터 추가: `publish`, `site_score`, `invited_cutoff` (config보다 우선).
+URL 파라미터 추가: `publish`, `publish_mode`, `invited_cutoff` (config보다 우선). (`site_score`는 없어졌습니다.)
 
 ## 14. 모바일 레이아웃 (spectator·publish 모드)
 

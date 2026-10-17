@@ -21,7 +21,7 @@ import { createSpotboardSource } from '@core/ingest/spotboard';
 import { createRunFeeder } from '@core/feeder';
 import { computeStandings } from '@core/standings';
 import { computeApacFilteredRanks, computeApacStars } from '@core/apac';
-import type { AlreadyInvited } from '@core/apac';
+import type { AlreadyInvited, SchoolQuota } from '@core/apac';
 import type { OrgsIndex, Snapshot } from '@core/types';
 
 const ROOT = resolve(__dirname, '../..');
@@ -49,6 +49,8 @@ const fetchStub = (async (input: RequestInfo | URL) => {
 /** Published values for the Seoul site (2025-26). */
 const SITE_SCORE = 68.98;
 const INVITED_SCORE_CUTOFF = 0.1838;
+/** The 2025-26 per-school cap: every school keeps its top 3. */
+const QUOTA_2025_26: SchoolQuota = { base: 3, wfMedalGroups: [] };
 
 /**
  * Schools that already held an APAC invitation from another regional.
@@ -162,6 +164,7 @@ describe('APAC filtered list reproduces the published 2025-26 Seoul list', () =>
 
   it('matches all 58 published rows: order, sitenum and 4-decimal score', () => {
     const ranks = computeApacFilteredRanks(snapshot, {
+      quota: QUOTA_2025_26,
       championTeamId,
       alreadyInvited: ALREADY_INVITED,
     });
@@ -181,12 +184,14 @@ describe('APAC filtered list reproduces the published 2025-26 Seoul list', () =>
 
   it('the champion is displayed but holds no slot', () => {
     const ranks = computeApacFilteredRanks(snapshot, {
+      quota: QUOTA_2025_26,
       championTeamId,
       alreadyInvited: ALREADY_INVITED,
     });
     expect(ranks.has(championTeamId)).toBe(false);
 
     const stars = computeApacStars(snapshot, {
+      quota: QUOTA_2025_26,
       phase: 'final',
       championTeamId,
       alreadyInvited: ALREADY_INVITED,
@@ -198,6 +203,7 @@ describe('APAC filtered list reproduces the published 2025-26 Seoul list', () =>
 
   it('every other Seoul National University team is off the list entirely', () => {
     const ranks = computeApacFilteredRanks(snapshot, {
+      quota: QUOTA_2025_26,
       championTeamId,
       alreadyInvited: ALREADY_INVITED,
     });
@@ -208,6 +214,7 @@ describe('APAC filtered list reproduces the published 2025-26 Seoul list', () =>
 
   it('National Taiwan University holds zero rows (invited at another regional)', () => {
     const ranks = computeApacFilteredRanks(snapshot, {
+      quota: QUOTA_2025_26,
       championTeamId,
       alreadyInvited: ALREADY_INVITED,
     });
@@ -218,6 +225,7 @@ describe('APAC filtered list reproduces the published 2025-26 Seoul list', () =>
 
   it('0-solve teams are excluded; the last slot (58) is a 1-solve team', () => {
     const ranks = computeApacFilteredRanks(snapshot, {
+      quota: QUOTA_2025_26,
       championTeamId,
       alreadyInvited: ALREADY_INVITED,
     });
@@ -231,10 +239,12 @@ describe('APAC filtered list reproduces the published 2025-26 Seoul list', () =>
 
   it('the cutoff promotes exactly filteredRank 1..13 to gold (plus the champion)', () => {
     const ranks = computeApacFilteredRanks(snapshot, {
+      quota: QUOTA_2025_26,
       championTeamId,
       alreadyInvited: ALREADY_INVITED,
     });
     const stars = computeApacStars(snapshot, {
+      quota: QUOTA_2025_26,
       phase: 'final',
       championTeamId,
       alreadyInvited: ALREADY_INVITED,

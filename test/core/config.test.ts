@@ -30,6 +30,7 @@ describe('parseConfig — defaults', () => {
       showBalloons: true,
       showSchoolLogos: false,
       showEvents: false,
+      lockMode: false,
       maxNotifications: 100,
       pagination: false,
       paginationSize: 50,
@@ -39,9 +40,22 @@ describe('parseConfig — defaults', () => {
       apac: { enabled: false },
       publish: {
         enabled: false,
-        siteScore: null,
+        mode: 'off',
         invitedScoreCutoff: null,
-        alreadyInvited: { teamIds: [], groups: [] },
+        alreadyInvited: { teamIds: [], winnerGroups: [], invitedGroups: [] },
+        preliminary: { totalTeams: null, topN: 30, k: null, ineligibleTeamIds: [] },
+        regional: {
+          prelimSchools: null,
+          prelimTeams: null,
+          coefficients: {
+            regionalSchools: 0.56,
+            regionalTeams: 0.24,
+            prelimSchools: 0.14,
+            prelimTeams: 0.06,
+            foreignTeams: 0.3,
+          },
+          wfMedalGroups: [],
+        },
       },
       award: {
         mode: false,
@@ -94,7 +108,7 @@ describe('parseConfig — defaults', () => {
     expect(config.award.hideName).toBe(true);
     expect(config.award.focusBlinking).toEqual({ minSolved: 7, maxRank: 10 });
     expect(config.publish.enabled).toBe(true);
-    expect(config.publish.siteScore).toBeNull();
+    expect(config.publish.mode).toBe('off');
     expect(config.fetchTimeout).toBe(5000);
   });
 
@@ -127,9 +141,22 @@ describe('parseConfig — defaults', () => {
       apac: { enabled: false },
       publish: {
         enabled: false,
-        siteScore: null,
+        mode: 'off',
         invitedScoreCutoff: null,
-        alreadyInvited: { teamIds: [], groups: [] },
+        alreadyInvited: { teamIds: [], winnerGroups: [], invitedGroups: [] },
+        preliminary: { totalTeams: null, topN: 30, k: null, ineligibleTeamIds: [] },
+        regional: {
+          prelimSchools: null,
+          prelimTeams: null,
+          coefficients: {
+            regionalSchools: 0.56,
+            regionalTeams: 0.24,
+            prelimSchools: 0.14,
+            prelimTeams: 0.06,
+            foreignTeams: 0.3,
+          },
+          wfMedalGroups: [],
+        },
       },
       award: {
         mode: false,
@@ -175,7 +202,8 @@ describe('parseConfig — defaults', () => {
     expect(errors).toEqual([]);
     expect(config.publish.alreadyInvited).toEqual({
       teamIds: ['1024', 'x9'],
-      groups: ['National Taiwan University'],
+      winnerGroups: [],
+      invitedGroups: ['National Taiwan University'],
     });
   });
 
@@ -184,7 +212,98 @@ describe('parseConfig — defaults', () => {
       publish: { alreadyInvited: { teamIds: 'nope', groups: [7] } },
     });
     expect(errors.length).toBeGreaterThan(0);
-    expect(config.publish.alreadyInvited).toEqual({ teamIds: [], groups: [] });
+    expect(config.publish.alreadyInvited).toEqual({
+      teamIds: [],
+      winnerGroups: [],
+      invitedGroups: [],
+    });
+  });
+
+  it('publish.mode defaults to off', () => {
+    expect(defaultConfig().publish.mode).toBe('off');
+    expect(parseConfig({ publish: { enabled: true } }).config.publish.mode).toBe('off');
+  });
+
+  it('parses publish.mode, preliminary and regional blocks', () => {
+    const { config, errors } = parseConfig({
+      publish: {
+        mode: 'preliminary',
+        preliminary: { totalTeams: 60, topN: 25, k: 3, ineligibleTeamIds: [7, 'x'] },
+        regional: {
+          prelimSchools: 40,
+          prelimTeams: 120,
+          coefficients: { foreignTeams: 0.5 },
+          wfMedalGroups: ['Seoul National University'],
+        },
+      },
+    });
+    expect(errors).toEqual([]);
+    expect(config.publish.mode).toBe('preliminary');
+    expect(config.publish.preliminary).toEqual({
+      totalTeams: 60,
+      topN: 25,
+      k: 3,
+      ineligibleTeamIds: ['7', 'x'],
+    });
+    expect(config.publish.regional.prelimSchools).toBe(40);
+    expect(config.publish.regional.prelimTeams).toBe(120);
+    // A partial coefficients object keeps the other defaults.
+    expect(config.publish.regional.coefficients).toEqual({
+      regionalSchools: 0.56,
+      regionalTeams: 0.24,
+      prelimSchools: 0.14,
+      prelimTeams: 0.06,
+      foreignTeams: 0.5,
+    });
+    expect(config.publish.regional.wfMedalGroups).toEqual(['Seoul National University']);
+  });
+
+  it('rejects a bad publish.mode and bad preliminary counts with defaults', () => {
+    const { config, errors } = parseConfig({
+      publish: { mode: 'final', preliminary: { totalTeams: 0, topN: -1, k: 1.5 } },
+    });
+    expect(errors.some((e) => e.startsWith('config.publish.mode'))).toBe(true);
+    expect(errors.some((e) => e.startsWith('config.publish.preliminary.totalTeams'))).toBe(true);
+    expect(config.publish.mode).toBe('off');
+    expect(config.publish.preliminary).toEqual({
+      totalTeams: null,
+      topN: 30,
+      k: null,
+      ineligibleTeamIds: [],
+    });
+  });
+
+  it('legacy alreadyInvited.groups reads as invitedGroups', () => {
+    const { config, errors } = parseConfig({
+      publish: { alreadyInvited: { teamIds: ['t1'], groups: ['KAIST'] } },
+    });
+    expect(errors).toEqual([]);
+    expect(config.publish.alreadyInvited).toEqual({
+      teamIds: ['t1'],
+      winnerGroups: [],
+      invitedGroups: ['KAIST'],
+    });
+  });
+
+  it('new alreadyInvited keys win over the legacy groups key, with a warning', () => {
+    const { config, errors } = parseConfig({
+      publish: {
+        alreadyInvited: { groups: ['Old'], invitedGroups: ['New'], winnerGroups: ['W'] },
+      },
+    });
+    expect(errors).toHaveLength(1);
+    expect(errors[0]).toMatch(/^config\.publish\.alreadyInvited\.groups/);
+    expect(config.publish.alreadyInvited).toEqual({
+      teamIds: [],
+      winnerGroups: ['W'],
+      invitedGroups: ['New'],
+    });
+  });
+
+  it('siteScore is gone: the key is ignored without an error', () => {
+    const { config, errors } = parseConfig({ publish: { enabled: true, siteScore: 68.98 } });
+    expect(errors).toEqual([]);
+    expect('siteScore' in config.publish).toBe(false);
   });
 
   it('accepts contest-api auth and eventsWs', () => {
@@ -324,6 +443,29 @@ describe('applyUrlOverrides', () => {
     expect(config.followTeamId).toBeNull();
   });
 
+  it('lockMode ignores the award and publish params silently; others still apply', () => {
+    const { config: parsed } = parseConfig({ lockMode: true });
+    const { config, warnings } = applyUrlOverrides(
+      parsed,
+      '?award=true&award_rank_begin=3&publish=true&publish_mode=preliminary&invited_cutoff=1&animation=false&q=kaist',
+    );
+    expect(warnings).toEqual([]);
+    expect(config.award.mode).toBe(false);
+    expect(config.award.rankBegin).toBeNull();
+    expect(config.publish.enabled).toBe(false);
+    expect(config.publish.mode).toBe('off');
+    expect(config.publish.invitedScoreCutoff).toBeNull();
+    expect(selectMode(config)).toBe('spectator');
+    expect(config.animation).toBe(false);
+    expect(config.searchQuery).toBe('kaist');
+  });
+
+  it('lockMode defaults to false', () => {
+    expect(defaultConfig().lockMode).toBe(false);
+    const { config } = applyUrlOverrides(defaultConfig(), '?award=true');
+    expect(config.award.mode).toBe(true);
+  });
+
   it('URL parameters take precedence over config.json values', () => {
     const { config: parsed } = parseConfig({ animation: true, award: { mode: false } });
     const { config, warnings } = applyUrlOverrides(parsed, '?animation=false&award=true');
@@ -399,35 +541,55 @@ describe('applyUrlOverrides', () => {
     expect(config.followTeamId).toBeNull();
   });
 
-  it('publish=, site_score= and invited_cutoff= override publish config', () => {
-    const { config, warnings } = applyUrlOverrides(
-      base(),
-      '?publish=true&site_score=13&invited_cutoff=2.5',
-    );
+  it('publish= and invited_cutoff= override publish config', () => {
+    const { config, warnings } = applyUrlOverrides(base(), '?publish=true&invited_cutoff=2.5');
     expect(warnings).toEqual([]);
     expect(config.publish.enabled).toBe(true);
-    expect(config.publish.siteScore).toBe(13);
     expect(config.publish.invitedScoreCutoff).toBe(2.5);
   });
 
-  it('site_score must be positive; invited_cutoff must be non-negative', () => {
-    const { config, warnings } = applyUrlOverrides(base(), '?site_score=0&invited_cutoff=-1');
-    expect(warnings).toHaveLength(2);
-    expect(config.publish.siteScore).toBeNull();
+  it('invited_cutoff must be non-negative', () => {
+    const { config, warnings } = applyUrlOverrides(base(), '?invited_cutoff=-1');
+    expect(warnings).toHaveLength(1);
     expect(config.publish.invitedScoreCutoff).toBeNull();
   });
 
   it('publish=false can disable a config-enabled publish mode', () => {
-    const { config: parsed } = parseConfig({ publish: { enabled: true, siteScore: 10 } });
+    const { config: parsed } = parseConfig({ publish: { enabled: true, mode: 'regional' } });
     const { config } = applyUrlOverrides(parsed, '?publish=false');
     expect(config.publish.enabled).toBe(false);
-    expect(config.publish.siteScore).toBe(10); // untouched
+    expect(config.publish.mode).toBe('regional'); // untouched
+  });
+
+  it('publish_mode=regional overrides config', () => {
+    const { config: parsed } = parseConfig({ publish: { mode: 'preliminary' } });
+    const { config, warnings } = applyUrlOverrides(parsed, '?publish=true&publish_mode=regional');
+    expect(warnings).toEqual([]);
+    expect(config.publish.mode).toBe('regional');
+    expect(applyUrlOverrides(parsed, '?publish_mode=off').config.publish.mode).toBe('off');
+    expect(applyUrlOverrides(base(), '?publish_mode=preliminary').config.publish.mode).toBe(
+      'preliminary',
+    );
+  });
+
+  it('invalid publish_mode warns and keeps the config mode', () => {
+    const { config: parsed } = parseConfig({ publish: { mode: 'preliminary' } });
+    const { config, warnings } = applyUrlOverrides(parsed, '?publish_mode=final');
+    expect(warnings).toHaveLength(1);
+    expect(warnings[0]).toMatch(/publish_mode/);
+    expect(config.publish.mode).toBe('preliminary');
+  });
+
+  it('site_score is gone: the URL parameter is not applied and needs no warning', () => {
+    const { config, warnings } = applyUrlOverrides(base(), '?publish=true&site_score=13');
+    expect(warnings).toEqual([]);
+    expect('siteScore' in config.publish).toBe(false);
   });
 
   it('does not mutate the input config', () => {
     const cfg = base();
     const snapshot = JSON.parse(JSON.stringify(cfg));
-    applyUrlOverrides(cfg, '?award=true&time=10&publish=1&site_score=5');
+    applyUrlOverrides(cfg, '?award=true&time=10&publish=1&publish_mode=regional');
     expect(JSON.parse(JSON.stringify(cfg))).toEqual(snapshot);
   });
 
@@ -462,10 +624,13 @@ describe('selectMode', () => {
     expect(selectMode(config)).toBe('publish');
   });
 
-  it('publish wins even when siteScore is still null (UI gates on it)', () => {
-    const { config } = parseConfig({ publish: { enabled: true, siteScore: null } });
-    expect(selectMode(config)).toBe('publish');
-    expect(config.publish.siteScore).toBeNull();
+  it('publish.mode only selects features: every mode still selects publish', () => {
+    for (const mode of ['off', 'preliminary', 'regional'] as const) {
+      const { config } = parseConfig({ publish: { enabled: true, mode } });
+      expect(selectMode(config)).toBe('publish');
+    }
+    const { config } = parseConfig({ publish: { enabled: false, mode: 'regional' } });
+    expect(selectMode(config)).toBe('spectator');
   });
 
   it('URL ?publish=true&award=true resolves to publish', () => {

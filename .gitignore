@@ -1,5 +1,8 @@
 node_modules/
 dist/
+publish-dist/
 *.local
 .DS_Store
 coverage/
+config.local.json
+feed-out/

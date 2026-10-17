@@ -22,9 +22,22 @@
   "apac": { "enabled": true },
   "publish": {
     "enabled": false,
-    "siteScore": null,
+    "mode": "off",
     "invitedScoreCutoff": null,
-    "alreadyInvited": { "teamIds": [], "groups": [] }
+    "alreadyInvited": { "teamIds": [], "winnerGroups": [], "invitedGroups": [] },
+    "preliminary": { "totalTeams": null, "topN": 30, "k": null, "ineligibleTeamIds": [] },
+    "regional": {
+      "prelimSchools": null,
+      "prelimTeams": null,
+      "coefficients": {
+        "regionalSchools": 0.56,
+        "regionalTeams": 0.24,
+        "prelimSchools": 0.14,
+        "prelimTeams": 0.06,
+        "foreignTeams": 0.3
+      },
+      "wfMedalGroups": []
+    }
   },
   "award": {
     "mode": false,

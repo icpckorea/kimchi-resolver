@@ -3,23 +3,31 @@
  *
  * - spectator: fixed Header + Scoreboard + Dashboard + SystemMessages.
  * - award:     AwardView (full-board ceremony skin) + SystemMessages.
- * - publish:   PublishView (static final board + site-score gate).
+ * - publish:   PublishView (prepare page: static final board + inputs).
  *
  * Cross-cutting wiring that belongs to no single view lives here:
  * - APAC stars (spec §13): none in spectator; award mode derives them via
  *   computeApacStars — phase 'ceremony' while the ceremony runs and 'final'
  *   once awardMachine.finished (champion = standings[0]); publish derives its
- *   own 'final' stars from siteScore/invitedCutoff inside PublishView.
+ *   own 'final' stars from the regional inputs inside PublishView. Both use
+ *   the 2026-27 per-school quota: award mode reads the WF medal schools
+ *   (Q = 3) from config.publish.regional and has no input fields.
  * - awards.json (spec §6): fetched here from config.award.awardsUrl after boot
- *   for spectator and publish only. Spectator shows manual labels immediately
- *   (a missing file is silent); publish shows them on the final board (missing
- *   → warning). Award mode is loaded by the store DURING boot instead — the
+ *   for spectator only (a missing file is silent; an empty URL fetches
+ *   nothing). Publish never reads awards.json: its boards and the published
+ *   page carry no manual labels. Award mode is loaded by the store DURING boot instead — the
  *   state machine needs the entry ids to decide which finalize raises a slide
  *   (spec §6), so it cannot wait for a post-boot view fetch.
  */
 import { useEffect, useMemo, useRef, useState } from 'react';
 
-import { computeApacStars, type ApacStarTier } from '@core/apac';
+import {
+  computeApacStars,
+  DEFAULT_SCHOOL_QUOTA,
+  type AlreadyInvited,
+  type ApacStarTier,
+  type SchoolQuota,
+} from '@core/apac';
 import { appStore, useAppStore } from '@store/appStore';
 import { Dashboard, Header, SystemMessages, useChromeUi, useDashboardVisibility } from '@ui/chrome';
 import { Scoreboard, type ApacStarInfo } from '@ui/scoreboard';
@@ -28,7 +36,7 @@ import { PublishView } from '@ui/publish/PublishView';
 import { parseAwardsJson, type AwardEntry } from '@ui/award/awardsData';
 
 // ---------------------------------------------------------------------------
-// awards.json (spectator + publish; award mode self-fetches in AwardView)
+// awards.json (spectator only; award mode is loaded by the store, publish never)
 // ---------------------------------------------------------------------------
 
 function useAwardsData(): Map<string, AwardEntry> | null {
@@ -38,7 +46,7 @@ function useAwardsData(): Map<string, AwardEntry> | null {
   const [awards, setAwards] = useState<Map<string, AwardEntry> | null>(null);
 
   useEffect(() => {
-    if (status !== 'ready' || mode === 'award') return;
+    if (status !== 'ready' || mode !== 'spectator' || awardsUrl.trim() === '') return;
     let cancelled = false;
     void (async () => {
       try {
@@ -58,18 +66,8 @@ function useAwardsData(): Map<string, AwardEntry> | null {
                 'ceremony. Remove it from this deployment and serve it only from the award build.',
             );
         }
-      } catch (err) {
+      } catch {
         // Missing awards.json is expected in spectator mode → stay silent.
-        if (!cancelled && mode === 'publish') {
-          appStore
-            .getState()
-            .addSystemMessage(
-              'warning',
-              `awards.json could not be loaded (${
-                err instanceof Error ? err.message : String(err)
-              }); manual labels will be omitted.`,
-            );
-        }
       }
     })();
     return () => {
@@ -101,9 +99,24 @@ function useAwardApacStars(): ReadonlyMap<string, ApacStarInfo> | null {
   const enabled = useAppStore((s) => s.config.apac.enabled);
   const snapshot = useAppStore((s) => s.snapshot);
   const machine = useAppStore((s) => s.awardMachine);
-  // Cross-site invitations also decide silver-vs-bronze here (spec §13.3.1),
-  // even though the cutoff promotion itself is publish-only.
-  const alreadyInvited = useAppStore((s) => s.alreadyInvited);
+  // Cross-site invitations and the WF medal schools also decide the scored
+  // list here (spec §13.3.1), even though the cutoff promotion
+  // itself is publish-only. Award mode has no inputs: both come from config.
+  const publishConfig = useAppStore((s) => s.config.publish);
+  const alreadyInvited = useMemo<AlreadyInvited>(
+    () => ({
+      teamIds: publishConfig.alreadyInvited.teamIds,
+      groups: [
+        ...publishConfig.alreadyInvited.winnerGroups,
+        ...publishConfig.alreadyInvited.invitedGroups,
+      ],
+    }),
+    [publishConfig.alreadyInvited],
+  );
+  const quota = useMemo<SchoolQuota>(
+    () => ({ base: DEFAULT_SCHOOL_QUOTA, wfMedalGroups: publishConfig.regional.wfMedalGroups }),
+    [publishConfig.regional.wfMedalGroups],
+  );
   // The machine mutates in place; awardTick invalidates the memo below.
   const tick = useAppStore((s) => s.awardTick);
   const finished = machine?.finished ?? false;
@@ -117,8 +130,9 @@ function useAwardApacStars(): ReadonlyMap<string, ApacStarInfo> | null {
       siteScore: null, // invited-cutoff promotion is publish-only (spec §13.3)
       invitedScoreCutoff: null,
       alreadyInvited,
+      quota,
     });
-  }, [mode, enabled, snapshot, finished, tick, alreadyInvited]);
+  }, [mode, enabled, snapshot, finished, tick, alreadyInvited, quota]);
 
   // A star spins once when granted or when its tier changes (previous tiers
   // tracked across renders; the star remounts via key={tier} down the tree).
@@ -187,7 +201,7 @@ export default function App() {
   if (mode === 'publish') {
     return (
       <div className="app-shell">
-        <PublishView manualLabels={manualLabels} />
+        <PublishView />
         <SystemMessages />
       </div>
     );

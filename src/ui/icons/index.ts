@@ -34,3 +34,12 @@ export {
   MEDAL_COLORS,
   type FilledIconProps,
 } from './awards';
+
+export {
+  StageTop,
+  StageSchool,
+  StageFill,
+  StageIcon,
+  STAGE_COLORS,
+  type StageName,
+} from './stages';

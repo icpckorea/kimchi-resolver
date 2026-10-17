@@ -312,6 +312,89 @@ below 10 s puts real load on the judge.
 Run `npm run check-assets` before the event to catch schools missing from
 `public/orgs/orgs.json`.
 
+### DOMjudge → spotboard converter
+
+`npm run convert` replaces `spotboard/domjudge-converter`. It reads the DOMjudge
+Contest API with this repo's own adapter and writes the spotboard files
+`contest.json` and `runs.json`. A `spotboard` source (or the original
+Spotboard) serves that folder as static files, with no credential.
+
+```sh
+npm run convert -- --contest seoul2026                      # once, into feed-out/
+npm run convert -- --contest seoul2026 --interval 30        # every 30 s until Ctrl-C
+npm run convert -- --contest seoul2026 --out /srv/feed      # another folder
+```
+
+| Option | Meaning |
+|---|---|
+| `--contest <id>` | Required. The DOMjudge contest id. |
+| `--out <dir>` | Output folder. Default `feed-out/` (git-ignored). |
+| `--interval <s>` | Poll every `s` seconds. Minimum 10, maximum 2147483; a value outside this range is refused. Without it the script runs once. |
+| `--unfreeze` | Keep the real results of frozen runs. Default off. |
+| `--url <api root>` | Judge API root (with `/api/v4`). Default: `KIMCHI_JUDGE_URL`. It must not contain a user name or password. |
+
+The judge URL and the credential come from `KIMCHI_JUDGE_URL` and
+`KIMCHI_JUDGE_CRED` (`user:password`, an `api_reader` account, see §2). The
+script reads `process.env` first, then the git-ignored `.env.local` in the repo
+root:
+
+```sh
+# .env.local
+KIMCHI_JUDGE_URL=https://judge.example.org/api/v4
+KIMCHI_JUDGE_CRED=kimchi:PASSWORD
+```
+
+The script never prints the credential and never writes it to a file. Files
+are written to a temp file first and then renamed, so a reader never gets half
+a file. A failed poll prints one error line and keeps the last good files. The
+`seq` of each run stays stable between polls, because the script passes the
+adapter cursor from poll to poll. Teams and problems are reloaded every 10
+polls.
+
+**Freeze.** Like the original converter, a run at or after the freeze minute
+(contest duration minus `scoreboard_freeze_duration`) is written as pending.
+By default the mask never ends: the award ceremony runs after DOMjudge
+finalizes the contest and before it thaws the scoreboard, so a public feed must
+stay frozen through both. With `--follow-thaw`, the mask ends when `/state`
+reports `thawed` (never on `finalized` alone). If the freeze time cannot be
+read, or `/state` fails, the script keeps the mask. It never falls back to real
+results. The script stops by itself when the judge sets `end_of_updates`. With
+`--follow-thaw` it does not stop while the mask still holds: then it keeps
+polling (and writes `noMoreUpdate: false`) until the thaw.
+A bad contest reload after the first good poll is logged, and the old contest
+and freeze time stay in use.
+
+**Results.** The feed has no judge text, so it carries `Yes`, `No` and
+`No (no penalty)` (compile error) only. The spotboard source reads these back
+to the same verdict and the same penalty. Country and foreign flags are not in
+the feed; the board takes them from `orgs.json`.
+
+**Never use `--unfreeze` for a folder that anyone can read.** The output then
+holds the real verdicts of the freeze. The script refuses `--unfreeze` with an
+`--out` inside `public/` (the build copies `public/` into `dist/`), `dist/` or
+`publish-dist/` (uploaded by hand). Case does not matter. It also marks the
+file with `"kimchiUnfrozen": true`. `npm run build` fails when a `runs.json`
+with that marker is under `public/`, `dist/` or `publish-dist/`, and
+`npm run publish` fails its output scan for it. These checks do not cover
+other places: an S3 bucket, a shared folder or a web root outside the repo are
+your responsibility.
+
+### Dev server proxy
+
+For local work, the dev server (`npm run dev`) already has two helpers. Both
+read the git-ignored `.env.local` and `config.local.json`; neither is ever
+built into `dist/`.
+
+- `.env.local` with `KIMCHI_JUDGE_URL` and `KIMCHI_JUDGE_CRED` makes the dev
+  server proxy `/judge-api` to the judge, with the credential added on the
+  server side. The proxy is read-only (GET and HEAD). Set `source.baseUrl` to
+  `"/judge-api"` in your config.
+- `config.local.json` in the repo root is served as `/config.json` by the dev
+  server when it exists. Your local judge connection stays out of the tracked
+  `public/config.json`.
+
+(See `vite.config.ts`.) `npm run convert` reads the same two variables.
+
 ---
 
 ## 6. Day-of workflow
@@ -384,26 +467,72 @@ Click a finalized team's name to show its award slide again.
 
 ### Step 4 — publish board
 
-After the ceremony, switch to publish mode for the announcement screen:
+The publish board is a **static folder** that you upload to S3 yourself. The
+public page never calls the judge, and it holds no `config.json`, no
+`awards.json` and no credential. Design: `docs/superpowers/specs/2026-10-16-publish-modes-design.md`.
 
-```
-index.html?publish=true&site_score=84&invited_cutoff=2.5
-```
+Pick one mode (config `publish.mode`, or URL `publish_mode=`; the URL wins):
 
-- **`site_score`** is required. Without it the publish board stays gated.
-- **`invited_cutoff`** promotes silver stars to gold when
-  `(filteredRank − 1) / siteScore ≤ invited_cutoff`.
-- **`alreadyInvited`** — teams invited to the APAC championship at another
-  regional. This cannot be derived from contest data, so type it into the publish
-  controls (team ids and school names, comma separated) or set
-  `publish.alreadyInvited` in `config.json`. Their whole school drops out of the
-  scored list. This site's champion is handled automatically and needs no entry.
+| Mode | Use it for | Prepare page | Public page |
+|---|---|---|---|
+| `off` (default) | final standings only | board and the save button | board only |
+| `preliminary` | the preliminary result notice | T, N, K inputs, an "미자격" checkbox on each row, yellow rows for the selected teams | board with yellow rows; the saved selection is shown as is |
+| `regional` | the APAC simulation for students | site score inputs, school pickers, cutoff, stars and values | board with stars and values, and a panel where a student can change the inputs (not saved) |
 
-While both `alreadyInvited` lists are empty, only the champion's school drops
-out, so the stars may be optimistic. The publish controls say so on screen.
+Day-of flow:
 
-Both values are editable live in the publish controls, so you can correct them
-without a reload.
+1. On the **operator build** (the one with the judge credential — never public),
+   open `index.html?publish=true&publish_mode=<mode>`. The board shows at once;
+   there is no site score gate.
+2. Check and change the inputs. They are kept in this browser's `localStorage`,
+   under a key made of the mode, the contest and its title. A stored value wins
+   over `config.json` and the URL. The page then says "저장된 값을 사용 중";
+   press "config 값으로 되돌리기" to drop it.
+3. Press **확정 결과 저장**. Read the confirm dialog (inputs and result), then
+   confirm. The browser downloads `publish-state.json`.
+4. Run `npm run publish -- <path to publish-state.json>` (optional: `--out <folder>`).
+   The command refuses a file with a wrong or old `schemaVersion`, a hand-edited
+   file, or a file that does not fit its mode, and prints the path of the bad field
+   (for example `publish-state.schemaVersion`).
+5. Upload the whole `publish-dist/` folder to S3. Open the S3 URL once and check
+   it. (`file://` does not work: browsers block module scripts there.)
+
+Local check before the upload: `npx vite preview --outDir publish-dist`.
+
+`npm run publish` scans every file it wrote. It fails when a file is named
+`config.json` or `awards.json`, when a file holds a `source.auth` user name or
+password or the `source.baseUrl` from `public/config.json`, or when a script
+holds Contest API code. Logos of the schools on the board are copied to
+`orgs/logos/` when `showSchoolLogos` is on; a missing logo file is a warning.
+Team names and `awards.json` titles that are in the final standings are public.
+
+Regional mode inputs (prepare page; the saved values are the starting values on
+the public page):
+
+- **Preliminary school and team counts** (U_p, T_p). The site score is computed:
+  `S = 0.56·U_r + 0.24·T_r + 0.14·U_p + 0.06·T_p + 0.30·F_r`. U_r, T_r and F_r are
+  counted from the standings (only teams with 1 or more solved problems); you can
+  overwrite them. The coefficients are in the "고급" fold. `publish.siteScore` and
+  the URL `site_score` are **gone**.
+- **WF medal schools** (3 teams per school). Every other school has 2 teams.
+- **Other regionals' winner schools** and **schools invited by another path**.
+  Their whole school drops out of the scored list. This site's champion is handled
+  automatically. `publish.alreadyInvited.teamIds` (config only) names invited teams
+  that compete here; the old `alreadyInvited.groups` key is read as `invitedGroups`.
+- **Assumed cutoff** (`invited_cutoff` or `publish.invitedScoreCutoff` sets the
+  start value). Silver stars with `(R − 1) / S ≤ cutoff` become gold.
+- Teams from AU and NZ (super-region) are not in the scored list. They still count in S.
+
+While the winner and invited lists are empty, only the champion's school drops
+out, so the stars may be optimistic. The page says so on screen.
+
+Preliminary mode: set T (teams that advance) and K (the least solved problems of a
+school's best team); N defaults to 30. Rule: top N teams (any school), then the best
+team of each school that has no selected team, if it solved K or more, then the next
+teams in standings order up to T. The page warns when the selection is more than T
+and when teams tie at the N or T boundary. It never breaks a tie for you. Mark a team
+"미자격" to remove it from the selection; it stays on the board at 50% opacity, with
+no label, on the public page.
 
 ---
 
@@ -440,8 +569,8 @@ submission never appears in the dashboard or the ceremony.
 
 ### Every team needs a school, or it has none at all
 
-The school (`group`) decides `schoolRank`, and `schoolRank ≤ 3` decides the
-APAC stars. The adapter resolves it in this order:
+The school (`group`) decides which teams share one school quota in the APAC
+scored list, and so which teams get an APAC star. The adapter resolves it in this order:
 
 1. the linked organization's `formal_name`,
 2. the linked organization's `name`,
@@ -540,7 +669,11 @@ truthful display while the jury is re-judging.
 | Ceremony warns "nothing to reveal" | Cutoff is at or after the last submission | §6 step 1 — recompute the freeze minute |
 | Ceremony reveals far too many teams | `r=` was set to a submission id on a Contest API source | Use `time=<freezeMinute − 1>` instead |
 | Frozen cells show real verdicts on the live board | Spectator polling passed the cutoff — `r=`/`time=` bound the boot replay only | §3 — this build must not be public |
-| Publish board stays blank | `site_score` is missing | Add `site_score=` or set `publish.siteScore` |
+| Publish prepare page shows no inputs and no stars | `publish.mode` is `off` (the default) | Add `publish_mode=preliminary` or `publish_mode=regional`, or set `publish.mode` |
+| Prepare page shows old numbers after a config change | A stored value wins ("저장된 값을 사용 중") | Press "config 값으로 되돌리기" |
+| "확정 결과 저장" is disabled | Preliminary mode with T or K empty | Fill in T and K |
+| `npm run publish` prints `publish-state.schemaVersion` or another `publish-state.<field>` | The file is from an older build, was edited, or is from another mode | Save it again from the prepare page; do not edit the file |
+| `npm run publish` says the safety scan failed | The output holds a credential, the judge URL, `config.json`, `awards.json` or feed code | Read the file name in the message; do not upload the folder |
 | Some schools have no flag or logo | Missing `public/orgs/orgs.json` entry | `npm run check-assets` |
 | Poll is slow, judge under load | Full list re-read each poll | Raise `autoRefreshInterval`, raise `fetchTimeout` |
 | A keypress does nothing during the ceremony | A reveal animation is running (busy latch) | Wait for the flip to finish, then press again |

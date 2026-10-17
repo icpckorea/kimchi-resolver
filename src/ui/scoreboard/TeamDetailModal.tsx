@@ -41,6 +41,8 @@ export interface TeamDetailModalProps {
   config: ResolvedConfig;
   /** Manual awards.json labels, already spoiler-gated by the caller. */
   manualLabels?: readonly string[];
+  /** Row note the compact row has no room for (the APAC value, 4 decimals). */
+  value?: string;
   onClose: () => void;
 }
 
@@ -49,6 +51,7 @@ export function TeamDetailModal({
   problems,
   config,
   manualLabels = [],
+  value,
   onClose,
 }: TeamDetailModalProps) {
   const { team } = standing;
@@ -140,6 +143,13 @@ export function TeamDetailModal({
             ×
           </button>
         </header>
+
+        {value !== undefined ? (
+          <div className="team-detail-value">
+            <span className="team-detail-value-label">value</span>
+            <span className="team-detail-value-number">{value}</span>
+          </div>
+        ) : null}
 
         <Badges autoLabels={standing.autoLabels} manualLabels={manualLabels} />
 
