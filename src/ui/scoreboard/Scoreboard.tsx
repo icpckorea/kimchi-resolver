@@ -41,6 +41,8 @@ export interface ScoreboardProps {
   rowDecor?: ReadonlyMap<string, RowDecor> | null;
   /** Header above the leading column of the rows (see ScoreboardView). */
   leadingHeader?: ReactNode;
+  /** Badge carousel (see TeamRow); defaults to on for the live board only. */
+  badgeCarousel?: boolean;
   className?: string;
 }
 
@@ -50,6 +52,7 @@ export function Scoreboard(props: ScoreboardProps) {
   const storeProblems = useAppStore((state) => state.contest?.problems);
   const storeOrgs = useAppStore((state) => state.orgs);
   const lastAppliedFlips = useAppStore((state) => state.lastAppliedFlips);
+  const mode = useAppStore((state) => state.mode);
 
   const snapshot = props.snapshot !== undefined ? props.snapshot : storeSnapshot;
   const config = props.config ?? storeConfig;
@@ -88,6 +91,7 @@ export function Scoreboard(props: ScoreboardProps) {
       searchQuery={searchQuery}
       page={props.page}
       followTeamId={followTeamId}
+      badgeCarousel={props.badgeCarousel ?? mode === 'spectator'}
       className={props.className}
     />
   );

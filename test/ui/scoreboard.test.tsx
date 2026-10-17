@@ -325,10 +325,25 @@ describe('Badges', () => {
     expect((title.querySelector('.team-group') as HTMLElement).textContent).toBe('KAIST');
   });
 
-  it('hides the badges that do not fit behind a +N chip (spectator/publish)', () => {
+  it('live board (store mode spectator): 2+ badges cycle bottom→top, no +N chip', () => {
     const { contest, snapshot } = priorityFixture();
     const { container } = renderBoard(contest, snapshot, cfg(), {
       manualLabels: new Map([['t1', ['금상 수상자']]]),
+    });
+    const col = container.querySelector('[data-team-id="t1"] .team-badge-col') as HTMLElement;
+    const carousel = col.querySelector('.team-badges--carousel') as HTMLElement;
+    expect(carousel).not.toBeNull();
+    // t1: 3 auto labels + 1 manual = 4, all in the carousel track.
+    expect(carousel.getAttribute('data-carousel-count')).toBe('4');
+    expect(col.querySelectorAll('.team-badges__track .team-badge')).toHaveLength(4);
+    expect(col.querySelector('.team-badge--overflow')).toBeNull();
+  });
+
+  it('hides the badges that do not fit behind a +N chip (publish)', () => {
+    const { contest, snapshot } = priorityFixture();
+    const { container } = renderBoard(contest, snapshot, cfg(), {
+      manualLabels: new Map([['t1', ['금상 수상자']]]),
+      badgeCarousel: false,
     });
     const col = container.querySelector(
       '[data-team-id="t1"] .team-badge-col',

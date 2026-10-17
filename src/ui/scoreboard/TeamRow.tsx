@@ -189,6 +189,12 @@ export interface TeamRowProps {
    * sets it when any row has one).
    */
   valueSlot?: boolean;
+  /**
+   * 2+ badges cycle bottom→top in the badge column, one at a time (the award
+   * carousel), instead of BOARD_MAX_BADGES plus a `+N` chip. The live board
+   * sets it.
+   */
+  badgeCarousel?: boolean;
 }
 
 export function TeamRow({
@@ -206,6 +212,7 @@ export function TeamRow({
   onOpenDetail,
   decor,
   valueSlot = false,
+  badgeCarousel = false,
 }: TeamRowProps) {
   const { team } = standing;
   const org = orgs[team.group];
@@ -331,6 +338,7 @@ export function TeamRow({
             autoLabels={standing.autoLabels}
             manualLabels={manualLabels}
             maxVisible={BOARD_MAX_BADGES}
+            carousel={badgeCarousel}
           />
         </div>
       ) : null}

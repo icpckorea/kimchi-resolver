@@ -55,6 +55,8 @@ export interface ScoreboardViewProps {
   /** 0-based page (only used when config.pagination). Clamped. */
   page?: number;
   followTeamId?: string | null;
+  /** Badges cycle bottom→top instead of `+N` (see TeamRow). */
+  badgeCarousel?: boolean;
   className?: string;
 }
 
@@ -71,6 +73,7 @@ export function ScoreboardView({
   searchQuery = null,
   page = 0,
   followTeamId = null,
+  badgeCarousel = false,
   className,
 }: ScoreboardViewProps) {
   // Mobile compact layout (spec §14). Only spectator/publish render this
@@ -145,6 +148,7 @@ export function ScoreboardView({
           manualLabels={manualLabels?.get(standing.team.id) ?? []}
           decor={rowDecor?.get(standing.team.id)}
           valueSlot={valueSlot}
+          badgeCarousel={badgeCarousel}
           flipCells={flipCells}
           spineFirst={index === 0 || visible[index - 1].solved !== standing.solved}
           spineLast={
