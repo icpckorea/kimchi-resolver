@@ -5,3 +5,4 @@ publish-dist/
 .DS_Store
 coverage/
 config.local.json
+feed-out/

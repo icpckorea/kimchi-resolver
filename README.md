@@ -21,6 +21,7 @@ npm test             # vitest, single run
 npm run test:watch   # vitest, watch mode
 npm run typecheck    # tsc --noEmit only
 npm run check-assets # verify orgs.json / logo coverage for the configured data
+npm run convert -- --contest <id>  # DOMjudge -> spotboard contest.json + runs.json (docs/operations.md §5)
 ```
 
 ## Configuration

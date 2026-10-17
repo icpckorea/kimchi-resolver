@@ -312,6 +312,81 @@ below 10 s puts real load on the judge.
 Run `npm run check-assets` before the event to catch schools missing from
 `public/orgs/orgs.json`.
 
+### DOMjudge → spotboard converter
+
+`npm run convert` replaces `spotboard/domjudge-converter`. It reads the DOMjudge
+Contest API with this repo's own adapter and writes the spotboard files
+`contest.json` and `runs.json`. A `spotboard` source (or the original
+Spotboard) serves that folder as static files, with no credential.
+
+```sh
+npm run convert -- --contest seoul2026                      # once, into feed-out/
+npm run convert -- --contest seoul2026 --interval 30        # every 30 s until Ctrl-C
+npm run convert -- --contest seoul2026 --out /srv/feed      # another folder
+```
+
+| Option | Meaning |
+|---|---|
+| `--contest <id>` | Required. The DOMjudge contest id. |
+| `--out <dir>` | Output folder. Default `feed-out/` (git-ignored). |
+| `--interval <s>` | Poll every `s` seconds. Minimum 10; a lower value is refused. Without it the script runs once. |
+| `--unfreeze` | Keep the real results of frozen runs. Default off. |
+| `--url <api root>` | Judge API root (with `/api/v4`). Default: `KIMCHI_JUDGE_URL`. |
+
+The judge URL and the credential come from `KIMCHI_JUDGE_URL` and
+`KIMCHI_JUDGE_CRED` (`user:password`, an `api_reader` account, see §2). The
+script reads `process.env` first, then the git-ignored `.env.local` in the repo
+root:
+
+```sh
+# .env.local
+KIMCHI_JUDGE_URL=https://judge.example.org/api/v4
+KIMCHI_JUDGE_CRED=kimchi:PASSWORD
+```
+
+The script never prints the credential and never writes it to a file. Files
+are written to a temp file first and then renamed, so a reader never gets half
+a file. A failed poll prints one error line and keeps the last good files. The
+`seq` of each run stays stable between polls, because the script passes the
+adapter cursor from poll to poll. Teams and problems are reloaded every 10
+polls.
+
+**Freeze.** Like the original converter, a run at or after the freeze minute
+(contest duration minus `scoreboard_freeze_duration`) is written as pending.
+The mask ends when DOMjudge thaws the scoreboard (`/state` `thawed`). If the
+freeze time cannot be read, or `/state` fails, the script keeps the mask. It
+never falls back to real results. The script stops by itself when the judge
+sets `end_of_updates`.
+
+**Results.** The feed has no judge text, so it carries `Yes`, `No` and
+`No (no penalty)` (compile error) only. The spotboard source reads these back
+to the same verdict and the same penalty. Country and foreign flags are not in
+the feed; the board takes them from `orgs.json`.
+
+**Never use `--unfreeze` for a folder that anyone can read.** The output then
+holds the real verdicts of the freeze. The script refuses `--unfreeze` with an
+`--out` inside `public/` (the build copies `public/` into `dist/`). It also
+marks the file with `"kimchiUnfrozen": true`, and `npm run build` fails when a
+`runs.json` with that marker is under `public/`. These two checks do not cover
+other places: an S3 bucket, a shared folder or a web root outside the repo are
+your responsibility.
+
+### Dev server proxy
+
+For local work, the dev server (`npm run dev`) already has two helpers. Both
+read the git-ignored `.env.local` and `config.local.json`; neither is ever
+built into `dist/`.
+
+- `.env.local` with `KIMCHI_JUDGE_URL` and `KIMCHI_JUDGE_CRED` makes the dev
+  server proxy `/judge-api` to the judge, with the credential added on the
+  server side. The proxy is read-only (GET and HEAD). Set `source.baseUrl` to
+  `"/judge-api"` in your config.
+- `config.local.json` in the repo root is served as `/config.json` by the dev
+  server when it exists. Your local judge connection stays out of the tracked
+  `public/config.json`.
+
+(See `vite.config.ts`.) `npm run convert` reads the same two variables.
+
 ---
 
 ## 6. Day-of workflow

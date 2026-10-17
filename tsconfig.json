@@ -21,5 +21,5 @@
       "@ui/*": ["src/ui/*"]
     }
   },
-  "include": ["src", "test", "scripts/publish.ts", "vite.publish.config.ts"]
+  "include": ["src", "test", "scripts/publish.ts", "scripts/convert-domjudge.ts", "vite.publish.config.ts"]
 }
