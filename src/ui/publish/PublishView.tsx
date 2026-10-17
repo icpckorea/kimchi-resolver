@@ -367,7 +367,7 @@ function RegionalPublish({
   const saveResults = [
     `site score S = ${formatSiteScore(simulation.siteScore)}`,
     `계산 리스트 ${simulation.values.size}팀`,
-    `별: 금색 ${tierCount('gold')}, 은색 ${tierCount('silver')}, 동색 ${tierCount('bronze')}`,
+    `별: 금색 ${tierCount('gold')}, 은색 ${tierCount('silver')}`,
   ];
 
   return (

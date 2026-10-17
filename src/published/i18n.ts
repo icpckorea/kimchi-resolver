@@ -64,7 +64,7 @@ export const MESSAGES: Record<Lang, PublishedMessages> = {
     stageLegend: prelimStageLegend,
     teamCount: (count) => `${count}팀`,
     starLegend:
-      '별의 의미: 동색 = 학내 3등 이내, 은색 = APAC championship 초대 가능, 금색 = APAC championship 진출.',
+      '별의 의미: 은색 = APAC championship 초대 가능, 금색 = APAC championship 진출.',
     errorTitle: '순위표를 표시할 수 없습니다',
     errorBody: '공개 데이터를 읽지 못했습니다. 운영자에게 알려 주세요.',
     langToggle: { label: 'English', ariaLabel: '영어로 보기' },
@@ -90,7 +90,7 @@ export const MESSAGES: Record<Lang, PublishedMessages> = {
       }
     },
     teamCount: (count) => `${count} ${plural(count, 'team', 'teams')}`,
-    starLegend: `Star colors: bronze = ${APAC_STAR_TITLES.bronze}, silver = ${APAC_STAR_TITLES.silver}, gold = ${APAC_STAR_TITLES.gold}.`,
+    starLegend: `Star colors: silver = ${APAC_STAR_TITLES.silver}, gold = ${APAC_STAR_TITLES.gold}.`,
     errorTitle: 'Cannot show the standings',
     errorBody: 'The public data could not be read. Please tell the operator.',
     // The label is the name of Korean in Korean script, as usual for a language switch.

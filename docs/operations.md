@@ -486,8 +486,8 @@ submission never appears in the dashboard or the ceremony.
 
 ### Every team needs a school, or it has none at all
 
-The school (`group`) decides `schoolRank`, and `schoolRank ≤ 3` decides the
-APAC stars. The adapter resolves it in this order:
+The school (`group`) decides which teams share one school quota in the APAC
+scored list, and so which teams get an APAC star. The adapter resolves it in this order:
 
 1. the linked organization's `formal_name`,
 2. the linked organization's `name`,

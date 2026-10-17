@@ -292,10 +292,10 @@ describe('simulateRegional', () => {
     // The champion (standings[0]) and its school take no slot.
     expect(asObject(sim.values)).toEqual({ t1: 0, t2: 0.1, t3: 0.2, t4: 0.3, t5: 0.4 });
     expect(sim.stars.get('champ')).toBe('gold');
-    expect(sim.stars.get('c2')).toBe('bronze');
+    expect(sim.stars.has('c2')).toBe(false); // champion's schoolmate: out of the running
     expect(sim.stars.get('t3')).toBe('gold'); // 0.2 ≤ 0.2
     expect(sim.stars.get('t4')).toBe('silver'); // 0.3 > 0.2
-    expect(sim.stars.get('zero')).toBe('bronze');
+    expect(sim.stars.has('zero')).toBe(false); // 0 solved
   });
 
   it('a null cutoff leaves gold to the champion only', () => {
@@ -329,7 +329,8 @@ describe('simulateRegional', () => {
     expect(asObject(sim.values)).toEqual({ a1: 0, a2: 0.25, b1: 0.5 });
     expect(sim.stars.get('a1')).toBe('gold'); // value 0 ≤ cutoff 0
     expect(sim.stars.get('a2')).toBe('silver');
-    expect(sim.stars.get('w1')).toBe('bronze');
+    expect(sim.stars.has('w1')).toBe(false); // school W is invited elsewhere
+    expect(sim.stars.has('a3')).toBe(false); // over the Q=2 cap
   });
 
   it('simulateRegional with siteScore 0 returns no values and promotes nobody', () => {
@@ -406,6 +407,6 @@ describe('simulateRegional', () => {
       alreadyInvited: null,
     });
     expect(asObject(sim.values)).toEqual({ k1: 0 });
-    expect(sim.stars.get('au1')).toBe('bronze'); // out of the list, 학내 1등
+    expect(sim.stars.has('au1')).toBe(false); // super-region: out of the list, no star
   });
 });

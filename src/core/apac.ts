@@ -36,19 +36,22 @@
  * and is passed in via {@link ApacStarOptions.alreadyInvited}. When it is
  * empty only the champion's school drops out, and ranks may be optimistic.
  *
- * Star tiers (semantics: bronze = 학내 3등 이내, silver = APAC championship
- * 초대 가능, gold = APAC championship 진출):
+ * Star tiers (semantics: bronze = APAC 리스트에 들어가는 팀 (지금까지),
+ * silver = APAC championship 초대 가능, gold = APAC championship 진출):
  * - `ceremony` phase (award mode, final standings not fully revealed yet):
- *   every schoolRank ≤ 3 team wears a BRONZE star for the current snapshot.
+ *   the `alreadyInvited` teams are GOLD (settled at another site, so not a
+ *   spoiler); every team in the scored list of the CURRENT snapshot is
+ *   BRONZE. The champion is not known yet, so it is not applied. Bronze
+ *   follows the school quota (2, or 3 for a WF medal school), not a fixed
+ *   학내 N등.
  * - `final` phase (award fully revealed, or publish mode):
  *   - every INVITED team (the champion, plus `alreadyInvited` teams) is GOLD —
  *     their advancement is settled, and they take no slot;
  *   - teams in the scored list are SILVER, promoted to GOLD when their value
  *     clears the cutoff (publish mode; needs BOTH siteScore and cutoff);
- *   - a team that is out of the running but still 학내 3등 이내 keeps BRONZE:
- *     the other teams of an already-invited school, 0-solve teams, teams over
- *     the school quota, and super-region teams. Bronze is never promoted.
- *   - schoolRank ≥ 4 teams get no star at all.
+ *   - every other team gets no star: the other teams of an invited school,
+ *     0-solve teams, teams over the school quota, and super-region teams.
+ *     Bronze does not occur in this phase.
  */
 
 import type { ApacStar, Snapshot } from './types';
@@ -90,12 +93,6 @@ export interface ApacStarOptions extends ApacFilterOptions {
   /** Invited score cutoff; promotion is skipped when null. */
   invitedScoreCutoff: number | null;
 }
-
-/**
- * 학내 N등 이내 for the bronze star. The scored-list cap is the per-school
- * {@link SchoolQuota}, not this constant.
- */
-export const APAC_SCHOOL_RANK_CAP = 3;
 
 /** Scored-list cap of a school that won a medal at the previous World Finals. */
 export const WF_MEDAL_QUOTA = 3;
@@ -239,8 +236,14 @@ export function computeApacStars(
   const stars = new Map<string, ApacStarTier>();
 
   if (opts.phase === 'ceremony') {
+    // The champion is not known before the final reveal.
+    const ceremonyOpts: ApacFilterOptions = { ...opts, championTeamId: null };
+    const invited = resolveInvitations(snapshot, ceremonyOpts).teamIds;
+    const listed = computeApacFilteredRanks(snapshot, ceremonyOpts);
     for (const standing of snapshot.standings) {
-      if (standing.schoolRank <= APAC_SCHOOL_RANK_CAP) stars.set(standing.team.id, 'bronze');
+      const teamId = standing.team.id;
+      if (invited.has(teamId)) stars.set(teamId, 'gold');
+      else if (listed.has(teamId)) stars.set(teamId, 'bronze');
     }
     return stars;
   }
@@ -262,12 +265,9 @@ export function computeApacStars(
     }
 
     const filteredRank = filteredRanks.get(teamId);
-    if (filteredRank === undefined) {
-      // Out of the running (invited school's other teams, 0 solves, or beyond
-      // the per-school cap) — bronze only while 학내 3등 이내, never promoted.
-      if (standing.schoolRank <= APAC_SCHOOL_RANK_CAP) stars.set(teamId, 'bronze');
-      continue;
-    }
+    // Out of the running (invited school's other teams, 0 solves, beyond the
+    // per-school cap, or super-region): no star.
+    if (filteredRank === undefined) continue;
 
     const invited =
       cutoffActive &&

@@ -109,8 +109,8 @@ function useAwardApacStars(): ReadonlyMap<string, ApacStarInfo> | null {
   const enabled = useAppStore((s) => s.config.apac.enabled);
   const snapshot = useAppStore((s) => s.snapshot);
   const machine = useAppStore((s) => s.awardMachine);
-  // Cross-site invitations and the WF medal schools also decide
-  // silver-vs-bronze here (spec §13.3.1), even though the cutoff promotion
+  // Cross-site invitations and the WF medal schools also decide the scored
+  // list here (spec §13.3.1), even though the cutoff promotion
   // itself is publish-only. Award mode has no inputs: both come from config.
   const publishConfig = useAppStore((s) => s.config.publish);
   const alreadyInvited = useMemo<AlreadyInvited>(

@@ -1016,7 +1016,7 @@ describe('APAC star tooltip', () => {
     const star = container.querySelector('svg.kr-apac-star');
     expect(star?.querySelector('title')?.textContent).toBe(APAC_STAR_TITLES.gold);
     expect(APAC_STAR_TITLES).toEqual({
-      bronze: 'Top 3 in their school',
+      bronze: 'In the APAC Championship list so far',
       silver: 'Likely invited to the APAC Championship',
       gold: 'Invited to the APAC Championship',
     });

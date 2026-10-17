@@ -139,8 +139,8 @@ it('publish_mode=regional reads the stored inputs of this contest from localStor
 
 // ---------------------------------------------------------------------------
 // Award mode APAC stars (spec §13): the App wires config.publish into the
-// silver-vs-bronze decision (quota base 2, WF-medal schools 3, already-invited
-// schools out of the running).
+// star decision (quota base 2, WF-medal schools 3, already-invited schools out
+// of the running and without a star).
 // ---------------------------------------------------------------------------
 
 /** Boots award mode over the sample, reveals everything, returns tier by team id. */
@@ -181,15 +181,15 @@ it('award mode: a WF-medal school keeps three silver slots, a normal school two'
   expect(tierOf('39')).toBe('silver');
   expect(tierOf('14')).toBe('silver');
   expect(tierOf('46')).toBe('silver');
-  // Korea University (normal): quota 2, so the 3rd team is bronze.
+  // Korea University (normal): quota 2, so the 3rd team has no star.
   expect(tierOf('29')).toBe('silver');
   expect(tierOf('18')).toBe('silver');
-  expect(tierOf('26')).toBe('bronze');
+  expect(tierOf('26')).toBeNull();
   // The champion is gold.
   expect(tierOf('28')).toBe('gold');
 });
 
-it('award mode: schools of winnerGroups and invitedGroups only have bronze stars', async () => {
+it('award mode: schools of winnerGroups and invitedGroups have no stars', async () => {
   const tierOf = await finishAwardAndReadTiers({
     alreadyInvited: {
       teamIds: [],
@@ -197,9 +197,9 @@ it('award mode: schools of winnerGroups and invitedGroups only have bronze stars
       invitedGroups: ['Korea University'],
     },
   });
-  for (const id of ['9', '30', '74']) expect(tierOf(id), `Yonsei team ${id}`).toBe('bronze');
-  for (const id of ['29', '18', '26']) expect(tierOf(id), `Korea Univ. team ${id}`).toBe('bronze');
-  // KAIST has no invitation: its first two teams stay silver, the 3rd is bronze.
+  for (const id of ['9', '30', '74']) expect(tierOf(id), `Yonsei team ${id}`).toBeNull();
+  for (const id of ['29', '18', '26']) expect(tierOf(id), `Korea Univ. team ${id}`).toBeNull();
+  // KAIST has no invitation: its first two teams stay silver, the 3rd has no star.
   expect(tierOf('39')).toBe('silver');
-  expect(tierOf('46')).toBe('bronze');
+  expect(tierOf('46')).toBeNull();
 });

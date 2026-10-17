@@ -136,7 +136,7 @@ function markupWithoutToggle(container: HTMLElement): string {
 const KO = {
   banner: MESSAGES.ko.banner,
   legend: '노란색 = 본선 진출',
-  stars: /동색 = 학내 3등 이내/,
+  stars: /은색 = APAC championship 초대 가능, 금색 = APAC championship 진출/,
   reset: '초기값으로 되돌리기',
   errorTitle: '순위표를 표시할 수 없습니다',
 };
@@ -144,7 +144,7 @@ const EN = {
   banner:
     'This page is a simulation, not an official result. ICPC Asia Pacific decides the final invitations after all regionals end.',
   legend: 'Yellow = advances to the regional',
-  stars: /bronze = Top 3 in their school/i,
+  stars: /silver = Likely invited to the APAC Championship, gold = Invited to the APAC Championship/i,
   reset: /^Reset/,
   errorTitle: /Cannot show the standings/,
 };

@@ -225,7 +225,8 @@ describe('PublishedApp', () => {
     expect(
       screen.getAllByRole('link').some((a) => a.getAttribute('href') === 'https://icpc.jp/apac/2026-27/rules/'),
     ).toBe(true);
-    expect(screen.getByText(/동색 = 학내 3등 이내/)).toBeTruthy();
+    expect(screen.getByText(/은색 = APAC championship 초대 가능/)).toBeTruthy();
+    expect(screen.queryByText(/동색/)).toBeNull(); // no bronze in the legend
     expect(container.querySelector('.regional-sim-score')?.textContent).toContain('S = 2');
 
     // Seed: the winner x1 is gold; school X leaves the list; no cutoff.

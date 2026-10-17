@@ -63,7 +63,7 @@ export interface RowDecor {
 /** APAC star semantics per tier (spec §13) — tooltip text, shared with the
  * award board (AwardView imports it). */
 export const APAC_STAR_TITLES: Record<ApacStarTier, string> = {
-  bronze: 'Top 3 in their school',
+  bronze: 'In the APAC Championship list so far',
   silver: 'Likely invited to the APAC Championship',
   gold: 'Invited to the APAC Championship',
 };

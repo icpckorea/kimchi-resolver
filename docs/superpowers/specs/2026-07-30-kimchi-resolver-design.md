@@ -275,20 +275,21 @@ URL 파라미터 (`URLSearchParams`로 파싱, config보다 우선): `r`, `time`
 
 ## 13. APAC 진출 표시 (`apac` 플래그)와 publish 모드
 
-> **2026-10-16 갱신**: publish 모드는 `off` / `preliminary` / `regional` 세 모드로 나뉘고, 공개 페이지는 `npm run publish`가 만든 정적 폴더입니다. 자세한 내용은 [publish 모드 확장 설계](2026-10-16-publish-modes-design.md)를 보세요. 이 장의 `publish.siteScore`와 URL `site_score`는 **없어졌습니다** (site score는 공식으로 계산합니다). 학교당 상한 3은 2026-27 규칙에서 2(작년 WF 메달 학교는 3)로 바뀌었습니다. 아래 본문은 2025-26 규칙 기준의 기록입니다.
+> **2026-10-16 갱신**: publish 모드는 `off` / `preliminary` / `regional` 세 모드로 나뉘고, 공개 페이지는 `npm run publish`가 만든 정적 폴더입니다. 자세한 내용은 [publish 모드 확장 설계](2026-10-16-publish-modes-design.md)를 보세요. 이 장의 `publish.siteScore`와 URL `site_score`는 **없어졌습니다** (site score는 공식으로 계산합니다). 학교당 상한 3은 2026-27 규칙에서 2(작년 WF 메달 학교는 3)로 바뀌었습니다. 동색 별도 "학내 3등 이내"가 아니라 **그 시점 APAC 리스트(scored list)에 든 팀**으로 바뀌었고, 최종 순위 공개 후에는 동색 별이 없습니다 (아래 "별 의미"와 "별 아이콘 규칙" 1~2번에 반영). 나머지 본문은 2025-26 규칙 기준의 기록입니다.
 
 목적: [ICPC APAC Championship 2025-26 규칙](https://icpc.jp/apac/2025-26/rules/) 기준으로 APAC 진출 가능성이 있는 팀을 시각적으로 인지시킨다. 규칙 요점: 학교당 최대 3팀 진출 가능(교내 4위 이하 제거), 팀 score = `(rank − 1) / site score` (작을수록 상위), score 순 병합 리스트에서 초청.
 
 **전제**: 대회가 종료된 상황(award 모드 또는 publish 모드)에서만 동작. `config.apac.enabled`로 on/off.
 
-**별 의미**: 동색 = 학내 3등 이내, 은색 = APAC championship **초대 가능**(후보), 금색 = APAC championship **진출**. 범례는 이 문구를 쓰고, 보드/시상식 **툴팁과 README는 영어**를 쓴다 — bronze `Top 3 in their school`, silver `Likely invited to the APAC Championship`, gold `Invited to the APAC Championship` (`APAC_STAR_TITLES`).
+**별 의미**: 동색 = 지금까지 APAC 리스트에 든 팀(시상식 중에만), 은색 = APAC championship **초대 가능**(후보), 금색 = APAC championship **진출**. 범례는 이 문구를 쓰고, 보드/시상식 **툴팁과 README는 영어**를 쓴다 — bronze `In the APAC Championship list so far`, silver `Likely invited to the APAC Championship`, gold `Invited to the APAC Championship` (`APAC_STAR_TITLES`).
 
 **별 아이콘 규칙** (별 부여·색상 변경 시 항상 별이 한 바퀴 회전하는 애니메이션 포함):
 
-1. **award 모드, 최종 순위 미공개 상태**: 모든 학교의 교내 1~3위(현재 스냅샷의 ICPC 랭킹 기준) 팀의 랭킹 칸 옆에 **동색 별**. 공개가 진행되어 교내 순위가 바뀌면 별도 이동(회전 애니메이션 재생).
+1. **award 모드, 최종 순위 미공개 상태**: `alreadyInvited.teamIds`의 팀은 **금색 별**(다른 사이트에서 정해진 결과라 스포일러가 아님). 현재 스냅샷의 scored list(아래 filteredRank 산출 규칙, 챔피언은 아직 모르므로 적용하지 않음)에 든 팀은 **동색 별**. 그 외 팀은 별이 없다. scored list는 현재 스냅샷으로 다시 계산하므로, 공개가 진행되어 순위가 바뀌면 별도 생기고 사라지고 이동한다(회전 애니메이션 재생). 학교당 상한은 2(작년 WF 메달 학교는 3)이다. champion, site score, cutoff는 이 단계에서 쓰지 않는다.
 2. **award 모드에서 최종 순위 전부 공개 완료 시, 또는 publish 모드**:
    - 대회 전체 1등 팀(챔피언)의 별을 **금색**으로 변경 (World Finals 직행 = APAC 진출 확정).
-   - 챔피언 학교를 **제외한** 모든 학교의 교내 1~3위 별을 **은색**으로 변경 — 초청 후보. **챔피언 학교의 2·3위는 동색 유지** (WF는 학교당 1팀이므로 초청 대상 아님).
+   - `alreadyInvited.teamIds`의 팀도 **금색**.
+   - scored list에 든 팀(챔피언 학교와 이미 초청된 학교는 통째로 빠짐)의 별을 **은색**으로 변경 — 초청 후보. **그 외 모든 팀은 별이 없다** (챔피언 학교의 나머지 팀, 0솔브 팀, 학교 상한을 넘은 팀, AU/NZ 팀). 이 단계에서 동색 별은 나오지 않는다.
 3. **publish 모드의 invited 판정**: `(filteredRank − 1) / siteScore ≤ invited score cutoff`인 **은색 별** 팀을 **금색**으로 변경.
 
    **filteredRank 산출 규칙** (icpcapac.solved.ac/2026의 2025-26 Seoul 58줄을 팀명·점수 4자리까지 완전 재현하도록 검증됨):

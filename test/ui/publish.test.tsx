@@ -488,13 +488,13 @@ describe('PublishView regional mode', () => {
 // ---------------------------------------------------------------------------
 
 describe('PublishView APAC stars', () => {
-  it("renders a gold champion, bronze champion schoolmates and silver for every other school", () => {
+  it("renders a gold champion, no star for champion schoolmates and silver for every other school", () => {
     seedStore({ siteScore: 5 });
     render(<PublishView />);
     expect(starFill('x1')).toBe(FILL.gold); // champion — World Finals direct entry
     // x2 shares school X with the champion, whose school leaves the scored
-    // list entirely (spec §13 rule 3.1) → bronze, and never promoted.
-    expect(starFill('x2')).toBe(FILL.bronze);
+    // list entirely (spec §13 rule 3.1) → no star, and never promoted.
+    expect(starOf('x2')).toBeNull();
     expect(starFill('y1')).toBe(FILL.silver);
     expect(starFill('y2')).toBe(FILL.silver);
     expect(starFill('z1')).toBe(FILL.silver);
@@ -509,8 +509,8 @@ describe('PublishView APAC stars', () => {
     expect(starFill('y1')).toBe(FILL.gold); // fr 1 → 0 ≤ 0.5
     expect(starFill('y2')).toBe(FILL.gold); // fr 2 → 0.5 — exactly the cutoff
     expect(starFill('z1')).toBe(FILL.silver); // fr 3 → 1 > 0.5
-    // Bronze is never promoted, and the champion is gold either way.
-    expect(starFill('x2')).toBe(FILL.bronze);
+    // Out-of-running teams are never promoted, and the champion is gold either way.
+    expect(starOf('x2')).toBeNull();
     expect(starFill('x1')).toBe(FILL.gold);
   });
 
@@ -519,7 +519,7 @@ describe('PublishView APAC stars', () => {
     render(<PublishView />);
     expect(starFill('y1')).toBe(FILL.silver);
     expect(starFill('y2')).toBe(FILL.silver);
-    expect(starFill('x2')).toBe(FILL.bronze);
+    expect(starOf('x2')).toBeNull();
   });
 
   it('removes an already-invited school entirely and lifts everyone below it', () => {
@@ -530,21 +530,21 @@ describe('PublishView APAC stars', () => {
       alreadyInvited: { teamIds: [], groups: ['Y'] },
     });
     render(<PublishView />);
-    expect(starFill('y1')).toBe(FILL.bronze); // out of the running…
-    expect(starFill('y2')).toBe(FILL.bronze); // …both of them
+    expect(starOf('y1')).toBeNull(); // out of the running…
+    expect(starOf('y2')).toBeNull(); // …both of them
     expect(starFill('z1')).toBe(FILL.gold); // fr 1 → 0 ≤ 0
     expect(starFill('x1')).toBe(FILL.gold); // champion
   });
 
-  it('shows an already-invited team itself as gold and its schoolmates as bronze', () => {
+  it('shows an already-invited team itself as gold and its schoolmates without a star', () => {
     seedStore({ siteScore: 2, invitedCutoff: null, alreadyInvited: { teamIds: ['y1'], groups: [] } });
     render(<PublishView />);
     expect(starFill('y1')).toBe(FILL.gold); // invited at another regional
-    expect(starFill('y2')).toBe(FILL.bronze); // schoolmate — out of the running
+    expect(starOf('y2')).toBeNull(); // schoolmate — out of the running
     expect(starFill('z1')).toBe(FILL.silver); // now the only candidate
   });
 
-  it('gives no star to schoolRank ≥ 4 teams (per-school cap)', () => {
+  it('gives no star to champion schoolmates or schoolRank ≥ 4 teams (per-school cap)', () => {
     // Local fixture: school W fields four teams, all ahead of everyone else.
     const capContest = makeContest([
       { id: 'w1', group: 'W' },
@@ -563,8 +563,8 @@ describe('PublishView APAC stars', () => {
     seedStore({ siteScore: 5, contest: capContest, snapshot: capSnapshot });
     render(<PublishView />);
     expect(starFill('w1')).toBe(FILL.gold); // champion
-    expect(starFill('w2')).toBe(FILL.bronze); // champion schoolmate
-    expect(starFill('w3')).toBe(FILL.bronze); // champion schoolmate
+    expect(starOf('w2')).toBeNull(); // champion schoolmate
+    expect(starOf('w3')).toBeNull(); // champion schoolmate
     expect(starOf('w4')).toBeNull(); // schoolRank 4 → no star at all
     expect(starFill('v1')).toBe(FILL.silver);
   });
@@ -591,7 +591,7 @@ describe('PublishView star spin', () => {
   it('spins all stars on first appearance (star granted)', () => {
     seedStore({ siteScore: 5 });
     render(<PublishView />);
-    for (const teamId of ['x1', 'x2', 'y1']) {
+    for (const teamId of ['x1', 'y1', 'y2']) {
       expect(starOf(teamId)?.classList.contains('kr-apac-star--spin')).toBe(true);
     }
   });
@@ -608,10 +608,9 @@ describe('PublishView star spin', () => {
     const y1 = starOf('y1');
     expect(y1?.querySelector('polygon')?.getAttribute('fill')).toBe(FILL.gold);
     expect(y1?.classList.contains('kr-apac-star--spin')).toBe(true);
-    // Unchanged tiers must not spin — including the champion's bronze
-    // schoolmate x2, which is out of the scored list and never promoted.
-    expect(starFill('x2')).toBe(FILL.bronze);
-    expect(starOf('x2')?.classList.contains('kr-apac-star--spin')).toBe(false);
+    // Unchanged tiers must not spin — the champion's schoolmate x2 is out of
+    // the scored list, never promoted, and has no star at all.
+    expect(starOf('x2')).toBeNull();
     expect(starOf('y2')?.classList.contains('kr-apac-star--spin')).toBe(false);
     expect(starOf('x1')?.classList.contains('kr-apac-star--spin')).toBe(false);
   });
@@ -641,9 +640,8 @@ describe('PublishView star spin', () => {
     );
     fireEvent.click(row!.querySelector('input') as HTMLInputElement);
     expect(appStore.getState().regionalInputs.invitedGroups).toEqual(['Y']);
-    // School Y leaves the scored list: silver → bronze, spinning.
-    expect(starFill('y1')).toBe(FILL.bronze);
-    expect(starOf('y1')?.classList.contains('kr-apac-star--spin')).toBe(true);
+    // School Y leaves the scored list: silver → no star (nothing left to spin).
+    expect(starOf('y1')).toBeNull();
     // z1 stays silver (still a candidate, just at a better rank) → no spin.
     expect(starFill('z1')).toBe(FILL.silver);
     expect(starOf('z1')?.classList.contains('kr-apac-star--spin')).toBe(false);
