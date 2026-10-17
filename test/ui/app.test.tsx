@@ -27,7 +27,10 @@ function readJson(rel: string): unknown {
 }
 
 // autoPlay off: the smoke test drives the queue itself (feedAllQueued).
-const baseConfig = { ...(readJson('config.json') as object), autoPlay: false };
+const baseConfig = {
+  ...(readJson('config.json') as { publish: { regional: object } }),
+  autoPlay: false,
+};
 
 const files: Record<string, unknown> = {
   'config.json': baseConfig,
@@ -142,7 +145,7 @@ it('publish_mode=regional reads the stored inputs of this contest from localStor
 
 /** Boots award mode over the sample, reveals everything, returns tier by team id. */
 async function finishAwardAndReadTiers(publishPatch: object): Promise<(teamId: string) => string | null> {
-  const publish = (baseConfig as { publish: object }).publish;
+  const publish = baseConfig.publish;
   files['config.json'] = { ...baseConfig, publish: { ...publish, ...publishPatch } };
   await bootApp('?award=true&r=1000');
   expect(appStore.getState().mode).toBe('award');
@@ -170,7 +173,7 @@ async function finishAwardAndReadTiers(publishPatch: object): Promise<(teamId: s
 it('award mode: a WF-medal school keeps three silver slots, a normal school two', async () => {
   const tierOf = await finishAwardAndReadTiers({
     regional: {
-      ...(baseConfig as { publish: { regional: object } }).publish.regional,
+      ...baseConfig.publish.regional,
       wfMedalGroups: ['KAIST'],
     },
   });
