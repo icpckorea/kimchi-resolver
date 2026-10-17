@@ -275,7 +275,7 @@ describe('PublishView preliminary mode', () => {
     ]);
 
     expect(document.querySelector('.publish-prelim-summary')?.textContent).toBe(
-      '진출 4팀 = 상위 1 + 학교 대표 2 + 추가 1',
+      '진출 4팀 (3개 학교) = 상위 1 + 학교 대표 2 + 추가 1',
     );
     expect(screen.queryByText('진출 팀 수와 K를 입력하세요')).toBeNull();
   });
@@ -329,14 +329,14 @@ describe('PublishView preliminary mode', () => {
     const summary = (): string => document.querySelector('.publish-prelim-summary')?.textContent ?? '';
     const badge = (id: string): Element | null => rowOf(id).querySelector('.team-row-notice');
     expect(badge('x1')).toBeNull();
-    expect(summary()).toBe('진출 2팀 = 상위 2 + 학교 대표 0 + 추가 0');
+    expect(summary()).toBe('진출 2팀 (1개 학교) = 상위 2 + 학교 대표 0 + 추가 0');
     expect(summary()).not.toContain('미자격');
 
     fireEvent.click(rowOf('x1').querySelector<HTMLInputElement>('.team-row-leading input')!);
     expect(badge('x1')?.textContent).toBe('미자격');
     expect(rowOf('x1').classList.contains('team-row--excluded')).toBe(true);
     expect(badge('x2')).toBeNull();
-    expect(summary()).toBe('진출 2팀 = 상위 2 + 학교 대표 0 + 추가 0 · 미자격 1팀 제외');
+    expect(summary()).toBe('진출 2팀 (2개 학교) = 상위 2 + 학교 대표 0 + 추가 0 · 미자격 1팀 제외');
 
     fireEvent.click(rowOf('x2').querySelector<HTMLInputElement>('.team-row-leading input')!);
     expect(summary()).toContain('· 미자격 2팀 제외');
@@ -873,7 +873,7 @@ describe('SaveStateButton', () => {
     const dialog = screen.getByRole('dialog');
     expect(dialog.textContent).toContain('진출 팀 수');
     expect(dialog.textContent).toContain('4');
-    expect(dialog.textContent).toContain('진출 4팀 = 상위 1 + 학교 대표 2 + 추가 1');
+    expect(dialog.textContent).toContain('진출 4팀 (3개 학교) = 상위 1 + 학교 대표 2 + 추가 1');
     // Nothing is downloaded before the operator confirms.
     expect(URL.createObjectURL).not.toHaveBeenCalled();
 

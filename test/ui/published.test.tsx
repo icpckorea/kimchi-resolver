@@ -174,6 +174,7 @@ describe('PublishedApp', () => {
     expect(['x1', 'x2', 'y1', 'y2', 'z1'].filter(isAdvance)).toEqual(['x1', 'y1', 'z1']);
     expect(['x1', 'x2', 'y1', 'y2', 'z1'].filter(isDimmed)).toEqual(['x2']);
     expect(screen.getByText('노란색 = 본선 진출')).toBeTruthy();
+    expect(document.querySelector('.published-advance-summary')?.textContent).toMatch(/^진출 \d+팀 · \d+개 학교$/);
     expect(controlsOf(container)).toHaveLength(0);
     // Each selected row says why it advanced; the legend explains the tags
     // with the saved N and K and the per-stage counts.

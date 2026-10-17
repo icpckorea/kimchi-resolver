@@ -21,10 +21,15 @@ export interface PrelimControlsProps {
   result: PrelimResult | null;
 }
 
-/** "진출 X팀 = 상위 a + 학교 대표 b + 추가 c", plus " · 미자격 n팀 제외" when n > 0. */
+/**
+ * "진출 X팀 (Y개 학교) = 상위 a + 학교 대표 b + 추가 c", plus
+ * " · 미자격 n팀 제외" when n > 0.
+ */
 export function prelimSummaryText(result: PrelimResult, ineligibleCount = 0): string {
   const { top, school, fill } = result.counts;
-  const base = `진출 ${result.selected.size}팀 = 상위 ${top} + 학교 대표 ${school} + 추가 ${fill}`;
+  const base =
+    `진출 ${result.selected.size}팀 (${result.schools}개 학교) = ` +
+    `상위 ${top} + 학교 대표 ${school} + 추가 ${fill}`;
   return ineligibleCount > 0 ? `${base} · 미자격 ${ineligibleCount}팀 제외` : base;
 }
 

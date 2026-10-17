@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import type { Contest, Problem, Run, Snapshot, Team } from '@core/types';
 import { computeStandings } from '@core/standings';
-import { selectPreliminary, type PrelimOptions } from '@core/preliminary';
+import { countSchools, selectPreliminary, type PrelimOptions } from '@core/preliminary';
 
 // ---------------------------------------------------------------------------
 // Fixture helpers
@@ -286,5 +286,34 @@ describe('selectPreliminary', () => {
     expect(result.warnings).toHaveLength(1);
     expect(result.warnings[0]).toContain('Team t2');
     expect(result.warnings[0]).toContain('Team t3');
+  });
+});
+
+describe('countSchools', () => {
+  it('counts distinct schools; every org-less team is its own school', () => {
+    const snap = snapshotOf([
+      { id: 'a1', group: 'A', solved: 5 },
+      { id: 'a2', group: 'A', solved: 4 },
+      { id: 'b1', group: 'B', solved: 3 },
+      { id: 'n1', group: '', solved: 2 },
+      { id: 'n2', group: '', solved: 1 },
+    ]);
+    expect(countSchools(snap, ['a1', 'a2'])).toBe(1);
+    expect(countSchools(snap, ['a1', 'a2', 'b1'])).toBe(2);
+    expect(countSchools(snap, ['a1', 'n1', 'n2'])).toBe(3);
+    expect(countSchools(snap, ['unknown'])).toBe(0);
+    expect(countSchools(snap, [])).toBe(0);
+  });
+
+  it('selectPreliminary reports the schools of the selected teams', () => {
+    const snap = snapshotOf([
+      { id: 'a1', group: 'A', solved: 5 },
+      { id: 'a2', group: 'A', solved: 4 },
+      { id: 'b1', group: 'B', solved: 3 },
+      { id: 'c1', group: 'C', solved: 2 },
+    ]);
+    const result = selectPreliminary(snap, opts({ totalTeams: 3, topN: 2, k: 3 }));
+    expect([...result.selected.keys()]).toEqual(['a1', 'a2', 'b1']);
+    expect(result.schools).toBe(2);
   });
 });

@@ -42,6 +42,8 @@ export interface PublishedMessages {
   stageLegend: (stage: PrelimStage, topN: number, k: number) => string;
   /** "3팀" / "3 teams": the count after a legend line (the caller adds the parentheses). */
   teamCount: (count: number) => string;
+  /** Preliminary: advancing teams and their distinct schools. */
+  advanceSummary: (teams: number, schools: number) => string;
   /** Regional mode: the meaning of the star colors (a link to the rules follows). */
   starLegend: string;
   /** The error panel. */
@@ -63,6 +65,7 @@ export const MESSAGES: Record<Lang, PublishedMessages> = {
     stageLabels: PRELIM_STAGE_LABELS,
     stageLegend: prelimStageLegend,
     teamCount: (count) => `${count}팀`,
+    advanceSummary: (teams, schools) => `진출 ${teams}팀 · ${schools}개 학교`,
     starLegend:
       '별의 의미: 은색 = APAC championship 초대 가능, 금색 = APAC championship 진출.',
     errorTitle: '순위표를 표시할 수 없습니다',
@@ -90,6 +93,9 @@ export const MESSAGES: Record<Lang, PublishedMessages> = {
       }
     },
     teamCount: (count) => `${count} ${plural(count, 'team', 'teams')}`,
+    advanceSummary: (teams, schools) =>
+      `${teams} ${plural(teams, 'team', 'teams')} from ${schools} ${plural(schools, 'school', 'schools')} ` +
+      plural(teams, 'advances', 'advance'),
     starLegend: `Star colors: silver = ${APAC_STAR_TITLES.silver}, gold = ${APAC_STAR_TITLES.gold}.`,
     errorTitle: 'Cannot show the standings',
     errorBody: 'The public data could not be read. Please tell the operator.',

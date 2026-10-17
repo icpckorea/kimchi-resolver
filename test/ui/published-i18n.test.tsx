@@ -172,6 +172,9 @@ describe('message table', () => {
       '이 페이지는 시뮬레이션입니다. 공식 결과가 아닙니다. 최종 초청은 모든 리저널이 끝난 다음 APAC에서 정합니다.',
     );
     expect(MESSAGES.ko.advanceLegend).toBe('노란색 = 본선 진출');
+    expect(MESSAGES.ko.advanceSummary(60, 32)).toBe('진출 60팀 · 32개 학교');
+    expect(MESSAGES.en.advanceSummary(60, 32)).toBe('60 teams from 32 schools advance');
+    expect(MESSAGES.en.advanceSummary(1, 1)).toBe('1 team from 1 school advances');
     expect(MESSAGES.ko.stageLabels).toEqual({
       top: '상위 팀 (학교 무관)',
       school: '학교 대표 팀',

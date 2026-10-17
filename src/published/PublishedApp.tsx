@@ -26,7 +26,7 @@ import {
   type PublishState,
   type RegionalSimInputs,
 } from '@core/publishState';
-import type { PrelimStage } from '@core/preliminary';
+import { countSchools, type PrelimStage } from '@core/preliminary';
 import { StageIcon } from '@ui/icons';
 import { ScoreboardView } from '@ui/scoreboard/ScoreboardView';
 import type { ApacStarInfo, RowDecor } from '@ui/scoreboard/TeamRow';
@@ -165,12 +165,19 @@ function PreliminaryPage(
     return counts;
   }, [state.preliminary]);
   const stages: PrelimStage[] = ['top', 'school', 'fill'];
+  const schoolCount = useMemo(
+    () => countSchools(snapshot, state.preliminary.selected.map((s) => s.teamId)),
+    [state.preliminary, snapshot],
+  );
 
   return (
     <>
       <p className="published-legend">
         <span className="published-legend-swatch" aria-hidden="true" />
         {m.advanceLegend}
+      </p>
+      <p className="published-legend published-advance-summary">
+        {m.advanceSummary(state.preliminary.selected.length, schoolCount)}
       </p>
       <ul className="published-legend published-stage-legend">
         {stages.map((stage) => (

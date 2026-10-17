@@ -74,6 +74,8 @@ export interface PrelimResult {
   /** Team id → stage. Insertion order = selection order. */
   selected: Map<string, PrelimStage>;
   counts: { top: number; school: number; fill: number };
+  /** Distinct schools of the selected teams (see {@link countSchools}). */
+  schools: number;
   /** True when top + school > totalTeams. */
   overflow: boolean;
   /** Human-readable Korean warnings: boundary ties, overflow. */
@@ -90,6 +92,22 @@ function tieWarning(boundary: string, a: TeamStanding, b: TeamStanding): string 
     `${boundary} 경계에서 같은 순위(${a.icpcRank}위)의 팀이 나뉩니다: ` +
     `'${a.team.name}' 선발, '${b.team.name}' 미선발. 직접 확인해 주세요.`
   );
+}
+
+/**
+ * Distinct schools among the given teams. A team with no organization ('')
+ * counts as its own school, as in the selection.
+ */
+export function countSchools(snapshot: Snapshot, teamIds: Iterable<string>): number {
+  const groups = new Set<string>();
+  let orgless = 0;
+  for (const id of teamIds) {
+    const group = snapshot.byTeam.get(id)?.team.group;
+    if (group === undefined) continue;
+    if (group === '') orgless++;
+    else groups.add(group);
+  }
+  return groups.size + orgless;
 }
 
 export function selectPreliminary(snapshot: Snapshot, opts: PrelimOptions): PrelimResult {
@@ -166,5 +184,5 @@ export function selectPreliminary(snapshot: Snapshot, opts: PrelimOptions): Prel
     }
   }
 
-  return { selected, counts, overflow, warnings };
+  return { selected, counts, schools: countSchools(snapshot, selected.keys()), overflow, warnings };
 }
