@@ -350,7 +350,9 @@ export function TeamRow({
         </div>
       )}
 
-      {valueSlot || value !== undefined ? (
+      {/* Mobile has no room for a 4-decimal column next to the name (spec
+       * §14); the compact row drops it and the detail modal shows it. */}
+      {!mobile && (valueSlot || value !== undefined) ? (
         <div className="team-row-value">{value ?? ''}</div>
       ) : null}
     </motion.div>

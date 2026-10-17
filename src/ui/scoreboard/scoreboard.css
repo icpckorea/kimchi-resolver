@@ -871,6 +871,19 @@
   white-space: nowrap;
 }
 
+.team-detail-value {
+  display: flex;
+  justify-content: space-between;
+  gap: 0.5rem;
+  margin: 0.5rem 0;
+  font-size: 0.85rem;
+  font-variant-numeric: tabular-nums;
+}
+
+.team-detail-value-label {
+  color: #777;
+}
+
 .team-detail-close {
   flex: none;
   width: 2rem;

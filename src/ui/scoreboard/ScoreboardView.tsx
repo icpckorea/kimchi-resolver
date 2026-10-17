@@ -116,7 +116,7 @@ export function ScoreboardView({
       className={cls(
         'scoreboard',
         isMobile && 'scoreboard--mobile',
-        valueSlot && 'scoreboard--has-value',
+        valueSlot && !isMobile && 'scoreboard--has-value',
         hasLeading && 'scoreboard--has-leading',
         className,
       )}
@@ -151,6 +151,7 @@ export function ScoreboardView({
           problems={problems}
           config={config}
           manualLabels={manualLabels?.get(detailStanding.team.id) ?? []}
+          value={rowDecor?.get(detailStanding.team.id)?.value}
           onClose={() => setDetailTeamId(null)}
         />
       ) : null}
