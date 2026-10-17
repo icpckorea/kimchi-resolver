@@ -167,6 +167,12 @@ const configSchema = z.object({
   showBalloons: z.boolean().default(true),
   showSchoolLogos: z.boolean().default(false),
   showEvents: z.boolean().default(false),
+  /**
+   * Public deployment: the URL cannot switch the app into award or publish
+   * mode (`award`, `award_rank_begin`, `publish`, `publish_mode` and
+   * `invited_cutoff` are ignored, silently — a viewer sees no warning).
+   */
+  lockMode: z.boolean().default(false),
   maxNotifications: z.number().int().nonnegative().default(100),
   pagination: z.boolean().default(false),
   paginationSize: z.number().int().positive().default(50),
@@ -416,6 +422,13 @@ export function applyUrlOverrides(config: AppConfig, search: string): UrlOverrid
       out.autoPlay = false;
     },
   );
+
+  // lockMode: drop the mode-switching params before they are read.
+  if (base.lockMode) {
+    for (const name of ['award', 'award_rank_begin', 'publish', 'publish_mode', 'invited_cutoff']) {
+      params.delete(name);
+    }
+  }
 
   boolParam('award', (v) => {
     out.award.mode = v;

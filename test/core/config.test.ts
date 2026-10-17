@@ -30,6 +30,7 @@ describe('parseConfig — defaults', () => {
       showBalloons: true,
       showSchoolLogos: false,
       showEvents: false,
+      lockMode: false,
       maxNotifications: 100,
       pagination: false,
       paginationSize: 50,
@@ -440,6 +441,29 @@ describe('applyUrlOverrides', () => {
     expect(config.replayTimeMinutes).toBeNull();
     expect(config.searchQuery).toBeNull();
     expect(config.followTeamId).toBeNull();
+  });
+
+  it('lockMode ignores the award and publish params silently; others still apply', () => {
+    const { config: parsed } = parseConfig({ lockMode: true });
+    const { config, warnings } = applyUrlOverrides(
+      parsed,
+      '?award=true&award_rank_begin=3&publish=true&publish_mode=preliminary&invited_cutoff=1&animation=false&q=kaist',
+    );
+    expect(warnings).toEqual([]);
+    expect(config.award.mode).toBe(false);
+    expect(config.award.rankBegin).toBeNull();
+    expect(config.publish.enabled).toBe(false);
+    expect(config.publish.mode).toBe('off');
+    expect(config.publish.invitedScoreCutoff).toBeNull();
+    expect(selectMode(config)).toBe('spectator');
+    expect(config.animation).toBe(false);
+    expect(config.searchQuery).toBe('kaist');
+  });
+
+  it('lockMode defaults to false', () => {
+    expect(defaultConfig().lockMode).toBe(false);
+    const { config } = applyUrlOverrides(defaultConfig(), '?award=true');
+    expect(config.award.mode).toBe(true);
   });
 
   it('URL parameters take precedence over config.json values', () => {

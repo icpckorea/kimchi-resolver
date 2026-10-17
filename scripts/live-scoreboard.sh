@@ -143,6 +143,7 @@ deploy() {
     c.apac = { enabled: false };
     c.publish = { ...c.publish, enabled: false, mode: "off" };
     c.award = { ...c.award, mode: false };
+    c.lockMode = true; // ?award= / ?publish= cannot switch the public page
     fs.writeFileSync(process.argv[1], JSON.stringify(c, null, 2) + "\n");
   ' "$stage/config.json"
   if grep -q '"auth"' "$stage/config.json"; then echo "config.json has auth" >&2; exit 1; fi
