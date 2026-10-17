@@ -233,7 +233,7 @@ describe('language toggle', () => {
     expect(screen.getByText(EN.legend)).toBeTruthy();
     expect(screen.queryByText(KO.legend)).toBeNull();
     expect(tags()).toEqual(['Top', null, 'School', null, 'Fill']);
-    expect(legend()).toContain('Top: top 1 team regardless of school (1 team)');
+    expect(legend()).toContain('Top: the best 1 team regardless of school (1 team)');
     expect(legend()).toContain('School: top team of each school that solved 1 or more problems (1 team)');
     expect(legend()).toContain('Fill: next teams by rank to fill the remaining spots (1 team)');
 

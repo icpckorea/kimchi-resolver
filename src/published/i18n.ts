@@ -67,7 +67,7 @@ export const MESSAGES: Record<Lang, PublishedMessages> = {
       '별의 의미: 동색 = 학내 3등 이내, 은색 = APAC championship 초대 가능, 금색 = APAC championship 진출.',
     errorTitle: '순위표를 표시할 수 없습니다',
     errorBody: '공개 데이터를 읽지 못했습니다. 운영자에게 알려 주세요.',
-    langToggle: { label: 'English', ariaLabel: 'English로 보기' },
+    langToggle: { label: 'English', ariaLabel: '영어로 보기' },
     regional: REGIONAL_SIM_MESSAGES_KO,
   },
   en: {
@@ -78,7 +78,7 @@ export const MESSAGES: Record<Lang, PublishedMessages> = {
     stageLegend: (stage, topN, k) => {
       switch (stage) {
         case 'top':
-          return `Top: top ${topN} ${plural(topN, 'team', 'teams')} regardless of school`;
+          return `Top: the best ${topN} ${plural(topN, 'team', 'teams')} regardless of school`;
         case 'school':
           return `School: top team of each school that solved ${k} or more problems`;
         case 'fill':
@@ -90,7 +90,7 @@ export const MESSAGES: Record<Lang, PublishedMessages> = {
     errorTitle: 'Cannot show the standings',
     errorBody: 'The public data could not be read. Please tell the operator.',
     // The label is the name of Korean in Korean script, as usual for a language switch.
-    langToggle: { label: '한국어', ariaLabel: 'View in 한국어 (Korean)' },
+    langToggle: { label: '한국어', ariaLabel: 'View in Korean' },
     regional: {
       title: 'APAC qualification simulation inputs',
       scoreUnusable:
