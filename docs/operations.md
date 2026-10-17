@@ -353,11 +353,14 @@ polls.
 
 **Freeze.** Like the original converter, a run at or after the freeze minute
 (contest duration minus `scoreboard_freeze_duration`) is written as pending.
-The mask ends when DOMjudge thaws or finalizes the contest (`/state` `thawed`
-or `finalized`). If the freeze time cannot be read, or `/state` fails, the
-script keeps the mask. It never falls back to real results. The script stops by
-itself when the judge sets `end_of_updates`, but not while the mask still
-holds: then it keeps polling (and writes `noMoreUpdate: false`) until the thaw.
+By default the mask never ends: the award ceremony runs after DOMjudge
+finalizes the contest and before it thaws the scoreboard, so a public feed must
+stay frozen through both. With `--follow-thaw`, the mask ends when `/state`
+reports `thawed` (never on `finalized` alone). If the freeze time cannot be
+read, or `/state` fails, the script keeps the mask. It never falls back to real
+results. The script stops by itself when the judge sets `end_of_updates`. With
+`--follow-thaw` it does not stop while the mask still holds: then it keeps
+polling (and writes `noMoreUpdate: false`) until the thaw.
 A bad contest reload after the first good poll is logged, and the old contest
 and freeze time stay in use.
 

@@ -111,6 +111,7 @@ function settings(outDir: string, extra: Partial<ConvertSettings> = {}): Convert
     outDir,
     intervalSeconds: null,
     unfreeze: false,
+    followThaw: false,
     baseUrl: URL_ROOT,
     auth: { username: 'reader', password: 's3cr3t-pass' },
     ...extra,
@@ -435,23 +436,39 @@ describe('runConvert (once)', () => {
     expect(runs.runs.map((r: { result: string }) => r.result)).toEqual(['Yes', 'No', 'Yes', 'No', 'No (no penalty)']);
   });
 
-  it('lifts the mask once DOMjudge has thawed the scoreboard', async () => {
-    judge.routes[`${ROOT}/state`] = { started: '2026-10-17T10:00:00+00:00', thawed: '2026-10-17T11:30:00+00:00' };
+  it('keeps the mask after DOMjudge thaws, without --follow-thaw', async () => {
+    judge.routes[`${ROOT}/state`] = {
+      started: '2026-10-17T10:00:00+00:00',
+      thawed: '2026-10-17T11:30:00+00:00',
+      finalized: '2026-10-17T11:20:00+00:00',
+    };
     await run(settings(out));
+    expect(readJson(join(out, 'runs.json')).runs[2].result).toBe('');
+  });
+
+  it('--follow-thaw lifts the mask once DOMjudge has thawed the scoreboard', async () => {
+    judge.routes[`${ROOT}/state`] = { started: '2026-10-17T10:00:00+00:00', thawed: '2026-10-17T11:30:00+00:00' };
+    await run(settings(out, { followThaw: true }));
     const runs = readJson(join(out, 'runs.json'));
     expect(runs.kimchiUnfrozen).toBeUndefined();
     expect(runs.runs[2].result).toBe('Yes');
   });
 
-  it('lifts the mask once the contest is finalized', async () => {
+  it('--follow-thaw keeps the mask when the contest is only finalized (the ceremony gap)', async () => {
     judge.routes[`${ROOT}/state`] = { started: '2026-10-17T10:00:00+00:00', thawed: null, finalized: '2026-10-17T16:00:00+00:00' };
-    await run(settings(out));
-    expect(readJson(join(out, 'runs.json')).runs[2].result).toBe('Yes');
+    await run(settings(out, { followThaw: true }));
+    expect(readJson(join(out, 'runs.json')).runs[2].result).toBe('');
+  });
+
+  it('parses --follow-thaw', () => {
+    const deps = { env: goodEnv, projectRoot: makeProject() };
+    expect(resolveSettings(['--contest', 'c1', '--follow-thaw'], deps).followThaw).toBe(true);
+    expect(resolveSettings(['--contest', 'c1'], deps).followThaw).toBe(false);
   });
 
   it('keeps the mask when /state cannot be read', async () => {
     delete judge.routes[`${ROOT}/state`];
-    await run(settings(out));
+    await run(settings(out, { followThaw: true }));
     expect(readJson(join(out, 'runs.json')).runs[2].result).toBe('');
   });
 
@@ -548,13 +565,34 @@ describe('runConvert (--interval)', () => {
     expect(readJson(join(out, 'runs.json')).time.noMoreUpdate).toBe(true);
   });
 
-  it('does not stop on end_of_updates while the freeze mask holds, and stops after the thaw', async () => {
+  it('without --follow-thaw, end_of_updates is final and the mask stays', async () => {
+    const judge = makeJudge();
+    judge.routes[`${ROOT}/state`] = { started: '2026-10-17T10:00:00+00:00', thawed: null, end_of_updates: '2026-10-17T16:00:00+00:00' };
+    const out = join(tmp, `out-${counter++}`);
+    let slept = 0;
+    const code = await runConvert(settings(out, { intervalSeconds: 10 }), {
+      fetchImpl: judge.fetchImpl,
+      log: () => {},
+      error: () => {},
+      now: () => NOW,
+      sleep: async () => {
+        slept++;
+      },
+    });
+    expect(code).toBe(0);
+    expect(slept).toBe(0);
+    const runs = readJson(join(out, 'runs.json'));
+    expect(runs.time.noMoreUpdate).toBe(true);
+    expect(runs.runs[2].result).toBe('');
+  });
+
+  it('--follow-thaw: does not stop on end_of_updates while the freeze mask holds, and stops after the thaw', async () => {
     const judge = makeJudge();
     judge.routes[`${ROOT}/state`] = { started: '2026-10-17T10:00:00+00:00', thawed: null, end_of_updates: '2026-10-17T16:00:00+00:00' };
     const out = join(tmp, `out-${counter++}`);
     const logs: string[] = [];
     let slept = 0;
-    const code = await runConvert(settings(out, { intervalSeconds: 10 }), {
+    const code = await runConvert(settings(out, { intervalSeconds: 10, followThaw: true }), {
       fetchImpl: judge.fetchImpl,
       log: (l) => logs.push(l),
       error: () => {},

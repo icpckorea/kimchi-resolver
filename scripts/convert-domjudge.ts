@@ -1,5 +1,5 @@
 /**
- * `npm run convert -- --contest <id> [--out <dir>] [--interval <seconds>] [--unfreeze] [--url <api root>]`
+ * `npm run convert -- --contest <id> [--out <dir>] [--interval <seconds>] [--follow-thaw] [--unfreeze] [--url <api root>]`
  *
  * In-repo replacement for spotboard/domjudge-converter. Reads the DOMjudge
  * Contest API through the app's own adapter (src/core/ingest/contest-api.ts)
@@ -13,7 +13,10 @@
  * written to an output file.
  *
  * Freeze: a run at or after the freeze minute is written as pending, like the
- * original converter, until DOMjudge itself thaws the scoreboard. --unfreeze
+ * original converter. The mask never ends by itself: the ceremony runs after
+ * DOMjudge finalizes the contest and before it thaws the scoreboard, so a
+ * public feed must stay frozen through both. --follow-thaw ends the mask when
+ * DOMjudge reports `thawed` (never on `finalized`). --unfreeze
  * keeps the real results; it is refused for an --out folder inside public/,
  * dist/ or publish-dist/.
  */
@@ -56,6 +59,8 @@ export interface ConvertSettings {
   /** null: run once. */
   intervalSeconds: number | null;
   unfreeze: boolean;
+  /** End the freeze mask when DOMjudge reports `thawed`. Default: never. */
+  followThaw: boolean;
   baseUrl: string;
   auth: { username: string; password: string };
 }
@@ -87,13 +92,14 @@ interface RawArgs {
   out?: string;
   interval?: string;
   unfreeze: boolean;
+  followThaw: boolean;
   url?: string;
 }
 
 const VALUE_FLAGS = new Set(['contest', 'out', 'interval', 'url']);
 
 function parseArgs(argv: readonly string[]): RawArgs {
-  const raw: RawArgs = { unfreeze: false };
+  const raw: RawArgs = { unfreeze: false, followThaw: false };
   const args = argv.filter((a) => a !== '--');
   for (let i = 0; i < args.length; i++) {
     const arg = args[i];
@@ -102,6 +108,10 @@ function parseArgs(argv: readonly string[]): RawArgs {
     const name = eq === -1 ? arg.slice(2) : arg.slice(2, eq);
     if (name === 'unfreeze') {
       raw.unfreeze = true;
+      continue;
+    }
+    if (name === 'follow-thaw') {
+      raw.followThaw = true;
       continue;
     }
     if (!VALUE_FLAGS.has(name)) throw new ConvertError(`Unknown option "--${name}". ${USAGE}`);
@@ -113,7 +123,7 @@ function parseArgs(argv: readonly string[]): RawArgs {
 }
 
 const USAGE =
-  'Usage: npm run convert -- --contest <id> [--out <dir>] [--interval <seconds>] [--unfreeze] [--url <api root>]';
+  'Usage: npm run convert -- --contest <id> [--out <dir>] [--interval <seconds>] [--follow-thaw] [--unfreeze] [--url <api root>]';
 
 /**
  * Resolves symlinks of the deepest existing ancestor, so a link cannot hide a
@@ -232,6 +242,7 @@ export function resolveSettings(argv: readonly string[], deps: SettingsDeps = {}
     outDir,
     intervalSeconds,
     unfreeze: raw.unfreeze,
+    followThaw: raw.followThaw,
     baseUrl,
     auth: { username: cred.slice(0, colon), password: cred.slice(colon + 1) },
   };
@@ -380,24 +391,27 @@ export async function runConvert(settings: ConvertSettings, deps: RunDeps = {}):
     polls++;
     const result = await source.fetchRuns(cursor);
 
-    // DOMjudge thawed or finalized the contest: its own scoreboard shows the
-    // real results, so the freeze mask ends. An unreadable /state keeps the mask.
+    // With --follow-thaw only: DOMjudge thawed the scoreboard, so its own
+    // public scoreboard shows the real results and the mask ends. `finalized`
+    // never ends it (the ceremony runs between finalize and thaw). An
+    // unreadable /state keeps the mask.
     let effectiveFreeze = freezeMinute;
-    if (!settings.unfreeze && freezeMinute !== null) {
+    if (settings.followThaw && !settings.unfreeze && freezeMinute !== null) {
       try {
-        const state = (await getJson('/state')) as { thawed?: unknown; finalized?: unknown } | null;
-        if (state?.thawed != null || state?.finalized != null) effectiveFreeze = null;
+        const state = (await getJson('/state')) as { thawed?: unknown } | null;
+        if (state?.thawed != null) effectiveFreeze = null;
       } catch {
         // keep the mask
       }
     }
     const masking = !settings.unfreeze && effectiveFreeze !== null;
-    // While the mask holds, the feed is not done: end_of_updates without a thaw
-    // must not stop the converter or tell the board to stop. A later thaw still has to arrive.
-    const noMore = result.noMoreUpdate && !masking;
-    if (result.noMoreUpdate && masking && !maskedEndLogged) {
+    // With --follow-thaw, end_of_updates before the thaw must not stop the
+    // converter or the board: the thaw still has to arrive. Without it the
+    // mask is permanent, so end_of_updates is final.
+    const noMore = result.noMoreUpdate && !(masking && settings.followThaw);
+    if (result.noMoreUpdate && masking && settings.followThaw && !maskedEndLogged) {
       maskedEndLogged = true;
-      log(`[${stamp(now)}] the judge set end_of_updates but the freeze is not thawed or finalized; still polling.`);
+      log(`[${stamp(now)}] the judge set end_of_updates but the scoreboard is not thawed; still polling (--follow-thaw).`);
     }
 
     const runsFile = toSpotboardRuns(result.runs, {
