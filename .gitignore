@@ -4,3 +4,4 @@ publish-dist/
 *.local
 .DS_Store
 coverage/
+config.local.json
