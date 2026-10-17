@@ -47,7 +47,7 @@ import {
   type ResolvedConfig,
 } from '@core/config';
 import { createRunFeeder } from '@core/feeder';
-import { computeStandings } from '@core/standings';
+import { computeStandings, withoutLastSolve } from '@core/standings';
 import { createAwardMachine } from '@core/award';
 import { parseAwardsJson, type AwardEntry } from '@core/awards';
 import { createSpotboardSource } from '@core/ingest/spotboard';
@@ -371,7 +371,10 @@ export function createAppStore(deps: StoreDeps = {}): AppStore {
     function recomputeSnapshot(): void {
       const contest = get().contest;
       if (contest === null || feeder === null) return;
-      set({ snapshot: computeStandings(contest, feeder.appliedRuns) });
+      const snapshot = computeStandings(contest, feeder.appliedRuns);
+      // Live board: "last solve" is only "latest so far" and moves with every
+      // solve, so it is not shown. Publish (final results) keeps it.
+      set({ snapshot: get().mode === 'spectator' ? withoutLastSolve(snapshot) : snapshot });
     }
 
     /** Record applied runs for the dashboard and notify listeners. */

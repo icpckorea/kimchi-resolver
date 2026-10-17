@@ -551,6 +551,44 @@ describe('spectator loop', () => {
 // Publish mode (spec §13)
 // ---------------------------------------------------------------------------
 
+describe('last solve on the live board', () => {
+  function sampleHarness() {
+    const read = (f: string) => JSON.parse(readFileSync(resolve(ROOT, f), 'utf8'));
+    return makeHarness({
+      'contest.json': read('public/sample/contest.json'),
+      'runs.json': read('public/sample/runs.json'),
+      'orgs/orgs.json': read('public/orgs/orgs.json'),
+    });
+  }
+  const cells = (state: ReturnType<ReturnType<typeof makeHarness>['store']['getState']>) =>
+    state.snapshot!.standings.flatMap((s) => [...s.cells.values()]);
+  const labelKinds = (state: ReturnType<ReturnType<typeof makeHarness>['store']['getState']>) =>
+    state.snapshot!.standings.flatMap((s) => s.autoLabels.map((l) => l.kind));
+
+  it('spectator mode shows no last solve, no contest-last yes, and no labels for them', async () => {
+    const { store } = sampleHarness();
+    await store.getState().boot('');
+    const state = store.getState();
+    expect(state.mode).toBe('spectator');
+    expect(cells(state).some((c) => c.isLastSolve || c.isContestLastSolve)).toBe(false);
+    expect(labelKinds(state)).not.toContain('lastToSolve');
+    expect(labelKinds(state)).not.toContain('contestLastYes');
+    expect(state.snapshot!.contestLastYes).toBeNull();
+    // First solve stays.
+    expect(cells(state).some((c) => c.isFirstSolve)).toBe(true);
+    expect(state.snapshot!.contestFirstYes).not.toBeNull();
+  });
+
+  it('publish mode (final results) keeps last solve', async () => {
+    const { store } = sampleHarness();
+    await store.getState().boot('?publish=true');
+    const state = store.getState();
+    expect(state.mode).toBe('publish');
+    expect(cells(state).some((c) => c.isLastSolve)).toBe(true);
+    expect(state.snapshot!.contestLastYes).not.toBeNull();
+  });
+});
+
 describe('publish mode', () => {
   it('feeds everything at boot, starts no timers, seeds the cutoff from the URL', async () => {
     const { store, timers, ws } = makeHarness(smallFiles());

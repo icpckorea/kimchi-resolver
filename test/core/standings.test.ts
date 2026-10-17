@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import sampleContestJson from '../../public/sample/contest.json';
 import sampleRunsJson from '../../public/sample/runs.json';
 import type { AutoLabel, Contest, Problem, Run, Team, Verdict } from '@core/types';
-import { computeStandings, compareTeamIds, PENALTY_PER_FAILURE } from '@core/standings';
+import { computeStandings, compareTeamIds, PENALTY_PER_FAILURE, withoutLastSolve } from '@core/standings';
 import { normalizeSpotboardResult } from '@core/verdict';
 
 // ---------------------------------------------------------------------------
@@ -783,5 +783,24 @@ describe('golden: 2025 ICPC Seoul sample', () => {
       seen.set(s.team.group, next);
       expect(s.schoolRank).toBe(next);
     }
+  });
+});
+
+describe('withoutLastSolve', () => {
+  it('clears last solve, contest-last yes and their labels; keeps first solve', () => {
+    const contest = makeContest([{ id: '1' }, { id: '2' }]);
+    const snap = withoutLastSolve(
+      computeStandings(contest, [
+        run('1', 'p1', 10, 'accepted', { seq: 1 }),
+        run('2', 'p1', 20, 'accepted', { seq: 2 }),
+      ]),
+    );
+    const c2 = snap.byTeam.get('2')!.cells.get('p1')!;
+    expect(c2.isLastSolve).toBe(false);
+    expect(c2.isContestLastSolve).toBe(false);
+    expect(snap.contestLastYes).toBeNull();
+    expect(labelKinds(snap.byTeam.get('2')!.autoLabels)).toEqual([]);
+    expect(snap.byTeam.get('1')!.cells.get('p1')!.isFirstSolve).toBe(true);
+    expect(labelKinds(snap.byTeam.get('1')!.autoLabels)).toContain('firstToSolve');
   });
 });
