@@ -516,8 +516,8 @@ export function createContestApiSource(opts: ContestApiSourceOptions): ContestAp
       // Group precedence: organization formal_name → organization name →
       // DOMjudge's free-text `affiliation`. organization_id is nullable, and
       // collapsing every org-less team into one shared '' bucket would make
-      // them a single giant "school" for schoolRank (and therefore for APAC
-      // stars, which key on schoolRank <= 3). '' is emitted ONLY when the feed
+      // them a single giant "school" for schoolRank and for the per-school
+      // quota of the APAC scored list. '' is emitted ONLY when the feed
       // carries no affiliation at all — downstream (core/apac.ts) treats '' as
       // "no school", never as a group.
       const group = text(org?.formal_name) ?? text(org?.name) ?? text(rawTeam.affiliation) ?? '';
