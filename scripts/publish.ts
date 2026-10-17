@@ -14,7 +14,9 @@ import {
   mkdirSync,
   readFileSync,
   readdirSync,
+  realpathSync,
   rmSync,
+  statSync,
   writeFileSync,
 } from 'node:fs';
 import { basename, dirname, isAbsolute, join, relative, resolve, sep } from 'node:path';
@@ -97,12 +99,39 @@ export function embedJson(state: PublishState): string {
   return `<script type="application/json" id="publish-data">${json}</script>`;
 }
 
-/** The outDir is emptied, so never accept the project, a parent of it, or a root. */
-function assertSafeOutDir(outDir: string): void {
-  const rel = relative(outDir, PROJECT_ROOT);
-  const holdsProject = rel === '' || (!rel.startsWith('..') && !isAbsolute(rel));
-  if (holdsProject || dirname(outDir) === outDir) {
-    throw new PublishError(`Refusing to empty ${outDir}: it holds the project. Use another --out folder.`);
+/**
+ * The outDir is emptied, so it must be either a new/empty folder, a folder this
+ * script wrote before (index.html + assets/), or `publish-dist/` in the project.
+ * Never the project, a parent of it, a root, or any other folder inside the project.
+ */
+export function assertSafeOutDir(outDir: string, projectRoot: string = PROJECT_ROOT): void {
+  const refuse = (why: string): never => {
+    throw new PublishError(`Refusing to empty ${outDir}: ${why}. Use another --out folder.`);
+  };
+  if (dirname(outDir) === outDir) refuse('it is a filesystem root');
+
+  const toProject = relative(outDir, projectRoot);
+  if (toProject === '' || (!toProject.startsWith('..') && !isAbsolute(toProject))) {
+    refuse('it holds the project');
+  }
+
+  const fromProject = relative(projectRoot, outDir);
+  const insideProject = fromProject !== '' && !fromProject.startsWith('..') && !isAbsolute(fromProject);
+  if (insideProject) {
+    const top = fromProject.split(sep)[0];
+    if (top !== DEFAULT_OUT_DIR) refuse('it is a project folder');
+    return;
+  }
+
+  // Outside the project: only an empty folder or an earlier output of this script.
+  if (existsSync(outDir)) {
+    if (!statSync(outDir).isDirectory()) refuse('it is not a folder');
+    const entries = readdirSync(outDir);
+    const isEarlierOutput =
+      (entries.includes('index.html') || entries.includes('publish.html')) && entries.includes('assets');
+    if (entries.length > 0 && !isEarlierOutput) {
+      refuse('it is not empty and does not look like an earlier publish output (index.html + assets/)');
+    }
   }
 }
 
@@ -158,15 +187,26 @@ export async function runPublish(opts: {
 }): Promise<PublishRunResult> {
   const warnings: string[] = [];
   const state = readState(resolve(opts.statePath));
-  const outDir = resolve(opts.outDir ?? DEFAULT_OUT_DIR);
-  assertSafeOutDir(outDir);
+  const given = resolve(opts.outDir ?? DEFAULT_OUT_DIR);
+  // Resolve symlinks so a link into the project or a home folder cannot hide it.
+  const outDir = existsSync(given) ? realpathSync(given) : given;
+  assertSafeOutDir(outDir, existsSync(PROJECT_ROOT) ? realpathSync(PROJECT_ROOT) : PROJECT_ROOT);
 
   rmSync(outDir, { recursive: true, force: true });
-  await build({
-    configFile: join(PROJECT_ROOT, 'vite.publish.config.ts'),
-    logLevel: 'warn',
-    build: { outDir, emptyOutDir: true },
-  });
+  // vite-node sets NODE_ENV=development, and build() keeps a preset value, which
+  // would bundle the React development build. Public pages need production.
+  const previousEnv = process.env.NODE_ENV;
+  process.env.NODE_ENV = 'production';
+  try {
+    await build({
+      configFile: join(PROJECT_ROOT, 'vite.publish.config.ts'),
+      logLevel: 'warn',
+      build: { outDir, emptyOutDir: true },
+    });
+  } finally {
+    if (previousEnv === undefined) delete process.env.NODE_ENV;
+    else process.env.NODE_ENV = previousEnv;
+  }
 
   const pagePath = join(outDir, 'publish.html');
   const html = readFileSync(pagePath, 'utf8');

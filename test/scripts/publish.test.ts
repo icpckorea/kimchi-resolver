@@ -9,7 +9,7 @@ import { existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, 
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import { parsePublishState, type PublishState } from '@core/publishState';
-import { PublishError, readSecrets, runPublish, scanOutput } from '../../scripts/publish';
+import { PublishError, assertSafeOutDir, readSecrets, runPublish, scanOutput } from '../../scripts/publish';
 import { buildSampleState, loadSample, type Sample } from '../helpers/sampleState';
 
 const NASTY_NAME = 'x</script><b>';
@@ -122,6 +122,44 @@ describe('npm run publish', () => {
     await expect(
       runPublish({ statePath: writeState('s.json', state), outDir: resolve(__dirname, '../..') }),
     ).rejects.toThrow(/refusing/i);
+  });
+
+  it('will not empty other project folders, and keeps publish-dist allowed', async () => {
+    const root = resolve(__dirname, '../..');
+    for (const folder of ['public', 'src']) {
+      await expect(
+        runPublish({ statePath: writeState('s.json', state), outDir: join(root, folder) }),
+      ).rejects.toThrow(/refusing/i);
+    }
+    expect(() => assertSafeOutDir(join(root, 'publish-dist'), root)).not.toThrow();
+    expect(() => assertSafeOutDir(join(root, 'publish-dist', 'x'), root)).not.toThrow();
+    expect(() => assertSafeOutDir(join(root, 'public'), root)).toThrow(/refusing/i);
+    expect(existsSync(join(root, 'public', 'orgs'))).toBe(true);
+  });
+
+  it('will not empty a folder outside the project that holds other files', async () => {
+    const foreign = join(tmp, 'downloads');
+    mkdirSync(foreign, { recursive: true });
+    writeFileSync(join(foreign, 'keep-me.txt'), 'precious');
+    await expect(
+      runPublish({ statePath: writeState('s2.json', state), outDir: foreign }),
+    ).rejects.toThrow(/refusing/i);
+    expect(readFileSync(join(foreign, 'keep-me.txt'), 'utf8')).toBe('precious');
+    // An earlier output of this script is fine to replace.
+    expect(() => assertSafeOutDir(outDir)).not.toThrow();
+  });
+
+  it('bundles the React production build', () => {
+    const js = listFiles(outDir)
+      .filter((f) => f.endsWith('.js'))
+      .map((f) => readFileSync(join(outDir, f), 'utf8'))
+      .join('\n');
+    expect(js).not.toContain('react.development');
+    expect(js).toContain('Minified React error');
+  });
+
+  it('restores NODE_ENV after the build', () => {
+    expect(process.env.NODE_ENV).toBe('test');
   });
 
   it('output has no config.json, no awards.json, and no judgement-types', () => {
