@@ -44,6 +44,12 @@ export interface RowDecor {
    * `label` is its tooltip and accessible name (the caller translates it).
    */
   stageIcon?: { stage: PrelimStage; label: string };
+  /**
+   * Prepare page only: a visible badge after the name, e.g. '미자격' for a team
+   * that is excluded. It also grays and strikes through the ranks
+   * (`team-row--excluded`). The public page never sets it.
+   */
+  notice?: string;
   /** Right-aligned note, e.g. the APAC value '0.1740'. */
   value?: string;
   /**
@@ -208,6 +214,7 @@ export function TeamRow({
   const tappable = mobile && onOpenDetail !== undefined;
   const leading = decor?.leading;
   const stageIcon = decor?.stageIcon;
+  const notice = decor?.notice;
   const value = decor?.value;
 
   return (
@@ -222,6 +229,7 @@ export function TeamRow({
         followed && config.useFollowedTeamSticky && 'sticky',
         decor?.advance === true && 'team-row--advance',
         decor?.dimmed === true && 'team-row--dimmed',
+        notice !== undefined && notice !== '' && 'team-row--excluded',
       )}
       data-team-id={team.id}
       data-solved={standing.solved}
@@ -296,6 +304,9 @@ export function TeamRow({
           <span className="team-name" style={nameFitStyle(team.name)}>
             {team.name}
           </span>
+          {notice !== undefined && notice !== '' ? (
+            <span className="team-row-notice">{notice}</span>
+          ) : null}
           {stageIcon !== undefined ? (
             <StageIcon
               stage={stageIcon.stage}

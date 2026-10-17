@@ -8,7 +8,7 @@
  * never import `@store`, so the static public page can render it without the
  * app store, feed or ingest code. `Scoreboard` is the store wrapper.
  */
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useState, type ReactNode } from 'react';
 
 import type { OrgsIndex, Problem, Snapshot, TeamStanding } from '@core/types';
 import type { ResolvedConfig } from '@core/config';
@@ -43,6 +43,11 @@ export interface ScoreboardViewProps {
   manualLabels?: ReadonlyMap<string, readonly string[]> | null;
   /** team id → row decoration (publish prepare / public page). */
   rowDecor?: ReadonlyMap<string, RowDecor> | null;
+  /**
+   * Header cell above the leading column (the prepare page's 미자격 label and
+   * hint). Shown only when some row has a leading control.
+   */
+  leadingHeader?: ReactNode;
   /** "teamId problemId" → flip batch id for just-applied live runs. */
   flipCells?: ReadonlyMap<string, number> | null;
   /** Search text; null/omitted shows every team. */
@@ -61,6 +66,7 @@ export function ScoreboardView({
   apacStars = null,
   manualLabels = null,
   rowDecor = null,
+  leadingHeader,
   flipCells = null,
   searchQuery = null,
   page = 0,
@@ -123,6 +129,10 @@ export function ScoreboardView({
       data-page={currentPage}
       data-page-count={pageCount}
     >
+      {hasLeading && leadingHeader !== undefined ? (
+        <div className="team-row-leading-header">{leadingHeader}</div>
+      ) : null}
+
       {visible.map((standing, index) => (
         <TeamRow
           key={standing.team.id}

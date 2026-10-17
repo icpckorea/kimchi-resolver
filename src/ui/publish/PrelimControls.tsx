@@ -21,10 +21,11 @@ export interface PrelimControlsProps {
   result: PrelimResult | null;
 }
 
-/** "진출 X팀 = 상위 a + 학교 대표 b + 추가 c" */
-export function prelimSummaryText(result: PrelimResult): string {
+/** "진출 X팀 = 상위 a + 학교 대표 b + 추가 c", plus " · 미자격 n팀 제외" when n > 0. */
+export function prelimSummaryText(result: PrelimResult, ineligibleCount = 0): string {
   const { top, school, fill } = result.counts;
-  return `진출 ${result.selected.size}팀 = 상위 ${top} + 학교 대표 ${school} + 추가 ${fill}`;
+  const base = `진출 ${result.selected.size}팀 = 상위 ${top} + 학교 대표 ${school} + 추가 ${fill}`;
+  return ineligibleCount > 0 ? `${base} · 미자격 ${ineligibleCount}팀 제외` : base;
 }
 
 const STAGES: readonly PrelimStage[] = ['top', 'school', 'fill'];
@@ -93,7 +94,7 @@ export function PrelimControls({ value, onChange, result }: PrelimControlsProps)
         ) : (
           <>
             <p className="publish-prelim-summary" role="status">
-              {prelimSummaryText(result)}
+              {prelimSummaryText(result, value.ineligibleTeamIds.length)}
             </p>
             {value.k !== null ? <StageLegend result={result} topN={value.topN} k={value.k} /> : null}
             {result.warnings.length > 0 ? (
@@ -106,7 +107,7 @@ export function PrelimControls({ value, onChange, result }: PrelimControlsProps)
           </>
         )}
         <p className="publish-field-note">
-          순위표 왼쪽의 체크박스를 켜면 그 팀은 미자격입니다. 미자격 팀은 선발하지 않습니다.
+          순위표 왼쪽의 "미자격" 체크박스를 켜면 그 팀은 선발에서 제외됩니다. 제외된 팀에는 "미자격" 표시가 붙습니다.
         </p>
       </div>
     </section>

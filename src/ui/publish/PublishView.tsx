@@ -105,12 +105,13 @@ function usePublishData() {
 
 interface BoardProps {
   rowDecor?: ReadonlyMap<string, RowDecor> | null;
+  leadingHeader?: ReactNode;
   apacStars?: ReadonlyMap<string, ApacStarInfo> | null;
   manualLabels: ReadonlyMap<string, readonly string[]> | null;
 }
 
 /** The static board (spec §13): no row animation, no pagination slices. */
-function PublishBoard({ rowDecor = null, apacStars = null, manualLabels }: BoardProps) {
+function PublishBoard({ rowDecor = null, apacStars = null, manualLabels, leadingHeader }: BoardProps) {
   const contest = useAppStore((s) => s.contest);
   const snapshot = useAppStore((s) => s.snapshot);
   const config = useAppStore((s) => s.config);
@@ -133,6 +134,7 @@ function PublishBoard({ rowDecor = null, apacStars = null, manualLabels }: Board
       apacStars={apacStars}
       manualLabels={manualLabels}
       rowDecor={rowDecor}
+      leadingHeader={leadingHeader}
     />
   );
 }
@@ -210,6 +212,7 @@ function PrelimPublish({
       map.set(team.id, {
         advance: stage !== undefined,
         dimmed: isIneligible,
+        notice: isIneligible ? '미자격' : undefined,
         stageIcon: stage !== undefined ? { stage, label: PRELIM_STAGE_LABELS[stage] } : undefined,
         leading: (
           <input
@@ -241,7 +244,10 @@ function PrelimPublish({
     { label: 'K', value: numberText(k) },
     { label: '미자격 팀', value: listText(names) },
   ];
-  const saveResults = result === null ? [] : [prelimSummaryText(result), ...result.warnings];
+  const saveResults =
+    result === null
+      ? []
+      : [prelimSummaryText(result, ineligibleTeamIds.length), ...result.warnings];
 
   return (
     <>
@@ -281,7 +287,16 @@ function PrelimPublish({
           results={saveResults}
         />
       </div>
-      <PublishBoard rowDecor={rowDecor} manualLabels={manualLabels} />
+      <PublishBoard
+        rowDecor={rowDecor}
+        manualLabels={manualLabels}
+        leadingHeader={
+          <>
+            <span className="leading-header-label">미자격</span>
+            <span>체크하면 선발에서 제외됩니다</span>
+          </>
+        }
+      />
     </>
   );
 }

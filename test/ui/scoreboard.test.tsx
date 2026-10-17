@@ -1078,6 +1078,32 @@ describe('ScoreboardView and row decoration', () => {
     expect(row(container, 't1').classList.contains('team-row--dimmed')).toBe(false);
   });
 
+  it('notice badge and leading header render only when given', () => {
+    const { contest, snapshot } = priorityFixture();
+    const rowDecor = new Map<string, RowDecor>([
+      ['t1', { dimmed: true, notice: 'NOTICE', leading: <input type="checkbox" aria-label="x" /> }],
+      ['t2', { dimmed: true, leading: <input type="checkbox" aria-label="y" /> }],
+    ]);
+    const { container } = render(
+      <ScoreboardView
+        {...viewProps(contest, snapshot)}
+        rowDecor={rowDecor}
+        leadingHeader={<span>HEAD</span>}
+      />,
+    );
+    expect(row(container, 't1').querySelector('.team-row-notice')?.textContent).toBe('NOTICE');
+    expect(row(container, 't1').classList.contains('team-row--excluded')).toBe(true);
+    expect(row(container, 't2').querySelector('.team-row-notice')).toBeNull();
+    expect(row(container, 't2').classList.contains('team-row--excluded')).toBe(false);
+    expect(container.querySelector('.team-row-leading-header')?.textContent).toBe('HEAD');
+
+    // No leading column on the board: no header either.
+    const plain = render(
+      <ScoreboardView {...viewProps(contest, snapshot)} leadingHeader={<span>HEAD</span>} />,
+    );
+    expect(plain.container.querySelector('.team-row-leading-header')).toBeNull();
+  });
+
   it('value and stage icon render', () => {
     const { contest, snapshot } = priorityFixture();
     const rowDecor = new Map<string, RowDecor>([

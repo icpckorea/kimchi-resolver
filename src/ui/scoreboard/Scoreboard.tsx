@@ -7,7 +7,7 @@
  * Every prop is optional. Tests and the award/publish screens can drive it
  * fully via props.
  */
-import { useMemo } from 'react';
+import { useMemo, type ReactNode } from 'react';
 
 import type { OrgsIndex, Problem, Snapshot } from '@core/types';
 import type { ResolvedConfig } from '@core/config';
@@ -39,6 +39,8 @@ export interface ScoreboardProps {
   manualLabels?: ReadonlyMap<string, readonly string[]> | null;
   /** team id → row decoration (publish prepare page). */
   rowDecor?: ReadonlyMap<string, RowDecor> | null;
+  /** Header above the leading column of the rows (see ScoreboardView). */
+  leadingHeader?: ReactNode;
   className?: string;
 }
 
@@ -81,6 +83,7 @@ export function Scoreboard(props: ScoreboardProps) {
       apacStars={props.apacStars}
       manualLabels={props.manualLabels}
       rowDecor={props.rowDecor}
+      leadingHeader={props.leadingHeader}
       flipCells={flipCells}
       searchQuery={searchQuery}
       page={props.page}

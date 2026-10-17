@@ -314,6 +314,41 @@ describe('PublishView preliminary mode', () => {
     expect(isAdvance('x1')).toBe(true);
   });
 
+  it('preliminary: the 미자격 column says what the checkbox does', () => {
+    seedStore({ mode: 'preliminary', prelim: { totalTeams: 2, topN: 2, k: 5 } });
+    render(<PublishView />);
+    const header = document.querySelector('.publish-board .team-row-leading-header');
+    expect(header).not.toBeNull();
+    expect(header?.textContent).toContain('미자격');
+    expect(header?.textContent).toContain('체크하면 선발에서 제외됩니다');
+  });
+
+  it('preliminary: a checked team shows a 미자격 badge and the summary counts it', () => {
+    seedStore({ mode: 'preliminary', prelim: { totalTeams: 2, topN: 2, k: 5 } });
+    render(<PublishView />);
+    const summary = (): string => document.querySelector('.publish-prelim-summary')?.textContent ?? '';
+    const badge = (id: string): Element | null => rowOf(id).querySelector('.team-row-notice');
+    expect(badge('x1')).toBeNull();
+    expect(summary()).toBe('진출 2팀 = 상위 2 + 학교 대표 0 + 추가 0');
+    expect(summary()).not.toContain('미자격');
+
+    fireEvent.click(rowOf('x1').querySelector<HTMLInputElement>('.team-row-leading input')!);
+    expect(badge('x1')?.textContent).toBe('미자격');
+    expect(rowOf('x1').classList.contains('team-row--excluded')).toBe(true);
+    expect(badge('x2')).toBeNull();
+    expect(summary()).toBe('진출 2팀 = 상위 2 + 학교 대표 0 + 추가 0 · 미자격 1팀 제외');
+
+    fireEvent.click(rowOf('x2').querySelector<HTMLInputElement>('.team-row-leading input')!);
+    expect(summary()).toContain('· 미자격 2팀 제외');
+
+    // Unchecking removes the badge and the count.
+    fireEvent.click(rowOf('x1').querySelector<HTMLInputElement>('.team-row-leading input')!);
+    fireEvent.click(rowOf('x2').querySelector<HTMLInputElement>('.team-row-leading input')!);
+    expect(badge('x1')).toBeNull();
+    expect(rowOf('x1').classList.contains('team-row--excluded')).toBe(false);
+    expect(summary()).not.toContain('미자격');
+  });
+
   it('preliminary: save is disabled until T and K are set', () => {
     seedStore({ mode: 'preliminary', prelim: { totalTeams: null, k: null } });
     render(<PublishView />);
