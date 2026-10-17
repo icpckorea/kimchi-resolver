@@ -157,7 +157,9 @@ function readState(statePath: string): PublishState {
   if (!parsed.ok) {
     throw new PublishError(`${statePath} is not a valid publish-state.json:\n${parsed.errors.join('\n')}`);
   }
-  return parsed.state;
+  // Publish never uses awards.json: drop manual labels an older state file
+  // may carry, so they are not even in the page's embedded data.
+  return { ...parsed.state, manualLabels: {} };
 }
 
 function copyLogos(state: PublishState, outDir: string, warnings: string[]): void {

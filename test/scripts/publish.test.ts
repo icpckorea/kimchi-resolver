@@ -94,6 +94,18 @@ describe('npm run publish', () => {
     expect(parsed.ok && parsed.state.title).toBe("Seoul $& $' $` $1");
   }, 120_000);
 
+  it('drops awards.json labels from the embedded data', async () => {
+    const labelled = buildSampleState(sample);
+    labelled.manualLabels = { [labelled.snapshot.standings[0].team.id]: ['대상 수상자'] };
+    const dir = join(tmp, 'out-labels');
+    await runPublish({ statePath: writeState('labels.json', labelled), outDir: dir });
+    const page = readFileSync(join(dir, 'index.html'), 'utf8');
+    expect(page).not.toContain('대상 수상자');
+    const start = page.indexOf(DATA_TAG) + DATA_TAG.length;
+    const parsed = parsePublishState(JSON.parse(page.slice(start, page.indexOf('</script>', start))));
+    expect(parsed.ok && parsed.state.manualLabels).toEqual({});
+  }, 120_000);
+
   it('refuses an invalid state with the zod path', async () => {
     const bad = JSON.parse(JSON.stringify(state)) as Record<string, unknown>;
     bad.schemaVersion = 2;
