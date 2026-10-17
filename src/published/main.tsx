@@ -1,7 +1,7 @@
 /**
  * Entry of the static public page (publish.html). Reads the embedded
  * `<script type="application/json" id="publish-data">`, validates it with
- * parsePublishState and renders the board, or a Korean error panel.
+ * parsePublishState and renders the board, or an error panel (both in Korean or English, see ./i18n).
  */
 import { StrictMode } from 'react';
 import { createRoot } from 'react-dom/client';

@@ -15,6 +15,8 @@
  *   regionals, and schools already invited by another path. The last two
  *   drop out of the scored list the same way (decision "B", spec §6.2).
  * - The five S coefficients sit in a collapsed "고급" section.
+ * - Every user-visible text comes from `RegionalSimMessages`. The default is
+ *   Korean (the prepare page); the public page passes its own language.
  */
 
 import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
@@ -32,6 +34,98 @@ import type { RegionalSimInputs } from '@core/publishState';
 import './publish.css';
 
 export const APAC_RULES_URL = 'https://icpc.jp/apac/2026-27/rules/';
+
+// ---------------------------------------------------------------------------
+// Messages
+// ---------------------------------------------------------------------------
+
+/** The texts of the school picker. */
+export interface SchoolPickerMessages {
+  /** Nothing chosen. */
+  none: string;
+  /** Three or more chosen: the first name and how many others. */
+  more: (first: string, others: number) => string;
+  filterPlaceholder: string;
+  empty: string;
+}
+
+/** Every user-visible text of the panel; the prepare page uses the Korean set. */
+export interface RegionalSimMessages {
+  title: string;
+  /** Shown when S is 0 or less (no value is calculated). */
+  scoreUnusable: string;
+  prelimSchoolsLabel: string;
+  prelimSchoolsHint: string;
+  prelimTeamsLabel: string;
+  prelimTeamsHint: string;
+  prelimEmptyNote: string;
+  regionalSchoolsLabel: string;
+  regionalTeamsLabel: string;
+  /** Shared by U_r and T_r. */
+  regionalCountHint: string;
+  regionalForeignLabel: string;
+  regionalForeignHint: string;
+  schoolsLegend: string;
+  wfMedalLabel: string;
+  wfMedalHint: string;
+  winnerLabel: string;
+  /** Shared by the winner and already-invited pickers. */
+  droppedSchoolHint: string;
+  invitedLabel: string;
+  invitedEmptyWarning: string;
+  cutoffLegend: string;
+  cutoffLabel: string;
+  cutoffPlaceholder: string;
+  cutoffHint: string;
+  advanced: string;
+  coefficients: Record<keyof SiteScoreCoefficients, string>;
+  rulesLink: string;
+  reset: string;
+  picker: SchoolPickerMessages;
+}
+
+export const REGIONAL_SIM_MESSAGES_KO: RegionalSimMessages = {
+  title: 'APAC 진출 시뮬레이션 입력',
+  scoreUnusable: 'S가 0 이하이므로 value를 계산하지 않습니다. 예선 학교 수와 팀 수를 확인하세요.',
+  prelimSchoolsLabel: '예선 학교 수 U_p',
+  prelimSchoolsHint: '예선에서 1문제 이상 푼 팀이 있는 학교 수입니다.',
+  prelimTeamsLabel: '예선 팀 수 T_p',
+  prelimTeamsHint: '예선에서 1문제 이상 푼 팀 수입니다.',
+  prelimEmptyNote: '비어 있는 예선 값은 0으로 계산합니다.',
+  regionalSchoolsLabel: '본선 학교 수 U_r',
+  regionalTeamsLabel: '본선 팀 수 T_r',
+  regionalCountHint: '비워 두면 순위표에서 센 값을 씁니다.',
+  regionalForeignLabel: '본선 외국 팀 수 F_r',
+  regionalForeignHint: '국가 코드가 KR이 아닌 팀입니다. 비워 두면 순위표에서 센 값을 씁니다.',
+  schoolsLegend: '학교',
+  wfMedalLabel: '작년 WF 메달 학교',
+  wfMedalHint: '이 학교는 상위 3팀까지 계산에 남습니다. 다른 학교는 2팀입니다.',
+  winnerLabel: '다른 리저널 winner 학교',
+  droppedSchoolHint: '이 학교의 팀은 모두 계산에서 빠집니다.',
+  invitedLabel: '다른 경로로 이미 초청된 학교',
+  invitedEmptyWarning:
+    '다른 리저널에서 이미 초청된 학교를 하나도 고르지 않았습니다. 이 정보는 대회 데이터에 없으므로 직접 골라야 합니다. 비워 두면 그 학교 팀들이 순위 슬롯을 차지해 아래 팀들이 밀리고, 진출 가능한 팀이 실제보다 적게 표시됩니다.',
+  cutoffLegend: '초청 기준',
+  cutoffLabel: '가정 cutoff',
+  cutoffPlaceholder: '예: 2.5',
+  cutoffHint: 'value가 이 값 이하인 팀을 금색으로 표시합니다. 비워 두면 1위 팀만 금색입니다.',
+  advanced: '고급',
+  coefficients: {
+    regionalSchools: '본선 학교 수 계수',
+    regionalTeams: '본선 팀 수 계수',
+    prelimSchools: '예선 학교 수 계수',
+    prelimTeams: '예선 팀 수 계수',
+    foreignTeams: '본선 외국 팀 수 계수',
+  },
+  rulesLink: 'ICPC Asia Pacific 2026-27 규정',
+  reset: '초기값으로 되돌리기',
+  picker: {
+    none: '선택 안 함',
+    more: (first, others) => `${first} 외 ${others}곳`,
+    filterPlaceholder: '학교 검색',
+    empty: '일치하는 학교가 없습니다.',
+  },
+};
 
 // ---------------------------------------------------------------------------
 // Simulation
@@ -202,6 +296,8 @@ export interface InvitedSchoolPickerProps {
   selected: readonly string[];
   onChange: (groups: string[]) => void;
   hint?: ReactNode;
+  /** Texts; Korean when omitted. */
+  messages?: SchoolPickerMessages;
 }
 
 /**
@@ -218,6 +314,7 @@ export function InvitedSchoolPicker({
   selected,
   onChange,
   hint,
+  messages = REGIONAL_SIM_MESSAGES_KO.picker,
 }: InvitedSchoolPickerProps) {
   const [open, setOpen] = useState(false);
   const [filter, setFilter] = useState('');
@@ -257,10 +354,10 @@ export function InvitedSchoolPicker({
 
   const summary =
     chosen.size === 0
-      ? '선택 안 함'
+      ? messages.none
       : selected.length <= 2
         ? selected.join(', ')
-        : `${selected[0]} 외 ${chosen.size - 1}곳`;
+        : messages.more(selected[0], chosen.size - 1);
 
   const labelId = `${id}-label`;
   return (
@@ -288,7 +385,7 @@ export function InvitedSchoolPicker({
             type="text"
             autoComplete="off"
             spellCheck={false}
-            placeholder="학교 검색"
+            placeholder={messages.filterPlaceholder}
             value={filter}
             onChange={(e) => setFilter(e.target.value)}
           />
@@ -309,7 +406,7 @@ export function InvitedSchoolPicker({
               </label>
             ))}
             {visible.length === 0 ? (
-              <p className="publish-schools-empty">일치하는 학교가 없습니다.</p>
+              <p className="publish-schools-empty">{messages.empty}</p>
             ) : null}
           </div>
         </div>
@@ -333,14 +430,16 @@ export interface RegionalSimPanelProps {
   onReset?: () => void;
   /** Start with the inputs folded (mobile public page). */
   collapsedByDefault?: boolean;
+  /** Texts; Korean when omitted (the prepare page). */
+  messages?: RegionalSimMessages;
 }
 
-const COEFFICIENT_FIELDS: { key: keyof SiteScoreCoefficients; label: string }[] = [
-  { key: 'regionalSchools', label: '본선 학교 수 계수' },
-  { key: 'regionalTeams', label: '본선 팀 수 계수' },
-  { key: 'prelimSchools', label: '예선 학교 수 계수' },
-  { key: 'prelimTeams', label: '예선 팀 수 계수' },
-  { key: 'foreignTeams', label: '본선 외국 팀 수 계수' },
+const COEFFICIENT_KEYS: (keyof SiteScoreCoefficients)[] = [
+  'regionalSchools',
+  'regionalTeams',
+  'prelimSchools',
+  'prelimTeams',
+  'foreignTeams',
 ];
 
 const isCount = (v: number): boolean => Number.isInteger(v) && v >= 0;
@@ -353,6 +452,7 @@ export function RegionalSimPanel({
   siteScore,
   onReset,
   collapsedByDefault = false,
+  messages: m = REGIONAL_SIM_MESSAGES_KO,
 }: RegionalSimPanelProps) {
   const [open, setOpen] = useState(!collapsedByDefault);
   // A reset remounts the fields, so a field whose text was invalid (and
@@ -378,14 +478,14 @@ export function RegionalSimPanel({
       onToggle={(e) => setOpen(e.currentTarget.open)}
     >
       <summary className="regional-sim-head">
-        <span className="regional-sim-title">APAC 진출 시뮬레이션 입력</span>
+        <span className="regional-sim-title">{m.title}</span>
         <span className="regional-sim-score">site score S = {formatSiteScore(siteScore)}</span>
       </summary>
 
       <div className="regional-sim-body" key={resetGen}>
         {!usable ? (
           <p className="regional-sim-score-hint" role="note">
-            S가 0 이하이므로 value를 계산하지 않습니다. 예선 학교 수와 팀 수를 확인하세요.
+            {m.scoreUnusable}
           </p>
         ) : null}
 
@@ -397,112 +497,113 @@ export function RegionalSimPanel({
           </p>
           <NumericField
             id="publish-prelim-schools"
-            label="예선 학교 수 U_p"
+            label={m.prelimSchoolsLabel}
             value={value.prelimSchools}
             placeholder="0"
             isValid={isCount}
             onCommit={(prelimSchools) => patch({ prelimSchools })}
-            hint="예선에서 1문제 이상 푼 팀이 있는 학교 수입니다."
+            hint={m.prelimSchoolsHint}
           />
           <NumericField
             id="publish-prelim-teams"
-            label="예선 팀 수 T_p"
+            label={m.prelimTeamsLabel}
             value={value.prelimTeams}
             placeholder="0"
             isValid={isCount}
             onCommit={(prelimTeams) => patch({ prelimTeams })}
-            hint="예선에서 1문제 이상 푼 팀 수입니다."
+            hint={m.prelimTeamsHint}
           />
           {prelimEmpty ? (
             <p className="publish-field-note" role="note">
-              비어 있는 예선 값은 0으로 계산합니다.
+              {m.prelimEmptyNote}
             </p>
           ) : null}
           <NumericField
             id="publish-regional-schools"
-            label="본선 학교 수 U_r"
+            label={m.regionalSchoolsLabel}
             value={value.regionalOverride.schools}
             placeholder={String(autoCounts.schools)}
             isValid={isCount}
             onCommit={(schools) => patchOverride({ schools })}
-            hint="비워 두면 순위표에서 센 값을 씁니다."
+            hint={m.regionalCountHint}
           />
           <NumericField
             id="publish-regional-teams"
-            label="본선 팀 수 T_r"
+            label={m.regionalTeamsLabel}
             value={value.regionalOverride.teams}
             placeholder={String(autoCounts.teams)}
             isValid={isCount}
             onCommit={(teams) => patchOverride({ teams })}
-            hint="비워 두면 순위표에서 센 값을 씁니다."
+            hint={m.regionalCountHint}
           />
           <NumericField
             id="publish-regional-foreign"
-            label="본선 외국 팀 수 F_r"
+            label={m.regionalForeignLabel}
             value={value.regionalOverride.foreign}
             placeholder={String(autoCounts.foreign)}
             isValid={isCount}
             onCommit={(foreign) => patchOverride({ foreign })}
-            hint="국가 코드가 KR이 아닌 팀입니다. 비워 두면 순위표에서 센 값을 씁니다."
+            hint={m.regionalForeignHint}
           />
         </fieldset>
 
         <fieldset className="regional-sim-group">
-          <legend>학교</legend>
+          <legend>{m.schoolsLegend}</legend>
           <InvitedSchoolPicker
             id="publish-wf-medal-groups"
-            label="작년 WF 메달 학교"
+            label={m.wfMedalLabel}
             schools={schools}
             selected={value.wfMedalGroups}
             onChange={(wfMedalGroups) => patch({ wfMedalGroups })}
-            hint="이 학교는 상위 3팀까지 계산에 남습니다. 다른 학교는 2팀입니다."
+            messages={m.picker}
+            hint={m.wfMedalHint}
           />
           <InvitedSchoolPicker
             id="publish-winner-groups"
-            label="다른 리저널 winner 학교"
+            label={m.winnerLabel}
             schools={schools}
             selected={value.winnerGroups}
             onChange={(winnerGroups) => patch({ winnerGroups })}
-            hint="이 학교의 팀은 모두 계산에서 빠집니다."
+            messages={m.picker}
+            hint={m.droppedSchoolHint}
           />
           <InvitedSchoolPicker
             id="publish-already-invited-groups"
-            label="다른 경로로 이미 초청된 학교"
+            label={m.invitedLabel}
             schools={schools}
             selected={value.invitedGroups}
             onChange={(invitedGroups) => patch({ invitedGroups })}
-            hint="이 학교의 팀은 모두 계산에서 빠집니다."
+            messages={m.picker}
+            hint={m.droppedSchoolHint}
           />
           {invitedEmpty ? (
             <p className="publish-controls-hint" role="note">
-              다른 리저널에서 이미 초청된 학교를 하나도 고르지 않았습니다. 이 정보는 대회
-              데이터에 없으므로 직접 골라야 합니다. 비워 두면 그 학교 팀들이 순위 슬롯을
-              차지해 아래 팀들이 밀리고, 진출 가능한 팀이 실제보다 적게 표시됩니다.
+              {m.invitedEmptyWarning}
             </p>
           ) : null}
         </fieldset>
 
         <fieldset className="regional-sim-group">
-          <legend>초청 기준</legend>
+          <legend>{m.cutoffLegend}</legend>
           <NumericField
             id="publish-invited-cutoff"
-            label="가정 cutoff"
+            label={m.cutoffLabel}
             value={value.cutoff}
-            placeholder="예: 2.5"
+            placeholder={m.cutoffPlaceholder}
             isValid={(v) => v >= 0}
             onCommit={(cutoff) => patch({ cutoff })}
-            hint="value가 이 값 이하인 팀을 금색으로 표시합니다. 비워 두면 1위 팀만 금색입니다."
+            hint={m.cutoffHint}
           />
         </fieldset>
 
         <details className="regional-sim-advanced">
-          <summary>고급</summary>
+          <summary>{m.advanced}</summary>
           <div className="regional-sim-advanced-body">
-            {COEFFICIENT_FIELDS.map(({ key, label }) => (
+            {COEFFICIENT_KEYS.map((key) => (
               <NumericField
                 key={key}
                 id={`publish-coef-${key}`}
-                label={label}
+                label={m.coefficients[key]}
                 value={c[key]}
                 required
                 isValid={Number.isFinite}
@@ -517,7 +618,7 @@ export function RegionalSimPanel({
 
         <div className="regional-sim-footer">
           <a href={APAC_RULES_URL} target="_blank" rel="noreferrer noopener">
-            ICPC Asia Pacific 2026-27 규정
+            {m.rulesLink}
           </a>
           {onReset !== undefined ? (
             <button
@@ -528,7 +629,7 @@ export function RegionalSimPanel({
                 setResetGen((n) => n + 1);
               }}
             >
-              초기값으로 되돌리기
+              {m.reset}
             </button>
           ) : null}
         </div>

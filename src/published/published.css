@@ -11,8 +11,44 @@
 }
 
 .published-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
   padding: 0.35rem 0.25rem;
   border-bottom: 2px solid rgba(0, 0, 0, 0.12);
+}
+
+/* 한/영 switch: shows the name of the other language. */
+.published-lang-toggle {
+  flex: none;
+  min-height: 2rem;
+  padding: 0.25rem 0.8rem;
+  border: 1px solid rgba(0, 0, 0, 0.35);
+  border-radius: 999px;
+  background: #fff;
+  color: #1c1c1c;
+  font: inherit;
+  font-size: 0.85rem;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.published-lang-toggle:hover {
+  background: #f1f1f1;
+}
+
+.published-lang-toggle:focus-visible {
+  outline: 2px solid #1a56c4;
+  outline-offset: 2px;
+}
+
+.published-error-bar {
+  display: flex;
+  justify-content: flex-end;
+  max-width: 34rem;
+  margin: 2rem auto 0;
+  padding: 0 0.75rem;
 }
 
 .published-title {
@@ -91,7 +127,7 @@
 
 .published-error {
   max-width: 34rem;
-  margin: 4rem auto 0;
+  margin: 0.75rem auto 0;
   padding: 1.25rem 1.5rem;
   background: #fff;
   border-left: 4px solid #d9534f;

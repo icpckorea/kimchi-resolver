@@ -124,6 +124,12 @@ const isAdvance = (teamId: string): boolean =>
 const isDimmed = (teamId: string): boolean =>
   rowOf(teamId).classList.contains('team-row--dimmed');
 
+/** Inputs and buttons other than the 한/영 switch in the header. */
+const controlsOf = (container: HTMLElement): Element[] =>
+  [...container.querySelectorAll('input, button, select, textarea')].filter(
+    (el) => !el.classList.contains('published-lang-toggle'),
+  );
+
 const FILL = { silver: '#b8bfc9', gold: '#e6b422' } as const;
 
 afterEach(() => {
@@ -140,7 +146,7 @@ describe('PublishedApp', () => {
 
     expect(screen.getByRole('heading', { level: 1 }).textContent).toBe(contest.title);
     expect(container.querySelectorAll('.team-row')).toHaveLength(5);
-    expect(container.querySelectorAll('input, button, select, textarea')).toHaveLength(0);
+    expect(controlsOf(container)).toHaveLength(0);
     expect(container.querySelector('.team-row--advance')).toBeNull();
     expect(container.querySelector('svg.kr-apac-star')).toBeNull();
     expect(container.querySelector('.team-row-value')).toBeNull();
@@ -168,7 +174,7 @@ describe('PublishedApp', () => {
     expect(['x1', 'x2', 'y1', 'y2', 'z1'].filter(isAdvance)).toEqual(['x1', 'y1', 'z1']);
     expect(['x1', 'x2', 'y1', 'y2', 'z1'].filter(isDimmed)).toEqual(['x2']);
     expect(screen.getByText('노란색 = 본선 진출')).toBeTruthy();
-    expect(container.querySelectorAll('input, button, select, textarea')).toHaveLength(0);
+    expect(controlsOf(container)).toHaveLength(0);
     // Each selected row says why it advanced; the legend explains the tags
     // with the saved N and K and the per-stage counts.
     const tagOf = (id: string): string | null =>

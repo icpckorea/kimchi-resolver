@@ -9,7 +9,8 @@
  *   copy of the saved inputs (never saved; a reload restores the seed) and
  *   the board with APAC stars and values.
  *
- * Header: the contest title only (a static result has no clock, no mode tag).
+ * Header: the contest title and the 한/영 switch (a static result has no clock,
+ * no mode tag). Every text comes from `MESSAGES[lang]` (./i18n).
  * This folder must not import `@store` or `@core/ingest` (tests/guard), and it
  * imports the scoreboard files directly, not the `@ui/scoreboard` barrel,
  * which re-exports the store wrapper.
@@ -25,7 +26,7 @@ import {
   type PublishState,
   type RegionalSimInputs,
 } from '@core/publishState';
-import { PRELIM_STAGE_TAGS, prelimStageLegend, type PrelimStage } from '@core/preliminary';
+import type { PrelimStage } from '@core/preliminary';
 import { ScoreboardView } from '@ui/scoreboard/ScoreboardView';
 import type { ApacStarInfo, RowDecor } from '@ui/scoreboard/TeamRow';
 import { MOBILE_MEDIA_QUERY, useMediaQuery } from '@ui/scoreboard/useMediaQuery';
@@ -36,10 +37,11 @@ import {
   schoolsOf,
   useRegionalSimulation,
 } from '@ui/publish/RegionalSimPanel';
+import { LangToggle, MESSAGES, useLang, type PublishedMessages } from './i18n';
 import './published.css';
 
-export const SIMULATION_BANNER =
-  '이 페이지는 시뮬레이션입니다. 공식 결과가 아닙니다. 최종 초청은 모든 리저널이 끝난 다음 APAC에서 정합니다.';
+/** The Korean banner text (the English one is in MESSAGES.en). */
+export const SIMULATION_BANNER = MESSAGES.ko.banner;
 
 // ---------------------------------------------------------------------------
 // Loading
@@ -65,15 +67,22 @@ export function readPublishData(text: string | null): ReadPublishDataResult {
 }
 
 export function PublishedError({ errors }: { errors: readonly string[] }) {
+  const [lang, setLang] = useLang();
+  const m = MESSAGES[lang];
   return (
-    <div className="published-error" role="alert">
-      <h1 className="published-error-title">순위표를 표시할 수 없습니다</h1>
-      <p>공개 데이터를 읽지 못했습니다. 운영자에게 알려 주세요.</p>
-      <ul className="published-error-list">
-        {errors.map((error, index) => (
-          <li key={index}>{error}</li>
-        ))}
-      </ul>
+    <div className="published-error-page">
+      <div className="published-error-bar">
+        <LangToggle lang={lang} onChange={setLang} />
+      </div>
+      <div className="published-error" role="alert">
+        <h1 className="published-error-title">{m.errorTitle}</h1>
+        <p>{m.errorBody}</p>
+        <ul className="published-error-list">
+          {errors.map((error, index) => (
+            <li key={index}>{error}</li>
+          ))}
+        </ul>
+      </div>
     </div>
   );
 }
@@ -122,8 +131,14 @@ function Board({ state, snapshot, config, manualLabels, rowDecor = null, apacSta
 // preliminary
 // ---------------------------------------------------------------------------
 
-function PreliminaryPage(props: BoardProps & { state: PublishState & { mode: 'preliminary' } }) {
-  const { state, snapshot } = props;
+interface PageProps {
+  m: PublishedMessages;
+}
+
+function PreliminaryPage(
+  props: BoardProps & PageProps & { state: PublishState & { mode: 'preliminary' } },
+) {
+  const { state, snapshot, m } = props;
   // The saved list is the result: it is never recomputed from T, N or K.
   const rowDecor = useMemo(() => {
     const stageOf = new Map(state.preliminary.selected.map((s) => [s.teamId, s.stage]));
@@ -136,12 +151,12 @@ function PreliminaryPage(props: BoardProps & { state: PublishState & { mode: 'pr
         map.set(team.id, {
           advance: stage !== undefined,
           dimmed,
-          tag: stage !== undefined ? PRELIM_STAGE_TAGS[stage] : undefined,
+          tag: stage !== undefined ? m.stageTags[stage] : undefined,
         });
       }
     }
     return map;
-  }, [state.preliminary, snapshot]);
+  }, [state.preliminary, snapshot, m]);
 
   const stageCounts = useMemo(() => {
     const counts: Record<PrelimStage, number> = { top: 0, school: 0, fill: 0 };
@@ -154,12 +169,12 @@ function PreliminaryPage(props: BoardProps & { state: PublishState & { mode: 'pr
     <>
       <p className="published-legend">
         <span className="published-legend-swatch" aria-hidden="true" />
-        노란색 = 본선 진출
+        {m.advanceLegend}
       </p>
       <ul className="published-legend published-stage-legend">
         {stages.map((stage) => (
           <li key={stage}>
-            {prelimStageLegend(stage, state.preliminary.topN, state.preliminary.k)} ({stageCounts[stage]}팀)
+            {m.stageLegend(stage, state.preliminary.topN, state.preliminary.k)} ({m.teamCount(stageCounts[stage])})
           </li>
         ))}
       </ul>
@@ -189,8 +204,8 @@ function useStarInfo(stars: Map<string, ApacStarTier>): Map<string, ApacStarInfo
   return info;
 }
 
-function RegionalPage(props: BoardProps & { state: PublishState & { mode: 'regional' } }) {
-  const { state, snapshot } = props;
+function RegionalPage(props: BoardProps & PageProps & { state: PublishState & { mode: 'regional' } }) {
+  const { state, snapshot, m } = props;
   const seed = state.regional;
   // Local copy: edits are never saved, a reload restores the seed.
   const [inputs, setInputs] = useState<RegionalSimInputs>(seed);
@@ -210,7 +225,7 @@ function RegionalPage(props: BoardProps & { state: PublishState & { mode: 'regio
   return (
     <>
       <p className="published-banner" role="note">
-        {SIMULATION_BANNER}
+        {m.banner}
       </p>
       <RegionalSimPanel
         value={inputs}
@@ -220,12 +235,12 @@ function RegionalPage(props: BoardProps & { state: PublishState & { mode: 'regio
         siteScore={simulation.siteScore}
         onReset={() => setInputs(seed)}
         collapsedByDefault={isMobile}
+        messages={m.regional}
       />
       <p className="published-legend published-legend--stars">
-        별의 의미: 동색 = 학내 3등 이내, 은색 = APAC championship 초대 가능, 금색 = APAC
-        championship 진출.{' '}
+        {m.starLegend}{' '}
         <a href={APAC_RULES_URL} target="_blank" rel="noreferrer noopener">
-          ICPC Asia Pacific 2026-27 규정
+          {m.regional.rulesLink}
         </a>
       </p>
       <Board {...props} rowDecor={rowDecor} apacStars={apacStars} />
@@ -248,16 +263,20 @@ export function PublishedApp({ state }: { state: PublishState }) {
     document.title = state.title;
   }, [state.title]);
 
+  const [lang, setLang] = useLang();
+  const m = MESSAGES[lang];
+
   const board = { snapshot, config, manualLabels };
   return (
     <div className="published-view">
       <header className="published-header">
         <h1 className="published-title">{state.title}</h1>
+        <LangToggle lang={lang} onChange={setLang} />
       </header>
       {state.mode === 'preliminary' ? (
-        <PreliminaryPage {...board} state={state} />
+        <PreliminaryPage {...board} m={m} state={state} />
       ) : state.mode === 'regional' ? (
-        <RegionalPage {...board} state={state} />
+        <RegionalPage {...board} m={m} state={state} />
       ) : (
         <Board {...board} state={state} />
       )}
