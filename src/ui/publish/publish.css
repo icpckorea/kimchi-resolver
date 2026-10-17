@@ -349,6 +349,33 @@
   opacity: 0.75;
 }
 
+/* Icon + meaning per stage. The chip uses the advance-row yellow so the
+   icons look the same as on the board rows (they are drawn for that color). */
+.publish-prelim-legend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.25rem 1.25rem;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  font-size: 0.85rem;
+  line-height: 1.6;
+}
+
+.publish-prelim-legend li {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+}
+
+.publish-prelim-legend-icon {
+  display: inline-flex;
+  padding: 0.15rem;
+  border-radius: 0.3rem;
+  background: var(--row-advance-bg, #fff3b0);
+  font-size: 1.1rem;
+}
+
 .publish-prelim-warnings {
   margin: 0;
   padding-left: 1.2rem;

@@ -4,8 +4,8 @@
  * and lets the operator download `publish-state.json`.
  *
  * - off:         the board and the save button. No inputs.
- * - preliminary: T, N, K inputs, the selection (yellow rows, stage tags,
- *   ineligible checkbox per row) and its summary and warnings.
+ * - preliminary: T, N, K inputs, the selection (yellow rows, stage icons,
+ *   ineligible checkbox per row, stage icons with a legend) and its summary and warnings.
  * - regional:    RegionalSimPanel plus the board with APAC stars and values.
  *   Edits re-evaluate live. A star whose tier changed spins once (previous
  *   tiers are tracked in a ref; the star remounts via key={tier}).
@@ -16,7 +16,7 @@
 import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import type { Snapshot } from '@core/types';
 import type { ApacStarTier } from '@core/apac';
-import { PRELIM_STAGE_TAGS, selectPreliminary, type PrelimResult } from '@core/preliminary';
+import { PRELIM_STAGE_LABELS, selectPreliminary, type PrelimResult } from '@core/preliminary';
 import { buildPublishState, type PublishDisplay, type PublishMode } from '@core/publishState';
 import { useAppStore } from '@store/appStore';
 import { Scoreboard, type ApacStarInfo, type RowDecor } from '@ui/scoreboard';
@@ -210,7 +210,7 @@ function PrelimPublish({
       map.set(team.id, {
         advance: stage !== undefined,
         dimmed: isIneligible,
-        tag: stage !== undefined ? PRELIM_STAGE_TAGS[stage] : undefined,
+        stageIcon: stage !== undefined ? { stage, label: PRELIM_STAGE_LABELS[stage] } : undefined,
         leading: (
           <input
             type="checkbox"

@@ -4,7 +4,7 @@
  * [APAC star slot][flag][school logo][team name + tag / group][badge column]
  * [balloons][cells][penalty][value]
  *
- * The leading control, the tag, the value and the advance/dimmed row states
+ * The leading control, the stage icon, the value and the advance/dimmed row states
  * come from an optional `RowDecor` (publish modes); without one the row is
  * the plain spectator row.
  *
@@ -17,7 +17,8 @@ import { motion, type Transition } from 'framer-motion';
 
 import type { CellState, OrgsIndex, Problem, TeamStanding } from '@core/types';
 import type { ResolvedConfig } from '@core/config';
-import { ApacStar, FlagIcon, type ApacStarTier } from '@ui/icons';
+import type { PrelimStage } from '@core/preliminary';
+import { ApacStar, FlagIcon, StageIcon, type ApacStarTier } from '@ui/icons';
 
 import { BOARD_MAX_BADGES, Badges } from './Badges';
 import { Balloons } from './Balloons';
@@ -38,8 +39,11 @@ export interface RowDecor {
   advance?: boolean;
   /** Ineligible: row at opacity 0.5 (`team-row--dimmed`). */
   dimmed?: boolean;
-  /** Small tag after the name (prepare page: '상위' | '학교' | '추가'). */
-  tag?: string;
+  /**
+   * Preliminary: why the team advances, as a small icon after the name.
+   * `label` is its tooltip and accessible name (the caller translates it).
+   */
+  stageIcon?: { stage: PrelimStage; label: string };
   /** Right-aligned note, e.g. the APAC value '0.1740'. */
   value?: string;
   /**
@@ -203,7 +207,7 @@ export function TeamRow({
   const animate = config.animation;
   const tappable = mobile && onOpenDetail !== undefined;
   const leading = decor?.leading;
-  const tag = decor?.tag;
+  const stageIcon = decor?.stageIcon;
   const value = decor?.value;
 
   return (
@@ -292,7 +296,13 @@ export function TeamRow({
           <span className="team-name" style={nameFitStyle(team.name)}>
             {team.name}
           </span>
-          {tag !== undefined && tag !== '' ? <span className="team-row-tag">{tag}</span> : null}
+          {stageIcon !== undefined ? (
+            <StageIcon
+              stage={stageIcon.stage}
+              title={stageIcon.label}
+              className="team-row-stage"
+            />
+          ) : null}
         </div>
         {config.showTeamGroup ? (
           <div className="team-group" style={groupFitStyle(team.group)}>

@@ -177,13 +177,25 @@ describe('PublishedApp', () => {
     expect(controlsOf(container)).toHaveLength(0);
     // Each selected row says why it advanced; the legend explains the tags
     // with the saved N and K and the per-stage counts.
-    const tagOf = (id: string): string | null =>
-      container.querySelector(`[data-team-id="${id}"] .team-row-tag`)?.textContent ?? null;
-    expect(['x1', 'x2', 'y1', 'y2', 'z1'].map(tagOf)).toEqual(['상위', null, '학교', null, '학교']);
-    const legend = container.querySelector('.published-stage-legend')?.textContent ?? '';
-    expect(legend).toContain('상위: 학교와 상관없이 상위 1팀 (1팀)');
-    expect(legend).toContain('학교: 1문제 이상 해결한 학교의 1위 팀 (2팀)');
-    expect(legend).toContain('추가: 남은 자리를 순위대로 채운 팀 (0팀)');
+    const iconOf = (id: string): string | null =>
+      container.querySelector(`[data-team-id="${id}"] svg[data-stage]`)?.getAttribute('data-stage') ??
+      null;
+    expect(['x1', 'x2', 'y1', 'y2', 'z1'].map(iconOf)).toEqual(['top', null, 'school', null, 'school']);
+    expect(screen.getAllByRole('img', { name: '학교 대표 팀' })).toHaveLength(2);
+    expect(screen.getAllByRole('img', { name: '상위 팀 (학교 무관)' })).toHaveLength(1);
+    // The words are gone from the rows.
+    expect(container.querySelector('.team-row-tag')).toBeNull();
+    const legendItems = [...container.querySelectorAll('.published-stage-legend li')];
+    expect(legendItems.map((li) => li.querySelector('svg[data-stage]')?.getAttribute('data-stage'))).toEqual([
+      'top',
+      'school',
+      'fill',
+    ]);
+    expect(legendItems.map((li) => li.textContent)).toEqual([
+      '학교와 상관없이 상위 1팀 (1팀)',
+      '1문제 이상 해결한 학교의 1위 팀 (2팀)',
+      '남은 자리를 순위대로 채운 팀 (0팀)',
+    ]);
     // No "미자격" text, no stars, rank numbers stay as standings.
     expect(container.textContent).not.toContain('미자격');
     expect(container.querySelector('svg.kr-apac-star')).toBeNull();

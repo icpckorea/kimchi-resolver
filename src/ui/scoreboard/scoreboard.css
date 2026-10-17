@@ -151,19 +151,14 @@
   cursor: pointer;
 }
 
-/* Selection step tag after the name (prepare page only). */
-.team-row-tag {
+/* Why the team advanced: a stage icon after the name (preliminary). It is
+ * sized in em of the row, so it follows the desktop and the mobile scale. */
+.team-row-stage {
   flex: none;
   align-self: center;
-  margin-left: 0.4em;
-  padding: 0 0.45em;
-  border-radius: 0.6em;
-  font-size: 0.45em;
-  line-height: 1.5;
-  font-weight: 600;
-  color: #5c4a00;
-  background: #ffe066;
-  white-space: nowrap;
+  margin-left: 0.35em;
+  width: 0.95em;
+  height: 0.95em;
 }
 
 /* Right-aligned note (the APAC value, 4 decimals). Every row of a board that

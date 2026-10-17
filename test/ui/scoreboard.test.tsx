@@ -1078,18 +1078,24 @@ describe('ScoreboardView and row decoration', () => {
     expect(row(container, 't1').classList.contains('team-row--dimmed')).toBe(false);
   });
 
-  it('value and tag render', () => {
+  it('value and stage icon render', () => {
     const { contest, snapshot } = priorityFixture();
     const rowDecor = new Map<string, RowDecor>([
-      ['t1', { tag: '상위', value: '0.1740' }],
-      ['t2', { tag: '학교' }],
+      ['t1', { stageIcon: { stage: 'top', label: 'TOP-LABEL' }, value: '0.1740' }],
+      ['t2', { stageIcon: { stage: 'school', label: 'SCHOOL-LABEL' } }],
     ]);
     const { container } = render(
       <ScoreboardView {...viewProps(contest, snapshot)} rowDecor={rowDecor} />,
     );
-    expect(row(container, 't1').querySelector('.team-row-tag')?.textContent).toBe('상위');
-    expect(row(container, 't2').querySelector('.team-row-tag')?.textContent).toBe('학교');
-    expect(row(container, 't3').querySelector('.team-row-tag')).toBeNull();
+    const icon = (id: string): Element | null => row(container, id).querySelector('svg[data-stage]');
+    expect(icon('t1')?.getAttribute('data-stage')).toBe('top');
+    expect(icon('t1')?.getAttribute('aria-label')).toBe('TOP-LABEL');
+    expect(icon('t1')?.getAttribute('role')).toBe('img');
+    expect(icon('t2')?.getAttribute('data-stage')).toBe('school');
+    expect(icon('t2')?.getAttribute('aria-label')).toBe('SCHOOL-LABEL');
+    expect(icon('t3')).toBeNull();
+    // No text tag any more.
+    expect(container.querySelector('.team-row-tag')).toBeNull();
     expect(row(container, 't1').querySelector('.team-row-value')?.textContent).toBe('0.1740');
     // Rows without a value keep an empty slot so the columns stay aligned.
     const empty = row(container, 't3').querySelector('.team-row-value');
@@ -1099,7 +1105,7 @@ describe('ScoreboardView and row decoration', () => {
     // No value anywhere → no value column at all.
     const plain = render(<ScoreboardView {...viewProps(contest, snapshot)} />);
     expect(plain.container.querySelector('.team-row-value')).toBeNull();
-    expect(plain.container.querySelector('.team-row-tag')).toBeNull();
+    expect(plain.container.querySelector('svg[data-stage]')).toBeNull();
   });
 
   it('leading click does not open the mobile detail modal', () => {

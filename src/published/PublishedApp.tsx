@@ -27,6 +27,7 @@ import {
   type RegionalSimInputs,
 } from '@core/publishState';
 import type { PrelimStage } from '@core/preliminary';
+import { StageIcon } from '@ui/icons';
 import { ScoreboardView } from '@ui/scoreboard/ScoreboardView';
 import type { ApacStarInfo, RowDecor } from '@ui/scoreboard/TeamRow';
 import { MOBILE_MEDIA_QUERY, useMediaQuery } from '@ui/scoreboard/useMediaQuery';
@@ -151,7 +152,7 @@ function PreliminaryPage(
         map.set(team.id, {
           advance: stage !== undefined,
           dimmed,
-          tag: stage !== undefined ? m.stageTags[stage] : undefined,
+          stageIcon: stage !== undefined ? { stage, label: m.stageLabels[stage] } : undefined,
         });
       }
     }
@@ -174,6 +175,7 @@ function PreliminaryPage(
       <ul className="published-legend published-stage-legend">
         {stages.map((stage) => (
           <li key={stage}>
+            <StageIcon stage={stage} className="published-stage-icon" />
             {m.stageLegend(stage, state.preliminary.topN, state.preliminary.k)} ({m.teamCount(stageCounts[stage])})
           </li>
         ))}

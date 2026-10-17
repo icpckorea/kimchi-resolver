@@ -35,22 +35,28 @@ import type { Snapshot, TeamStanding } from './types';
 
 export type PrelimStage = 'top' | 'school' | 'fill';
 
-/** Row tag per stage: shown on the prepare page and on the public page. */
-export const PRELIM_STAGE_TAGS: Record<PrelimStage, string> = {
-  top: '상위',
-  school: '학교',
-  fill: '추가',
+/**
+ * Meaning of each stage icon (tooltip and aria-label of the row icon). The
+ * rows show an icon per stage, not a word (2026-10-17 operator request).
+ */
+export const PRELIM_STAGE_LABELS: Record<PrelimStage, string> = {
+  top: '상위 팀 (학교 무관)',
+  school: '학교 대표 팀',
+  fill: '남은 자리를 채운 팀',
 };
 
-/** Public-page legend line per stage, with the saved N and K filled in. */
+/**
+ * Legend line per stage, with the saved N and K filled in. The caller puts
+ * the stage icon in front of it.
+ */
 export function prelimStageLegend(stage: PrelimStage, topN: number, k: number): string {
   switch (stage) {
     case 'top':
-      return `${PRELIM_STAGE_TAGS.top}: 학교와 상관없이 상위 ${topN}팀`;
+      return `학교와 상관없이 상위 ${topN}팀`;
     case 'school':
-      return `${PRELIM_STAGE_TAGS.school}: ${k}문제 이상 해결한 학교의 1위 팀`;
+      return `${k}문제 이상 해결한 학교의 1위 팀`;
     case 'fill':
-      return `${PRELIM_STAGE_TAGS.fill}: 남은 자리를 순위대로 채운 팀`;
+      return '남은 자리를 순위대로 채운 팀';
   }
 }
 

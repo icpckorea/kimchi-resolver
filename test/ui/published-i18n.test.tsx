@@ -172,10 +172,14 @@ describe('message table', () => {
       '이 페이지는 시뮬레이션입니다. 공식 결과가 아닙니다. 최종 초청은 모든 리저널이 끝난 다음 APAC에서 정합니다.',
     );
     expect(MESSAGES.ko.advanceLegend).toBe('노란색 = 본선 진출');
-    expect(MESSAGES.ko.stageTags).toEqual({ top: '상위', school: '학교', fill: '추가' });
-    expect(MESSAGES.ko.stageLegend('top', 1, 2)).toBe('상위: 학교와 상관없이 상위 1팀');
-    expect(MESSAGES.ko.stageLegend('school', 1, 2)).toBe('학교: 2문제 이상 해결한 학교의 1위 팀');
-    expect(MESSAGES.ko.stageLegend('fill', 1, 2)).toBe('추가: 남은 자리를 순위대로 채운 팀');
+    expect(MESSAGES.ko.stageLabels).toEqual({
+      top: '상위 팀 (학교 무관)',
+      school: '학교 대표 팀',
+      fill: '남은 자리를 채운 팀',
+    });
+    expect(MESSAGES.ko.stageLegend('top', 1, 2)).toBe('학교와 상관없이 상위 1팀');
+    expect(MESSAGES.ko.stageLegend('school', 1, 2)).toBe('2문제 이상 해결한 학교의 1위 팀');
+    expect(MESSAGES.ko.stageLegend('fill', 1, 2)).toBe('남은 자리를 순위대로 채운 팀');
   });
 
   it('has the same keys in both languages and no Hangul in English', () => {
@@ -217,29 +221,52 @@ describe('language toggle', () => {
     expect(document.documentElement.lang).toBe('ko');
   });
 
-  it('preliminary: tags, legend and counts switch both ways', () => {
+  it('preliminary: row icons, legend and counts switch both ways', () => {
     const { container } = render(<PublishedApp state={buildState('preliminary')} />);
-    const tags = (): (string | null)[] =>
-      ['x1', 'x2', 'y1', 'y2', 'z1'].map(
-        (id) => container.querySelector(`[data-team-id="${id}"] .team-row-tag`)?.textContent ?? null,
+    const icons = (): ([string, string] | null)[] =>
+      ['x1', 'x2', 'y1', 'y2', 'z1'].map((id) => {
+        const icon = container.querySelector(`[data-team-id="${id}"] svg[data-stage]`);
+        return icon === null ? null : [icon.getAttribute('data-stage') ?? '', icon.getAttribute('aria-label') ?? ''];
+      });
+    const legend = (): string[] =>
+      [...container.querySelectorAll('.published-stage-legend li')].map((li) => li.textContent ?? '');
+    const legendStages = (): (string | null | undefined)[] =>
+      [...container.querySelectorAll('.published-stage-legend li')].map((li) =>
+        li.querySelector('svg[data-stage]')?.getAttribute('data-stage'),
       );
-    const legend = (): string => container.querySelector('.published-stage-legend')?.textContent ?? '';
 
     expect(screen.getByText(KO.legend)).toBeTruthy();
-    expect(tags()).toEqual(['상위', null, '학교', null, '추가']);
-    expect(legend()).toContain('상위: 학교와 상관없이 상위 1팀 (1팀)');
+    expect(icons()).toEqual([
+      ['top', '상위 팀 (학교 무관)'],
+      null,
+      ['school', '학교 대표 팀'],
+      null,
+      ['fill', '남은 자리를 채운 팀'],
+    ]);
+    expect(container.querySelector('.team-row-tag')).toBeNull();
+    expect(legendStages()).toEqual(['top', 'school', 'fill']);
+    expect(legend()[0]).toBe('학교와 상관없이 상위 1팀 (1팀)');
 
     fireEvent.click(toggle());
     expect(screen.getByText(EN.legend)).toBeTruthy();
     expect(screen.queryByText(KO.legend)).toBeNull();
-    expect(tags()).toEqual(['Top', null, 'School', null, 'Fill']);
-    expect(legend()).toContain('Top: the best 1 team regardless of school (1 team)');
-    expect(legend()).toContain('School: top team of each school that solved 1 or more problems (1 team)');
-    expect(legend()).toContain('Fill: next teams by rank to fill the remaining spots (1 team)');
+    expect(icons()).toEqual([
+      ['top', 'Top-ranked team (any school)'],
+      null,
+      ['school', 'Top team of a school'],
+      null,
+      ['fill', 'Team filling a remaining spot'],
+    ]);
+    expect(legendStages()).toEqual(['top', 'school', 'fill']);
+    expect(legend()).toEqual([
+      'Best 1 team regardless of school (1 team)',
+      'Top team of each school that solved 1 or more problems (1 team)',
+      'Next teams by rank to fill the remaining spots (1 team)',
+    ]);
 
     fireEvent.click(toggle());
     expect(screen.getByText(KO.legend)).toBeTruthy();
-    expect(tags()).toEqual(['상위', null, '학교', null, '추가']);
+    expect(icons()[0]).toEqual(['top', '상위 팀 (학교 무관)']);
   });
 
   it('regional: banner, star legend and panel switch both ways', () => {

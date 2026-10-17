@@ -16,7 +16,7 @@
  */
 
 import { createElement, useCallback, useEffect, useState, type ReactElement } from 'react';
-import { PRELIM_STAGE_TAGS, prelimStageLegend, type PrelimStage } from '@core/preliminary';
+import { PRELIM_STAGE_LABELS, prelimStageLegend, type PrelimStage } from '@core/preliminary';
 import { APAC_STAR_TITLES } from '@ui/scoreboard/TeamRow';
 import {
   REGIONAL_SIM_MESSAGES_KO,
@@ -36,9 +36,9 @@ export interface PublishedMessages {
   banner: string;
   /** Preliminary mode: what the yellow rows mean. */
   advanceLegend: string;
-  /** Row tag per stage. */
-  stageTags: Record<PrelimStage, string>;
-  /** One legend line per stage, with the saved N and K. */
+  /** Meaning of the stage icon on a row (tooltip and aria-label). */
+  stageLabels: Record<PrelimStage, string>;
+  /** One legend line per stage, with the saved N and K (the icon goes in front). */
   stageLegend: (stage: PrelimStage, topN: number, k: number) => string;
   /** "3팀" / "3 teams": the count after a legend line (the caller adds the parentheses). */
   teamCount: (count: number) => string;
@@ -60,7 +60,7 @@ export const MESSAGES: Record<Lang, PublishedMessages> = {
     banner:
       '이 페이지는 시뮬레이션입니다. 공식 결과가 아닙니다. 최종 초청은 모든 리저널이 끝난 다음 APAC에서 정합니다.',
     advanceLegend: '노란색 = 본선 진출',
-    stageTags: PRELIM_STAGE_TAGS,
+    stageLabels: PRELIM_STAGE_LABELS,
     stageLegend: prelimStageLegend,
     teamCount: (count) => `${count}팀`,
     starLegend:
@@ -74,15 +74,19 @@ export const MESSAGES: Record<Lang, PublishedMessages> = {
     banner:
       'This page is a simulation, not an official result. ICPC Asia Pacific decides the final invitations after all regionals end.',
     advanceLegend: 'Yellow = advances to the regional',
-    stageTags: { top: 'Top', school: 'School', fill: 'Fill' },
+    stageLabels: {
+      top: 'Top-ranked team (any school)',
+      school: 'Top team of a school',
+      fill: 'Team filling a remaining spot',
+    },
     stageLegend: (stage, topN, k) => {
       switch (stage) {
         case 'top':
-          return `Top: the best ${topN} ${plural(topN, 'team', 'teams')} regardless of school`;
+          return `Best ${topN} ${plural(topN, 'team', 'teams')} regardless of school`;
         case 'school':
-          return `School: top team of each school that solved ${k} or more problems`;
+          return `Top team of each school that solved ${k} or more problems`;
         case 'fill':
-          return 'Fill: next teams by rank to fill the remaining spots';
+          return 'Next teams by rank to fill the remaining spots';
       }
     },
     teamCount: (count) => `${count} ${plural(count, 'team', 'teams')}`,

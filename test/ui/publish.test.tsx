@@ -159,8 +159,11 @@ function valueOf(teamId: string): string | undefined {
   return rowOf(teamId).querySelector('.team-row-value')?.textContent ?? undefined;
 }
 
-function tagOf(teamId: string): string | undefined {
-  return rowOf(teamId).querySelector('.team-row-tag')?.textContent ?? undefined;
+/** Stage icon of a row: its data-stage and accessible name. */
+function stageOf(teamId: string): { stage: string | null; name: string | null } | undefined {
+  const icon = rowOf(teamId).querySelector('svg[data-stage]');
+  if (icon === null) return undefined;
+  return { stage: icon.getAttribute('data-stage'), name: icon.getAttribute('aria-label') };
 }
 
 function isAdvance(teamId: string): boolean {
@@ -252,10 +255,24 @@ describe('PublishView preliminary mode', () => {
     expect(isAdvance('z1')).toBe(true);
     expect(isAdvance('x2')).toBe(true);
     expect(isAdvance('y2')).toBe(false);
-    expect(tagOf('x1')).toBe('상위');
-    expect(tagOf('y1')).toBe('학교');
-    expect(tagOf('x2')).toBe('추가');
-    expect(tagOf('y2')).toBeUndefined();
+    expect(stageOf('x1')).toEqual({ stage: 'top', name: '상위 팀 (학교 무관)' });
+    expect(stageOf('y1')).toEqual({ stage: 'school', name: '학교 대표 팀' });
+    expect(stageOf('x2')).toEqual({ stage: 'fill', name: '남은 자리를 채운 팀' });
+    expect(stageOf('y2')).toBeUndefined();
+    // The icons replace the words: no text tag on any row.
+    expect(document.querySelector('.team-row-tag')).toBeNull();
+    // A compact legend next to the summary: icon + Korean meaning, with N, K and counts.
+    const legend = document.querySelector('.publish-prelim-legend');
+    expect(legend).not.toBeNull();
+    expect(
+      [...(legend?.querySelectorAll('svg[data-stage]') ?? [])].map((e) => e.getAttribute('data-stage')),
+    ).toEqual(['top', 'school', 'fill']);
+    const lines = [...(legend?.querySelectorAll('li') ?? [])].map((li) => li.textContent);
+    expect(lines).toEqual([
+      '학교와 상관없이 상위 1팀 (1팀)',
+      '1문제 이상 해결한 학교의 1위 팀 (2팀)',
+      '남은 자리를 순위대로 채운 팀 (1팀)',
+    ]);
 
     expect(document.querySelector('.publish-prelim-summary')?.textContent).toBe(
       '진출 4팀 = 상위 1 + 학교 대표 2 + 추가 1',

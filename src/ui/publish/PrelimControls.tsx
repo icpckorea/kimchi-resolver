@@ -8,7 +8,8 @@
  * panel asks for them instead (spec §5.1).
  */
 
-import type { PrelimResult } from '@core/preliminary';
+import { prelimStageLegend, type PrelimResult, type PrelimStage } from '@core/preliminary';
+import { StageIcon } from '@ui/icons';
 import type { PrelimInputs } from './persist';
 import { NumericField } from './RegionalSimPanel';
 import './publish.css';
@@ -24,6 +25,27 @@ export interface PrelimControlsProps {
 export function prelimSummaryText(result: PrelimResult): string {
   const { top, school, fill } = result.counts;
   return `진출 ${result.selected.size}팀 = 상위 ${top} + 학교 대표 ${school} + 추가 ${fill}`;
+}
+
+const STAGES: readonly PrelimStage[] = ['top', 'school', 'fill'];
+
+/**
+ * Icon + Korean meaning per stage, with N, K and the team count of each stage.
+ * The board rows carry the same icons (with the meaning as tooltip).
+ */
+function StageLegend({ result, topN, k }: { result: PrelimResult; topN: number; k: number }) {
+  return (
+    <ul className="publish-prelim-legend" aria-label="선발 단계 표시">
+      {STAGES.map((stage) => (
+        <li key={stage}>
+          <span className="publish-prelim-legend-icon">
+            <StageIcon stage={stage} />
+          </span>
+          {prelimStageLegend(stage, topN, k)} ({result.counts[stage]}팀)
+        </li>
+      ))}
+    </ul>
+  );
 }
 
 const isPositiveInt = (v: number): boolean => Number.isInteger(v) && v >= 1;
@@ -73,6 +95,7 @@ export function PrelimControls({ value, onChange, result }: PrelimControlsProps)
             <p className="publish-prelim-summary" role="status">
               {prelimSummaryText(result)}
             </p>
+            {value.k !== null ? <StageLegend result={result} topN={value.topN} k={value.k} /> : null}
             {result.warnings.length > 0 ? (
               <ul className="publish-prelim-warnings" role="alert">
                 {result.warnings.map((warning) => (
