@@ -220,7 +220,7 @@
   border-color: #e05252;
 }
 
-/* -- instruction panel (site score missing) -------------------------------- */
+/* -- loading panel ---------------------------------------------------------- */
 
 .publish-gate {
   display: flex;
@@ -253,4 +253,270 @@
 
 .publish-board {
   flex: 1;
+}
+
+/* -- field hints, notes ------------------------------------------------------ */
+
+.publish-field-hint,
+.publish-field-note {
+  font-size: 0.75rem;
+  line-height: 1.5;
+  max-width: 24rem;
+  opacity: 0.7;
+}
+
+.publish-field-note {
+  margin: 0;
+}
+
+/* -- buttons ------------------------------------------------------------------ */
+
+.publish-button {
+  font: inherit;
+  font-size: 0.85rem;
+  padding: 0.3rem 0.8rem;
+  border: 1px solid rgba(0, 0, 0, 0.3);
+  border-radius: 0.3rem;
+  background: #fff;
+  color: #222;
+  cursor: pointer;
+}
+
+.publish-button:hover:not(:disabled) {
+  background: #f2f6ff;
+}
+
+.publish-button:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.publish-button--primary {
+  background: #2b6cff;
+  border-color: #2b6cff;
+  color: #fff;
+}
+
+.publish-button--primary:hover:not(:disabled) {
+  background: #1f57d6;
+}
+
+/* -- stored-inputs notice, actions ------------------------------------------- */
+
+.publish-stored {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  padding: 0.4rem 0.75rem;
+  border-radius: 0.4rem;
+  background: rgba(255, 214, 10, 0.18);
+  font-size: 0.85rem;
+}
+
+.publish-actions {
+  display: flex;
+  justify-content: flex-end;
+}
+
+.publish-save {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+}
+
+.publish-save-hint {
+  font-size: 0.8rem;
+  opacity: 0.7;
+}
+
+/* -- preliminary controls ------------------------------------------------------ */
+
+.publish-prelim-result {
+  flex-basis: 100%;
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+}
+
+.publish-prelim-summary,
+.publish-prelim-pending {
+  margin: 0;
+  font-size: 1rem;
+  font-weight: 600;
+}
+
+.publish-prelim-pending {
+  opacity: 0.75;
+}
+
+.publish-prelim-warnings {
+  margin: 0;
+  padding-left: 1.2rem;
+  font-size: 0.85rem;
+  line-height: 1.6;
+  color: #ffb4a8;
+}
+
+.publish-ineligible {
+  margin: 0;
+  width: 1.1em;
+  height: 1.1em;
+  cursor: pointer;
+}
+
+/* -- regional panel ------------------------------------------------------------ */
+
+.regional-sim {
+  border-radius: 0.4rem;
+  background: rgba(255, 255, 255, 0.06);
+  padding: 0.5rem 0.75rem;
+}
+
+.regional-sim-head {
+  display: flex;
+  align-items: baseline;
+  gap: 1rem;
+  cursor: pointer;
+  font-weight: 600;
+}
+
+.regional-sim-score {
+  margin-left: auto;
+  font-variant-numeric: tabular-nums;
+}
+
+.regional-sim-body {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+  margin-top: 0.6rem;
+}
+
+.regional-sim-group {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-start;
+  gap: 1rem 1.25rem;
+  margin: 0;
+  padding: 0.5rem 0.75rem;
+  border: 1px solid rgba(255, 255, 255, 0.18);
+  border-radius: 0.35rem;
+}
+
+.regional-sim-group legend {
+  padding: 0 0.4rem;
+  font-size: 0.8rem;
+  font-weight: 600;
+  opacity: 0.8;
+}
+
+.regional-sim-formula,
+.regional-sim-score-hint {
+  flex-basis: 100%;
+  margin: 0;
+  font-size: 0.85rem;
+  line-height: 1.5;
+}
+
+.regional-sim-score-hint {
+  color: #ffb4a8;
+}
+
+.regional-sim-advanced > summary {
+  cursor: pointer;
+  font-size: 0.85rem;
+}
+
+.regional-sim-advanced-body {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 1rem 1.25rem;
+  margin-top: 0.5rem;
+}
+
+.regional-sim-footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  font-size: 0.85rem;
+}
+
+/* -- save dialog ---------------------------------------------------------------- */
+
+.publish-dialog-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 100;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 1rem;
+  background: rgba(0, 0, 0, 0.55);
+}
+
+.publish-dialog {
+  width: min(36rem, 100%);
+  max-height: 90vh;
+  overflow-y: auto;
+  padding: 1.25rem 1.5rem;
+  border-radius: 0.5rem;
+  background: #fff;
+  color: #222;
+  font-size: 0.9rem;
+  box-shadow: 0 1rem 3rem rgba(0, 0, 0, 0.4);
+}
+
+.publish-dialog-title {
+  margin: 0 0 0.5rem;
+  font-size: 1.2rem;
+}
+
+.publish-dialog-lead {
+  margin: 0 0 0.75rem;
+  line-height: 1.6;
+}
+
+.publish-dialog-heading {
+  margin: 0.9rem 0 0.35rem;
+  font-size: 0.9rem;
+}
+
+.publish-dialog-list {
+  margin: 0;
+}
+
+.publish-dialog-row {
+  display: flex;
+  gap: 1rem;
+  padding: 0.2rem 0;
+  border-bottom: 1px solid #eee;
+}
+
+.publish-dialog-row dt {
+  flex: 0 0 11rem;
+  font-weight: 600;
+}
+
+.publish-dialog-row dd {
+  margin: 0;
+  overflow-wrap: anywhere;
+}
+
+.publish-dialog-results {
+  margin: 0;
+  padding-left: 1.2rem;
+  line-height: 1.6;
+}
+
+.publish-dialog-error {
+  margin: 0.75rem 0 0;
+  color: #b3261e;
+}
+
+.publish-dialog-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 0.5rem;
+  margin-top: 1.1rem;
 }

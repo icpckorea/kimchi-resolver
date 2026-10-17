@@ -100,6 +100,20 @@ it('?publish=true boots straight into the final publish board', async () => {
 
   expect(screen.queryByText('site score를 입력하세요')).toBeNull();
   expect(document.getElementById('publish-site-score')).toBeNull();
+  // Default mode is off: the board and the save button, no inputs.
+  expect(document.getElementById('publish-invited-cutoff')).toBeNull();
+  expect(screen.getByRole('button', { name: '확정 결과 저장' })).toBeTruthy();
+  expect(document.querySelectorAll('.publish-board .team-row').length).toBe(84);
+});
+
+it('publish_mode=preliminary boots the preliminary inputs', async () => {
+  await bootApp('?publish=true&publish_mode=preliminary');
+  expect(document.getElementById('publish-prelim-total')).not.toBeNull();
+  expect(document.getElementById('publish-invited-cutoff')).toBeNull();
+});
+
+it('publish_mode=regional boots the simulation panel and the board', async () => {
+  await bootApp('?publish=true&publish_mode=regional');
   expect(document.getElementById('publish-invited-cutoff')).not.toBeNull();
   expect(document.querySelectorAll('.publish-board .team-row').length).toBe(84);
 });
