@@ -303,6 +303,7 @@ function RegionalPublish({
   const inputs = useAppStore((s) => s.regionalInputs);
   const setRegionalInputs = useAppStore((s) => s.setRegionalInputs);
   const resetPublishInputs = useAppStore((s) => s.resetPublishInputs);
+  const [resetGen, setResetGen] = useState(0);
   const schools = useMemo(() => schoolsOf(snapshot), [snapshot]);
 
   const simulation = useRegionalSimulation(snapshot, inputs);
@@ -358,8 +359,9 @@ function RegionalPublish({
 
   return (
     <>
-      <StoredInputsNotice />
+      <StoredInputsNotice onReset={() => setResetGen((n) => n + 1)} />
       <RegionalSimPanel
+        key={resetGen}
         value={inputs}
         onChange={(next) => setRegionalInputs(next)}
         schools={schools}
