@@ -149,6 +149,8 @@ export interface AppState {
   pendingCount: number;
   /** Applied-run count (mostly for tests/diagnostics). */
   appliedRunCount: number;
+  /** Contest minute of the last run applied (the time slider follows it). */
+  lastAppliedMinute: number | null;
   contestTimeSec: number | null;
   noMoreUpdate: boolean;
   /** Autoplay on/off (spectator). */
@@ -396,6 +398,7 @@ export function createAppStore(deps: StoreDeps = {}): AppStore {
     function applyRuns(runs: Run[], emit: boolean): void {
       if (runs.length > 0) {
         recordApplied(runs, emit);
+        set({ lastAppliedMinute: runs[runs.length - 1].minute });
         // Live application (emit) flips the affected cells (spec §5/§7);
         // replay/boot application swaps them in without animation.
         if (emit) {
@@ -684,6 +687,7 @@ export function createAppStore(deps: StoreDeps = {}): AppStore {
       systemMessages: [],
       pendingCount: 0,
       appliedRunCount: 0,
+      lastAppliedMinute: null,
       contestTimeSec: null,
       noMoreUpdate: false,
       playing: false,

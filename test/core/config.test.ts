@@ -31,6 +31,7 @@ describe('parseConfig — defaults', () => {
       showSchoolLogos: false,
       showEvents: false,
       lockMode: false,
+      timeTravel: false,
       maxNotifications: 100,
       pagination: false,
       paginationSize: 50,
@@ -458,6 +459,11 @@ describe('applyUrlOverrides', () => {
     expect(selectMode(config)).toBe('spectator');
     expect(config.animation).toBe(false);
     expect(config.searchQuery).toBe('kaist');
+  });
+
+  it('timeTravel defaults to false and is read from config.json', () => {
+    expect(defaultConfig().timeTravel).toBe(false);
+    expect(parseConfig({ timeTravel: true }).config.timeTravel).toBe(true);
   });
 
   it('lockMode defaults to false', () => {

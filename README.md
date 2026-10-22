@@ -46,6 +46,8 @@ Runtime configuration lives in `public/config.json` (served as `config.json` nex
 | `showBalloons` | `true` | balloon row per solved problem |
 | `showSchoolLogos` | `false` | school logos from `orgs/logos/` |
 | `showEvents` | `false` | events dashboard initial visibility |
+| `lockMode` | `false` | ignore the URL params that switch to award or publish mode (public boards) |
+| `timeTravel` | `false` | header slider over the contest minutes, plus a time box (HH:MM or minutes, Enter); it reloads the board with `time=`, keeps the search as `q=`, and play continues from there |
 | `maxNotifications` | `100` | dashboard event cap |
 | `pagination` / `paginationSize` | `false` / `50` | scoreboard pagination |
 | `useFollowedTeamSticky` | `true` | pin the followed team row |

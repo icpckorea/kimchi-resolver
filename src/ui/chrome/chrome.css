@@ -154,6 +154,47 @@
   color: #7d848d;
 }
 
+.kr-time {
+  display: flex;
+  align-items: center;
+  gap: 0.5em;
+  color: #c8cdd3;
+}
+
+.kr-time input[type='range'] {
+  width: 14em;
+  accent-color: #f2c94c;
+  cursor: pointer;
+}
+
+.kr-time__text {
+  width: 3.6em;
+  padding: 0.2em 0.35em;
+  border: 1px solid transparent;
+  border-radius: 0.3em;
+  background: rgba(255, 255, 255, 0.08);
+  color: inherit;
+  font: inherit;
+  font-variant-numeric: tabular-nums;
+  text-align: center;
+  outline: none;
+}
+
+.kr-time__text:focus {
+  background: rgba(255, 255, 255, 0.14);
+  color: #ffffff;
+}
+
+.kr-time__text--invalid {
+  border-color: #eb5757;
+}
+
+@media (max-width: 720px) {
+  .kr-time input[type='range'] {
+    width: 7em;
+  }
+}
+
 .kr-header__pages {
   display: flex;
   align-items: center;
