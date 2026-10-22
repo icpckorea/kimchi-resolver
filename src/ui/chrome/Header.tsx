@@ -25,6 +25,7 @@ import {
   StepForward,
 } from '@ui/icons';
 import { useChromeUi, useDashboardVisibility } from './chromeUiState';
+import { TimeSlider, type TimeNavigate } from './TimeSlider';
 import { useDesktopNotifications, type NotifyPermission } from './useDesktopNotifications';
 import './chrome.css';
 
@@ -48,9 +49,11 @@ function notifyTooltip(permission: NotifyPermission, enabled: boolean): string {
 
 export interface HeaderProps {
   store?: AppStore;
+  /** Time slider navigation; the default reloads the page with `time=`. */
+  navigate?: TimeNavigate;
 }
 
-export function Header({ store = appStore }: HeaderProps) {
+export function Header({ store = appStore, navigate }: HeaderProps) {
   const mode = useStore(store, (state) => state.mode);
   const title = useStore(store, (state) => state.contest?.title ?? '');
   const contestTimeSec = useStore(store, (state) => state.contestTimeSec);
@@ -61,6 +64,7 @@ export function Header({ store = appStore }: HeaderProps) {
   const paginationSize = useStore(store, (state) => state.config.paginationSize);
   const standings = useStore(store, (state) => state.snapshot?.standings ?? null);
   const storedQuery = useStore(store, (state) => state.config.searchQuery);
+  const timeTravel = useStore(store, (state) => state.config.timeTravel);
 
   // Pagination must agree with the board: both paginate the SAME filtered
   // list (Scoreboard applies filterStandings with the committed query).
@@ -221,6 +225,8 @@ export function Header({ store = appStore }: HeaderProps) {
       </div>
 
       <div className="kr-header__spacer" />
+
+      {timeTravel ? <TimeSlider store={store} navigate={navigate} /> : null}
 
       <label className="kr-header__search" title="Search teams by name or affiliation">
         <Search size="1em" />

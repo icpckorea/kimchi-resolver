@@ -12,6 +12,7 @@ import { act, fireEvent, render, renderHook } from '@testing-library/react';
 
 import { createAppStore, type AppStore, type Scheduler } from '@store/appStore';
 import { Header, formatClock } from '@ui/chrome/Header';
+import { parseContestMinute, timeTravelHref } from '@ui/chrome/TimeSlider';
 import { Dashboard } from '@ui/chrome/Dashboard';
 import { SystemMessages } from '@ui/chrome/SystemMessages';
 import { useDesktopNotifications } from '@ui/chrome/useDesktopNotifications';
@@ -287,6 +288,216 @@ describe('Header', () => {
       await new Promise((resolve) => setTimeout(resolve, 150));
     });
     expect(getByText('page 1/2')).toBeTruthy();
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Time travel slider
+// ---------------------------------------------------------------------------
+
+describe('timeTravelHref', () => {
+  it('sets time= and keeps the other params', () => {
+    expect(timeTravelHref('https://x.org/board/?t=7&time=30', 75, null)).toBe(
+      'https://x.org/board/?t=7&time=75',
+    );
+    expect(timeTravelHref('https://x.org/board/', 0, null)).toBe('https://x.org/board/?time=0');
+  });
+
+  it('removes time= for the end of the contest', () => {
+    expect(timeTravelHref('https://x.org/board/?time=30&t=7', null, null)).toBe(
+      'https://x.org/board/?t=7',
+    );
+    expect(timeTravelHref('https://x.org/board/?time=30', null, null)).toBe('https://x.org/board/');
+  });
+
+  it('carries the current search as q=, and drops a cleared one', () => {
+    expect(timeTravelHref('https://x.org/board/', 75, 'KAIST')).toBe(
+      'https://x.org/board/?time=75&q=KAIST',
+    );
+    expect(timeTravelHref('https://x.org/board/?q=SNU&time=30', 75, 'KAIST')).toBe(
+      'https://x.org/board/?q=KAIST&time=75',
+    );
+    expect(timeTravelHref('https://x.org/board/?q=SNU&time=30', 75, null)).toBe(
+      'https://x.org/board/?time=75',
+    );
+  });
+});
+
+describe('parseContestMinute', () => {
+  it('reads plain minutes and H:MM / HH:MM', () => {
+    expect(parseContestMinute('130')).toBe(130);
+    expect(parseContestMinute('0')).toBe(0);
+    expect(parseContestMinute('2:10')).toBe(130);
+    expect(parseContestMinute('02:10')).toBe(130);
+    expect(parseContestMinute('0:05')).toBe(5);
+    expect(parseContestMinute(' 2:10 ')).toBe(130);
+  });
+
+  it('rejects anything else', () => {
+    for (const text of ['', 'abc', '2:60', '2:5:0', '-5', '1.5', ':10', '2:']) {
+      expect(parseContestMinute(text)).toBeNull();
+    }
+  });
+});
+
+describe('Header time slider', () => {
+  const timeTravelFiles = (): Record<string, StubValue> => ({
+    ...smallFiles(),
+    'config.json': { timeTravel: true },
+  });
+
+  const timeText = (container: HTMLElement): HTMLInputElement =>
+    container.querySelector('.kr-time__text') as HTMLInputElement;
+
+  async function typeTime(text: string, search = '') {
+    const store = await bootStore(timeTravelFiles(), search);
+    const navigate = vi.fn();
+    const { container } = render(<Header store={store} navigate={navigate} />);
+    const box = timeText(container);
+    fireEvent.change(box, { target: { value: text } });
+    fireEvent.keyDown(box, { key: 'Enter' });
+    return { navigate, box };
+  }
+
+  it('is not shown unless config.timeTravel is on', async () => {
+    const store = await bootStore(smallFiles());
+    const { queryByLabelText } = render(<Header store={store} />);
+    expect(queryByLabelText('Contest time')).toBeNull();
+  });
+
+  it('is not shown in publish mode', async () => {
+    const store = await bootStore(timeTravelFiles(), '?publish=true');
+    const { queryByLabelText } = render(<Header store={store} />);
+    expect(queryByLabelText('Contest time')).toBeNull();
+  });
+
+  it('spans the contest in minutes and starts at the end without time=', async () => {
+    const store = await bootStore(timeTravelFiles());
+    const { getByLabelText, container } = render(<Header store={store} navigate={vi.fn()} />);
+    const slider = getByLabelText('Contest time') as HTMLInputElement;
+    expect(slider.min).toBe('0');
+    expect(slider.max).toBe('300'); // contestTime 18000 s
+    expect(slider.value).toBe('300');
+    expect(timeText(container).value).toBe('05:00');
+  });
+
+  it('starts at the time= minute', async () => {
+    const store = await bootStore(timeTravelFiles(), '?time=42');
+    const { getByLabelText, container } = render(<Header store={store} navigate={vi.fn()} />);
+    expect((getByLabelText('Contest time') as HTMLInputElement).value).toBe('42');
+    expect(timeText(container).value).toBe('00:42');
+  });
+
+  it('moves the label while dragging and navigates only on release', async () => {
+    const store = await bootStore(timeTravelFiles());
+    const navigate = vi.fn();
+    const { getByLabelText, container } = render(<Header store={store} navigate={navigate} />);
+    const slider = getByLabelText('Contest time') as HTMLInputElement;
+
+    fireEvent.input(slider, { target: { value: '90' } });
+    expect(timeText(container).value).toBe('01:30');
+    expect(navigate).not.toHaveBeenCalled();
+
+    fireEvent.change(slider, { target: { value: '90' } });
+    expect(navigate).toHaveBeenCalledTimes(1);
+    expect(navigate).toHaveBeenCalledWith(90, null);
+  });
+
+  it('passes the committed search to the navigation', async () => {
+    const store = await bootStore(timeTravelFiles(), '?q=KAIST');
+    const navigate = vi.fn();
+    const { getByLabelText } = render(<Header store={store} navigate={navigate} />);
+    fireEvent.change(getByLabelText('Contest time'), { target: { value: '90' } });
+    expect(navigate).toHaveBeenCalledWith(90, 'KAIST');
+  });
+
+  it('navigates to the end (no time=) when released at the maximum', async () => {
+    const store = await bootStore(timeTravelFiles(), '?time=42');
+    const navigate = vi.fn();
+    const { getByLabelText } = render(<Header store={store} navigate={navigate} />);
+    fireEvent.change(getByLabelText('Contest time'), { target: { value: '300' } });
+    expect(navigate).toHaveBeenCalledWith(null, null);
+  });
+
+  it('navigates to a typed H:MM time on Enter', async () => {
+    const { navigate } = await typeTime('1:30');
+    expect(navigate).toHaveBeenCalledWith(90, null);
+  });
+
+  it('navigates to typed plain minutes on Enter', async () => {
+    const { navigate } = await typeTime('130', '?q=KAIST');
+    expect(navigate).toHaveBeenCalledWith(130, 'KAIST');
+  });
+
+  it('clamps a typed time past the end to the end of the contest', async () => {
+    const { navigate } = await typeTime('400', '?time=42');
+    expect(navigate).toHaveBeenCalledWith(null, null);
+  });
+
+  it('marks a bad typed time and does not navigate', async () => {
+    const { navigate, box } = await typeTime('2:75');
+    expect(navigate).not.toHaveBeenCalled();
+    expect(box.getAttribute('aria-invalid')).toBe('true');
+  });
+
+  it('does not navigate to the typed current minute', async () => {
+    const { navigate } = await typeTime('0:42', '?time=42');
+    expect(navigate).not.toHaveBeenCalled();
+  });
+
+  it('puts the current time back on Escape and on blur', async () => {
+    const store = await bootStore(timeTravelFiles(), '?time=42');
+    const { container } = render(<Header store={store} navigate={vi.fn()} />);
+    const box = timeText(container);
+    fireEvent.change(box, { target: { value: '1:' } });
+    fireEvent.keyDown(box, { key: 'Escape' });
+    expect(box.value).toBe('00:42');
+    fireEvent.change(box, { target: { value: '99' } });
+    fireEvent.blur(box);
+    expect(box.value).toBe('00:42');
+  });
+
+  it('follows the last applied run while the queue is fed, and ends at the maximum', async () => {
+    // Runs at minutes 5, 10, 20, 30, 40, 50; time=12 queues the last four.
+    const store = await bootStore(timeTravelFiles(), '?time=12');
+    const { getByLabelText, container } = render(<Header store={store} navigate={vi.fn()} />);
+    const slider = getByLabelText('Contest time') as HTMLInputElement;
+    expect(slider.value).toBe('12'); // the last replayed run (minute 10) is before time=
+
+    act(() => store.getState().feedOne());
+    expect(store.getState().lastAppliedMinute).toBe(20);
+    expect(slider.value).toBe('20');
+    expect(timeText(container).value).toBe('00:20');
+
+    act(() => store.getState().feedAllQueued());
+    expect(slider.value).toBe('300');
+  });
+
+  it('does not navigate when released at the minute it followed to', async () => {
+    const store = await bootStore(timeTravelFiles(), '?time=12');
+    const navigate = vi.fn();
+    const { getByLabelText } = render(<Header store={store} navigate={navigate} />);
+    act(() => store.getState().feedOne());
+    fireEvent.change(getByLabelText('Contest time'), { target: { value: '20' } });
+    expect(navigate).not.toHaveBeenCalled();
+  });
+
+  it('keeps following the feed after a drag released at the current minute', async () => {
+    const store = await bootStore(timeTravelFiles(), '?time=12');
+    const { getByLabelText } = render(<Header store={store} navigate={vi.fn()} />);
+    const slider = getByLabelText('Contest time') as HTMLInputElement;
+    fireEvent.input(slider, { target: { value: '15' } });
+    fireEvent.change(slider, { target: { value: '12' } });
+    act(() => store.getState().feedOne());
+    expect(slider.value).toBe('20');
+  });
+
+  it('does not navigate when released at the current minute', async () => {
+    const store = await bootStore(timeTravelFiles(), '?time=42');
+    const navigate = vi.fn();
+    const { getByLabelText } = render(<Header store={store} navigate={navigate} />);
+    fireEvent.change(getByLabelText('Contest time'), { target: { value: '42' } });
+    expect(navigate).not.toHaveBeenCalled();
   });
 });
 

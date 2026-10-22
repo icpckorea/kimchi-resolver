@@ -174,6 +174,8 @@ const configSchema = z.object({
    * `invited_cutoff` are ignored, silently — a viewer sees no warning).
    */
   lockMode: z.boolean().default(false),
+  /** Spectator header slider that reloads the board at a contest minute (`time=`). */
+  timeTravel: z.boolean().default(false),
   maxNotifications: z.number().int().nonnegative().default(100),
   pagination: z.boolean().default(false),
   paginationSize: z.number().int().positive().default(50),
