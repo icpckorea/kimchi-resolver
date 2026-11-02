@@ -9,8 +9,7 @@
 
 .award-view {
   position: relative;
-  /* Finale card zoom (spec §7 step 2). One knob: the zoom transition and the
-   * shake keyframes both read it. */
+  /* Finale card zoom (spec §7 step 2). One knob, read by .award-cell-finale. */
   --award-finale-zoom: 5;
 }
 
@@ -197,11 +196,12 @@
   inset: 0;
   z-index: 40;
   pointer-events: none;
-  /* Radial spotlight punched out of a dark veil, centered on the cell. */
+  /* Radial spotlight punched out of a dark veil, centered on the viewport
+   * (the zoomed card flies there). */
   /* Wide enough to hold the zoomed card (see --award-finale-zoom) with room
    * to fall off, so the spotlight reads as light and not as a ring. */
   background: radial-gradient(
-    circle 16em at var(--spot-x, 50%) var(--spot-y, 50%),
+    circle 16em at 50% 50%,
     rgba(0, 0, 0, 0) 0,
     rgba(0, 0, 0, 0.28) 55%,
     rgba(0, 0, 0, 0.82) 100%
@@ -217,38 +217,23 @@
   z-index: 45; /* dim veil is 40; the cell is 50 within this row */
 }
 
+/* The card flies to the viewport center as it zooms, so a top-row card does
+ * not go off the screen edge. --award-finale-dx/dy is the offset from the
+ * cell to the viewport center, set on the cell by finaleCellRef (AwardView).
+ * The zoom uses the separate `translate` and `scale` properties, not
+ * `transform`: the gacha shake animates `transform` from the same frame, and
+ * an animation on `transform` would override this transition (the card would
+ * jump, not fly). The browser applies translate, then scale, then the shake
+ * transform, so the shake is zoomed with the card. */
 .award-cell-finale {
   position: relative;
   z-index: 50; /* above the dim veil */
-  transform: scale(var(--award-finale-zoom));
+  translate: var(--award-finale-dx, 0) var(--award-finale-dy, 0);
+  scale: var(--award-finale-zoom);
   /* Long enough that a 5× jump reads as a zoom and not as a cut. */
-  transition: transform 0.6s cubic-bezier(0.22, 1, 0.36, 1);
-}
-
-/* Finale + gacha shake combined: keep the zoom inside the keyframes. */
-.award-cell-finale.award-cell-gacha {
-  animation: award-gacha-shake-zoomed 0.18s linear infinite;
-}
-
-@keyframes award-gacha-shake-zoomed {
-  0% {
-    transform: scale(var(--award-finale-zoom)) translate(0, 0) rotate(0deg);
-  }
-  20% {
-    transform: scale(var(--award-finale-zoom)) translate(1.5px, -1px) rotate(0.7deg);
-  }
-  40% {
-    transform: scale(var(--award-finale-zoom)) translate(-1.5px, 1px) rotate(-0.6deg);
-  }
-  60% {
-    transform: scale(var(--award-finale-zoom)) translate(1px, 1.5px) rotate(0.5deg);
-  }
-  80% {
-    transform: scale(var(--award-finale-zoom)) translate(-1px, -1.5px) rotate(-0.7deg);
-  }
-  100% {
-    transform: scale(var(--award-finale-zoom)) translate(0, 0) rotate(0deg);
-  }
+  transition:
+    translate 0.6s cubic-bezier(0.22, 1, 0.36, 1),
+    scale 0.6s cubic-bezier(0.22, 1, 0.36, 1);
 }
 
 /* Continuous flowing FULL-CELL rainbow (NOT a thin sweep): oversized
@@ -299,8 +284,8 @@
 
 .award-confetti-piece {
   position: absolute;
-  left: var(--burst-x, 50%);
-  top: var(--burst-y, 45%);
+  left: 50%;
+  top: 50%;
   display: block;
   opacity: 0;
   will-change: transform, opacity;

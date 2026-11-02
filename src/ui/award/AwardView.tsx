@@ -224,16 +224,20 @@ export function AwardView({ store = appStore, apacStars = null }: AwardViewProps
   // the zoomed (transformed) cell.
   const [finalePhase, setFinalePhase] = useState<FinalePhase | null>(null);
 
-  // -- finale spotlight position --------------------------------------------
-  const [finalePos, setFinalePos] = useState<{ x: number; y: number } | null>(null);
+  // -- finale card position --------------------------------------------------
+  // The zoomed card flies to the viewport center: a zoom in place pushes the
+  // top rows' card off the screen edge. The spotlight and the confetti stay
+  // at the center (their defaults). The offset goes on the cell as CSS
+  // variables, read by .award-cell-finale and its shake keyframes. The
+  // pre-heat scale is around the cell center, so the center is correct here.
   const finaleCellRef = useCallback((el: HTMLElement | null) => {
-    if (el === null) {
-      setFinalePos(null);
-      return;
-    }
+    if (el === null) return;
     const rect = el.getBoundingClientRect();
-    if (rect.width === 0 && rect.height === 0) setFinalePos(null); // jsdom
-    else setFinalePos({ x: rect.left + rect.width / 2, y: rect.top + rect.height / 2 });
+    if (rect.width === 0 && rect.height === 0) return; // jsdom
+    const dx = window.innerWidth / 2 - (rect.left + rect.width / 2);
+    const dy = window.innerHeight / 2 - (rect.top + rect.height / 2);
+    el.style.setProperty('--award-finale-dx', `${dx}px`);
+    el.style.setProperty('--award-finale-dy', `${dy}px`);
   }, []);
 
   if (machine === null || snapshot === null || contest === null) return null;
@@ -311,10 +315,8 @@ export function AwardView({ store = appStore, apacStars = null }: AwardViewProps
           />
         ))}
       </div>
-      {finaleZoomed ? <FinaleDim x={finalePos?.x ?? null} y={finalePos?.y ?? null} /> : null}
-      {finaleConfetti ? (
-        <ConfettiBurst x={finalePos?.x ?? null} y={finalePos?.y ?? null} />
-      ) : null}
+      {finaleZoomed ? <FinaleDim /> : null}
+      {finaleConfetti ? <ConfettiBurst /> : null}
       {slideTeamId !== null && slideEntry !== undefined && slideTeam !== undefined ? (
         <AwardSlide
           entry={slideEntry}
