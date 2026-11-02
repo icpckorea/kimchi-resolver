@@ -1337,14 +1337,24 @@ describe('ceremony board chrome', () => {
 describe('finale zoom', () => {
   const css = readFileSync(resolve(__dirname, '../../src/ui/award/award.css'), 'utf8');
 
-  it('drives every finale transform from --award-finale-zoom', () => {
+  it('zooms the finale card to the viewport center from --award-finale-zoom', () => {
     expect(css).toMatch(/--award-finale-zoom:\s*5\b/);
-    expect(css).toMatch(/\.award-cell-finale\s*\{[^}]*transform:\s*scale\(var\(--award-finale-zoom\)\)/);
-    // The shake keyframes carry the zoom too — a hardcoded scale there would
-    // snap the card back to its old size for the whole shake.
-    const keyframes = /@keyframes award-gacha-shake-zoomed\s*\{([\s\S]*?)\n\}/.exec(css);
-    expect(keyframes).not.toBeNull();
-    expect((keyframes as RegExpExecArray)[1]).not.toMatch(/scale\((?!var\()/);
+    const finale = /\.award-cell-finale\s*\{([^}]*)\}/.exec(css);
+    expect(finale).not.toBeNull();
+    const body = (finale as RegExpExecArray)[1];
+    expect(body).toMatch(/\bscale:\s*var\(--award-finale-zoom\)/);
+    expect(body).toMatch(/\btranslate:\s*var\(--award-finale-dx[^)]*\)\s*var\(--award-finale-dy/);
+    // The zoom must stay off `transform`: the gacha shake animates
+    // `transform` from the same frame and would override the transition.
+    expect(body).not.toMatch(/\btransform:/);
+    const shake = /@keyframes award-gacha-shake\s*\{([\s\S]*?)\n\}/.exec(css);
+    expect(shake).not.toBeNull();
+    expect((shake as RegExpExecArray)[1]).not.toMatch(/scale\(|--award-finale/);
+  });
+
+  it('centers the spotlight and the confetti on the viewport', () => {
+    expect(css).toMatch(/\.award-finale-dim\s*\{[^}]*circle 16em at 50% 50%/);
+    expect(css).toMatch(/\.award-confetti-piece\s*\{[^}]*left:\s*50%;\s*top:\s*50%/);
   });
 
   it('lets the zoomed card out of the board box', () => {

@@ -7,7 +7,7 @@
  *   gacha variant) — the gradient itself lives in award.css; this component
  *   only mounts the layer.
  * - FinaleDim: full-screen dim overlay with a radial spotlight centered on
- *   the finale cell (position injected via CSS variables).
+ *   the viewport, where the zoomed finale card sits.
  * - ConfettiBurst: finale step 5 — a hand-rolled DOM/CSS particle burst on a
  *   Yes verdict. No dependency, no canvas: plain spans with per-particle CSS
  *   variables driving one keyframe animation.
@@ -109,25 +109,14 @@ const CONFETTI: ConfettiPiece[] = Array.from({ length: CONFETTI_COUNT }, (_, i) 
   };
 });
 
-export interface ConfettiBurstProps {
-  /** Burst origin in viewport px; null → screen center. */
-  x: number | null;
-  y: number | null;
-}
-
-/** Full-screen confetti burst from the finale cell (spec §7 step 5). */
-export function ConfettiBurst({ x, y }: ConfettiBurstProps) {
-  const style = {
-    '--burst-x': x === null ? '50%' : `${x}px`,
-    '--burst-y': y === null ? '45%' : `${y}px`,
-  } as React.CSSProperties;
+/**
+ * Full-screen confetti burst from the finale card (spec §7 step 5). The card
+ * sits at the viewport center (see finaleCellRef in AwardView), so the burst
+ * starts there (award.css).
+ */
+export function ConfettiBurst() {
   return (
-    <div
-      className="award-confetti"
-      data-testid="finale-confetti"
-      aria-hidden="true"
-      style={style}
-    >
+    <div className="award-confetti" data-testid="finale-confetti" aria-hidden="true">
       {CONFETTI.map((piece, i) => (
         <span
           key={i}
@@ -152,24 +141,10 @@ export function ConfettiBurst({ x, y }: ConfettiBurstProps) {
   );
 }
 
-export interface FinaleDimProps {
-  /** Spotlight center in viewport px; null → screen center. */
-  x: number | null;
-  y: number | null;
-}
-
-/** Full-screen dim + radial spotlight for the finale (spec §7). */
-export function FinaleDim({ x, y }: FinaleDimProps) {
-  const style: Record<string, string> = {
-    '--spot-x': x === null ? '50%' : `${x}px`,
-    '--spot-y': y === null ? '50%' : `${y}px`,
-  };
-  return (
-    <div
-      className="award-finale-dim"
-      data-testid="finale-dim"
-      aria-hidden="true"
-      style={style as React.CSSProperties}
-    />
-  );
+/**
+ * Full-screen dim + radial spotlight for the finale (spec §7), centered on
+ * the viewport, where the zoomed card sits.
+ */
+export function FinaleDim() {
+  return <div className="award-finale-dim" data-testid="finale-dim" aria-hidden="true" />;
 }
