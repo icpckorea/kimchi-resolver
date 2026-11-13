@@ -92,10 +92,29 @@ describe('ApacStar', () => {
 });
 
 describe('FlagIcon', () => {
-  it.each(['KR', 'JP', 'TW', 'CN', 'US'] as const)('renders a specific flag for %s', (code) => {
-    const svg = getSvg(render(<FlagIcon country={code} />).container);
-    expect(svg.getAttribute('data-country')).toBe(code);
-    expect(svg.getAttribute('viewBox')).toBe('0 0 36 24');
+  it.each(['KR', 'JP', 'TW', 'CN', 'US', 'TH', 'SG'] as const)(
+    'renders a specific flag for %s',
+    (code) => {
+      const svg = getSvg(render(<FlagIcon country={code} />).container);
+      expect(svg.getAttribute('data-country')).toBe(code);
+      expect(svg.getAttribute('viewBox')).toBe('0 0 36 24');
+      expect(svg.querySelector('.kr-flag-generic')).toBeNull();
+    },
+  );
+
+  it('draws TH as red-white-blue-white-red stripes, 1:1:2:1:1', () => {
+    const svg = getSvg(render(<FlagIcon country="TH" />).container);
+    const blue = svg.querySelector('rect[fill="#2d2a4a"]');
+    expect(blue?.getAttribute('y')).toBe('8');
+    expect(blue?.getAttribute('height')).toBe('8');
+    expect(svg.querySelector('rect[fill="#a51931"]')).not.toBeNull();
+  });
+
+  it('draws SG with a red upper half, a crescent and five stars', () => {
+    const svg = getSvg(render(<FlagIcon country="SG" />).container);
+    expect(svg.querySelector('rect[fill="#ed2939"]')?.getAttribute('height')).toBe('12');
+    expect(svg.querySelectorAll('circle')).toHaveLength(2);
+    expect(svg.querySelectorAll('polygon[fill="#fff"]')).toHaveLength(5);
   });
 
   it('draws a full taegeukgi for KR: rotated taegeuk + four trigrams', () => {

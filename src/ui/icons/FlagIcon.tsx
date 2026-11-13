@@ -119,6 +119,37 @@ const US = (
   </g>
 );
 
+/* Thai Trairanga: five horizontal stripes, heights 1:1:2:1:1. */
+const TH = (
+  <g>
+    <rect width="36" height="24" fill="#a51931" />
+    <rect y="4" width="36" height="16" fill="#f4f5f8" />
+    <rect y="8" width="36" height="8" fill="#2d2a4a" />
+  </g>
+);
+
+/*
+ * Singapore (the 54×36 construction scaled by 2/3): red upper half, a white
+ * crescent made of a white disc covered by an offset red disc, and five white
+ * stars on a circle around (10.02, 6), each pointing away from its center.
+ */
+const SG_STARS = [0, 72, 144, 216, 288].map((deg) => {
+  const rad = (deg * Math.PI) / 180;
+  const cx = 10.02 + 2.533 * Math.sin(rad);
+  const cy = 6 - 2.533 * Math.cos(rad);
+  return <polygon key={deg} points={starPoints(cx, cy, 1.15, 0.439, 5, deg - 90)} fill="#fff" />;
+});
+
+const SG = (
+  <g>
+    <rect width="36" height="24" fill="#fff" />
+    <rect width="36" height="12" fill="#ed2939" />
+    <circle cx="7.603" cy="6" r="4.417" fill="#fff" />
+    <circle cx="10.02" cy="6" r="4.833" fill="#ed2939" />
+    {SG_STARS}
+  </g>
+);
+
 /** Neutral fallback for unknown country codes: gray field with a pennant glyph. */
 const GENERIC = (
   <g className="kr-flag-generic">
@@ -130,7 +161,7 @@ const GENERIC = (
   </g>
 );
 
-const FLAGS: Record<string, ReactNode> = { KR, JP, TW, CN, US };
+const FLAGS: Record<string, ReactNode> = { KR, JP, TW, CN, US, TH, SG };
 
 /**
  * Hand-drawn simplified country flag (spec §8), 3:2 ratio with rounded
