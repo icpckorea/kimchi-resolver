@@ -241,5 +241,21 @@
   "Soonchunhyang University": {
     "country": "KR",
     "logo": "soonchunhyang-university.jpg"
+  },
+  "Senshu University": {
+    "country": "JP",
+    "logo": "senshu-university.svg"
+  },
+  "National Yang Ming Chiao Tung University": {
+    "country": "TW",
+    "logo": "national-yang-ming-chiao-tung-university.png"
+  },
+  "Chulalongkorn University": {
+    "country": "TH",
+    "logo": "chulalongkorn-university.svg"
+  },
+  "National University of Singapore": {
+    "country": "SG",
+    "logo": "national-university-of-singapore.svg"
   }
 }
