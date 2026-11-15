@@ -417,7 +417,7 @@ describe('PublishView regional mode', () => {
     expect(document.querySelector('.regional-sim-score-hint')).not.toBeNull();
   });
 
-  it('regional: picking a WF medal school keeps its 3rd team in the list', () => {
+  it('regional: Q = 2 for every school, even with a WF medal school in the inputs (C2 update)', () => {
     const medalContest = makeContest([
       { id: 'a1', group: 'A' },
       { id: 'w1', group: 'W' },
@@ -434,19 +434,14 @@ describe('PublishView regional mode', () => {
     ]);
     // Default coefficients: S = 0.56·3 + 0.24·5 = 2.88.
     seedStore({ mode: 'regional', contest: medalContest, snapshot: medalSnapshot });
+    appStore.setState({
+      regionalInputs: { ...appStore.getState().regionalInputs, wfMedalGroups: ['W'] },
+    });
     render(<PublishView />);
+    expect(document.getElementById('publish-wf-medal-groups')).toBeNull();
+    expect(document.querySelector('.regional-sim-quota-note')?.textContent).toContain('2팀');
     expect(valueOf('w3')).toBe(''); // Q = 2: w3 is out
     expect(valueOf('v1')).toBe('0.6944'); // R3 → 2/2.88
-
-    fireEvent.click(document.getElementById('publish-wf-medal-groups') as HTMLButtonElement);
-    const row = [...document.querySelectorAll('.publish-school')].find(
-      (el) => el.textContent === 'W',
-    );
-    fireEvent.click(row!.querySelector('input') as HTMLInputElement);
-    expect(appStore.getState().regionalInputs.wfMedalGroups).toEqual(['W']);
-
-    expect(valueOf('w3')).toBe('0.6944'); // Q = 3: R3
-    expect(valueOf('v1')).toBe('1.0417'); // R4 → 3/2.88
   });
 
   it('regional: cutoff turns qualifying rows gold', () => {
@@ -477,7 +472,7 @@ describe('PublishView regional mode', () => {
     seedStore({ mode: 'regional' });
     render(<PublishView />);
     const link = document.querySelector<HTMLAnchorElement>(
-      'a[href="https://icpc.jp/apac/2026-27/rules/"]',
+      'a[href="https://icpc.jp/apac/2026-27/rulenew/"]',
     );
     expect(link).not.toBeNull();
   });
@@ -691,10 +686,10 @@ describe('Regional inputs', () => {
     return row!.querySelector('input') as HTMLInputElement;
   }
 
-  it('has three school pickers: WF medal, other-regional winners, invited by another path', () => {
+  it('has two school pickers: other-regional winners, invited by another path', () => {
     seedStore();
     render(<PublishView />);
-    expect(document.getElementById('publish-wf-medal-groups')).not.toBeNull();
+    expect(document.getElementById('publish-wf-medal-groups')).toBeNull();
     expect(document.getElementById('publish-winner-groups')).not.toBeNull();
     expect(document.getElementById('publish-already-invited-groups')).not.toBeNull();
 
@@ -758,14 +753,14 @@ describe('Regional inputs', () => {
   it('warns that ranks are pushed down while no school is picked', () => {
     seedStore();
     render(<PublishView />);
-    const hint = document.querySelector('.publish-controls-hint');
+    const hint = document.querySelector('.regional-sim-invited-warning');
     expect(hint?.textContent).toContain('밀리고');
     expect(hint?.textContent).toContain('적게 표시');
 
     // Picking one invited school removes the warning.
     openPicker();
     fireEvent.click(schoolBox('Y'));
-    expect(document.querySelector('.publish-controls-hint')).toBeNull();
+    expect(document.querySelector('.regional-sim-invited-warning')).toBeNull();
   });
 
   it('"초기값으로 되돌리기" resets the inputs and the field text', () => {

@@ -231,7 +231,7 @@ describe('PublishedApp', () => {
 
     expect(screen.getByText(BANNER)).toBeTruthy();
     expect(
-      screen.getAllByRole('link').some((a) => a.getAttribute('href') === 'https://icpc.jp/apac/2026-27/rules/'),
+      screen.getAllByRole('link').some((a) => a.getAttribute('href') === 'https://icpc.jp/apac/2026-27/rulenew/'),
     ).toBe(true);
     expect(screen.getByText(/은색 = APAC championship 초대 가능/)).toBeTruthy();
     expect(screen.queryByText(/동색/)).toBeNull(); // no bronze in the legend

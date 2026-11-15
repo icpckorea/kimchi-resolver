@@ -117,8 +117,8 @@ export const MESSAGES: Record<Lang, PublishedMessages> = {
       regionalForeignHint:
         'Teams whose country code is not KR. If empty, the count from the standings is used.',
       schoolsLegend: 'Schools',
-      wfMedalLabel: 'WF medal schools of last year',
-      wfMedalHint: 'These schools keep up to 3 teams in the list. Other schools keep 2 teams.',
+      quotaNote:
+        'Every school keeps up to 2 teams in the list. No World Finals is held before the 2027 Championship, so the 3-team rule for WF medal schools does not apply (rule C2, updated on November 1, 2026).',
       winnerLabel: 'Schools that won another regional',
       droppedSchoolHint: 'All teams of these schools are removed from the list.',
       invitedLabel: 'Schools already invited by another path',

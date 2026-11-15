@@ -358,7 +358,6 @@ function RegionalPublish({
       label: 'S 계수',
       value: `${c.regionalSchools} / ${c.regionalTeams} / ${c.prelimSchools} / ${c.prelimTeams} / ${c.foreignTeams}`,
     },
-    { label: '작년 WF 메달 학교', value: listText(inputs.wfMedalGroups) },
     { label: '다른 리저널 winner 학교', value: listText(inputs.winnerGroups) },
     { label: '다른 경로로 이미 초청된 학교', value: listText(inputs.invitedGroups) },
     { label: '이미 초청된 팀 (config)', value: listText(inputs.invitedTeamIds) },

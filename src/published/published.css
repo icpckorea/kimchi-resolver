@@ -119,6 +119,11 @@
   color: #a03026;
 }
 
+/* The Q = 2 note is information, not a warning: no warning red. */
+.published-view .regional-sim-quota-note {
+  color: #555;
+}
+
 .published-view .publish-button {
   color: #1c1c1c;
 }

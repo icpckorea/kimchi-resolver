@@ -409,7 +409,7 @@ describe('English mode shows no Korean', () => {
   it('the school picker texts are English too', () => {
     window.history.replaceState(null, '', '/?lang=en');
     render(<PublishedApp state={buildState('regional')} />);
-    const picker = document.getElementById('publish-wf-medal-groups') as HTMLButtonElement;
+    const picker = document.getElementById('publish-winner-groups') as HTMLButtonElement;
     expect(picker.textContent).toBe('None selected');
     fireEvent.click(picker);
     const filter = document.querySelector<HTMLInputElement>('.publish-schools-filter')!;
@@ -440,7 +440,9 @@ describe('RegionalSimPanel on the prepare page', () => {
     expect(screen.getByRole('button', { name: '초기값으로 되돌리기' })).toBeTruthy();
     expect(screen.getByText('고급')).toBeTruthy();
     expect(screen.getByText('예선 학교 수 U_p')).toBeTruthy();
-    expect(document.getElementById('publish-wf-medal-groups')?.textContent).toBe('선택 안 함');
+    expect(document.getElementById('publish-winner-groups')?.textContent).toBe('선택 안 함');
+    expect(document.getElementById('publish-wf-medal-groups')).toBeNull();
+    expect(document.querySelector('.regional-sim-quota-note')?.textContent).toContain('2팀');
   });
 
   it('takes the English messages from the prop', () => {

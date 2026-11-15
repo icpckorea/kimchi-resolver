@@ -11,9 +11,13 @@
  *   shown here. Empty preliminary counts count as 0 (with a hint); the
  *   standings counts U_r, T_r, F_r are shown as placeholders and an operator
  *   value replaces them.
- * - Three school pickers: WF medal schools (Q = 3), winner schools of other
- *   regionals, and schools already invited by another path. The last two
- *   drop out of the scored list the same way (decision "B", spec §6.2).
+ * - Two school pickers: winner schools of other regionals, and schools
+ *   already invited by another path. Both drop out of the scored list the
+ *   same way (decision "B", spec §6.2).
+ * - No WF medal school picker: rule C2 (update of 2026-11-01) makes Q = 2 for
+ *   every school, because no World Finals is held before the 2027
+ *   Championship. A note says so. `wfMedalGroups` stays in the inputs (the
+ *   publish-state schema keeps it) but the simulation ignores it.
  * - The five S coefficients sit in a collapsed "고급" section.
  * - Every user-visible text comes from `RegionalSimMessages`. The default is
  *   Korean (the prepare page); the public page passes its own language.
@@ -33,7 +37,7 @@ import {
 import type { RegionalSimInputs } from '@core/publishState';
 import './publish.css';
 
-export const APAC_RULES_URL = 'https://icpc.jp/apac/2026-27/rules/';
+export const APAC_RULES_URL = 'https://icpc.jp/apac/2026-27/rulenew/';
 
 // ---------------------------------------------------------------------------
 // Messages
@@ -66,8 +70,8 @@ export interface RegionalSimMessages {
   regionalForeignLabel: string;
   regionalForeignHint: string;
   schoolsLegend: string;
-  wfMedalLabel: string;
-  wfMedalHint: string;
+  /** Q = 2 for every school (rule C2, update of 2026-11-01). */
+  quotaNote: string;
   winnerLabel: string;
   /** Shared by the winner and already-invited pickers. */
   droppedSchoolHint: string;
@@ -98,8 +102,8 @@ export const REGIONAL_SIM_MESSAGES_KO: RegionalSimMessages = {
   regionalForeignLabel: '본선 외국 팀 수 F_r',
   regionalForeignHint: '국가 코드가 KR이 아닌 팀입니다. 비워 두면 순위표에서 센 값을 씁니다.',
   schoolsLegend: '학교',
-  wfMedalLabel: '작년 WF 메달 학교',
-  wfMedalHint: '이 학교는 상위 3팀까지 계산에 남습니다. 다른 학교는 2팀입니다.',
+  quotaNote:
+    '모든 학교가 상위 2팀까지 계산에 남습니다. 2027 Championship 전에는 World Finals가 열리지 않으므로 WF 메달 학교의 3팀 규칙은 쓰지 않습니다 (규정 C2, 2026-11-01 개정).',
   winnerLabel: '다른 리저널 winner 학교',
   droppedSchoolHint: '이 학교의 팀은 모두 계산에서 빠집니다.',
   invitedLabel: '다른 경로로 이미 초청된 학교',
@@ -156,7 +160,9 @@ export function useRegionalSimulation(
     const simulation = simulateRegional(snapshot, {
       siteScore: siteScoreOf(autoCounts, inputs),
       cutoff: inputs.cutoff,
-      quota: { base: DEFAULT_SCHOOL_QUOTA, wfMedalGroups: inputs.wfMedalGroups },
+      // Rule C2 (update of 2026-11-01): Q = 2 for every school this cycle, so
+      // a WF medal school list (old config, old saved inputs) has no effect.
+      quota: { base: DEFAULT_SCHOOL_QUOTA, wfMedalGroups: [] },
       alreadyInvited: {
         teamIds: inputs.invitedTeamIds,
         groups: [...inputs.winnerGroups, ...inputs.invitedGroups],
@@ -549,15 +555,9 @@ export function RegionalSimPanel({
 
         <fieldset className="regional-sim-group">
           <legend>{m.schoolsLegend}</legend>
-          <InvitedSchoolPicker
-            id="publish-wf-medal-groups"
-            label={m.wfMedalLabel}
-            schools={schools}
-            selected={value.wfMedalGroups}
-            onChange={(wfMedalGroups) => patch({ wfMedalGroups })}
-            messages={m.picker}
-            hint={m.wfMedalHint}
-          />
+          <p className="publish-controls-hint regional-sim-quota-note" role="note">
+            {m.quotaNote}
+          </p>
           <InvitedSchoolPicker
             id="publish-winner-groups"
             label={m.winnerLabel}
@@ -577,7 +577,7 @@ export function RegionalSimPanel({
             hint={m.droppedSchoolHint}
           />
           {invitedEmpty ? (
-            <p className="publish-controls-hint" role="note">
+            <p className="publish-controls-hint regional-sim-invited-warning" role="note">
               {m.invitedEmptyWarning}
             </p>
           ) : null}
