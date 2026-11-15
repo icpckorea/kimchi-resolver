@@ -13,6 +13,28 @@
   --award-finale-zoom: 5;
 }
 
+/* ------------------------------------------------------------------ */
+/* Magnify (magnify / ?magnify=true)                                   */
+/* ------------------------------------------------------------------ */
+
+/* The larger board itself is shared with the live board (scoreboard.css
+ * "Magnify", class .scoreboard--magnify). Only the award parts are here. */
+.award-view--magnify {
+  /* 5 × 0.6 / (0.3 × row) = 10 / row: the zoomed finale card keeps the size
+   * it has with the shared 0.6em cells. */
+  --award-finale-zoom: calc(10 / var(--kr-mag-row));
+}
+
+/* ≥1201px the width guard already reserves 7.3 row-em (14.6 units) for the
+ * balloon stack. The ceremony board shows no balloons (award.showBalloons
+ * off), so the larger cells, numbers and the logo column use that room
+ * first. */
+@media (min-width: 1201px) {
+  .award-view--magnify:not(.award-view--balloons) {
+    --kr-extra-col: calc(var(--kr-mag-cells-extra) + 4.8 - 14.6 + var(--kr-mag-logo) + var(--kr-mag-breathe));
+  }
+}
+
 /* The zoomed finale card is several rows tall and reaches past the board's
  * rounded box, which .board-wrap clips (index.css). Award mode is a single
  * full-screen ceremony — nothing scrolls sideways there — so it lets the
@@ -112,25 +134,74 @@
   position: relative;
 }
 
+/* Strong, fast shake: about 3× the travel and rotation of the first version,
+ * at a faster beat. The finale shares these keyframes; there the zoom scales
+ * the travel too (rotation stays the same). */
 .award-cell-gacha {
-  animation: award-gacha-shake 0.18s linear infinite;
+  animation: award-gacha-shake 0.12s linear infinite;
 }
 
 @keyframes award-gacha-shake {
   0% {
     transform: translate(0, 0) rotate(0deg);
   }
-  20% {
-    transform: translate(1.5px, -1px) rotate(0.7deg);
+  12.5% {
+    transform: translate(4px, -3px) rotate(2.4deg);
   }
-  40% {
-    transform: translate(-1.5px, 1px) rotate(-0.6deg);
+  25% {
+    transform: translate(-4px, 2px) rotate(-2deg);
   }
-  60% {
-    transform: translate(1px, 1.5px) rotate(0.5deg);
+  37.5% {
+    transform: translate(3px, 4px) rotate(1.6deg);
   }
-  80% {
-    transform: translate(-1px, -1.5px) rotate(-0.7deg);
+  50% {
+    transform: translate(-3px, -4px) rotate(-2.4deg);
+  }
+  62.5% {
+    transform: translate(4px, 1px) rotate(2deg);
+  }
+  75% {
+    transform: translate(-4px, -2px) rotate(-1.6deg);
+  }
+  87.5% {
+    transform: translate(2px, 4px) rotate(2.2deg);
+  }
+  100% {
+    transform: translate(0, 0) rotate(0deg);
+  }
+}
+
+/* The finale card is zoomed (about 5×), so the shared shake reads far too
+ * strong there: the zoom multiplies the travel. Same beat, a quarter of the
+ * travel (≈5px on screen) and about 40% of the rotation. */
+.award-cell-finale.award-cell-gacha {
+  animation-name: award-finale-shake;
+}
+
+@keyframes award-finale-shake {
+  0% {
+    transform: translate(0, 0) rotate(0deg);
+  }
+  12.5% {
+    transform: translate(1px, -0.75px) rotate(0.9deg);
+  }
+  25% {
+    transform: translate(-1px, 0.5px) rotate(-0.75deg);
+  }
+  37.5% {
+    transform: translate(0.75px, 1px) rotate(0.6deg);
+  }
+  50% {
+    transform: translate(-0.75px, -1px) rotate(-0.9deg);
+  }
+  62.5% {
+    transform: translate(1px, 0.25px) rotate(0.75deg);
+  }
+  75% {
+    transform: translate(-1px, -0.5px) rotate(-0.6deg);
+  }
+  87.5% {
+    transform: translate(0.5px, 1px) rotate(0.825deg);
   }
   100% {
     transform: translate(0, 0) rotate(0deg);
@@ -347,10 +418,22 @@
   cursor: pointer;
 }
 
+/*
+ * The card fills 70% of the screen in both directions. Its font size follows
+ * the viewport, and every child is sized in em, so the icon and the text grow
+ * with the card. max-height + overflow keep a very long entry inside the screen.
+ */
 .award-slide-card {
   cursor: default;
-  min-width: 24em;
-  max-width: 80vw;
+  box-sizing: border-box;
+  width: 70vw;
+  min-height: 70vh;
+  max-height: 94vh;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  font-size: min(2.2vw, 3.9vh);
   padding: 2.2em 3em 2.4em;
   border-radius: 0.5em;
   background: linear-gradient(175deg, #1c2333, #10141f);
@@ -371,6 +454,14 @@
   font-weight: 700;
   letter-spacing: 0.04em;
   color: #f5d34c;
+  /* awards.json joins several awards of one team with "\n": one line each. */
+  white-space: pre-line;
+}
+
+/* Sponsor awards and joined awards: long lines (AwardSlide LONG_RANK_CHARS). */
+.award-slide-rank-long {
+  font-size: 1.25em;
+  line-height: 1.25;
 }
 
 .award-slide-team {

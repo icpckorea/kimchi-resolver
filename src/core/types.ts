@@ -219,6 +219,11 @@ export interface AwardConfigInput {
   focusBlinking: { minSolved: number; maxRank: number } | null;
   gachaEffectRequirement: number;
   gachaEffectForNoRatio: number;
+  /**
+   * Every non-finale reveal of a team at visible icpc rank <= this plays the
+   * gacha effect, whatever the verdict or attempt count. null = off.
+   */
+  gachaEffectMaxRank: number | null;
 }
 
 export interface AwardMachine {

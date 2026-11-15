@@ -460,6 +460,10 @@ export function createAwardMachine(opts: CreateAwardMachineOptions): AwardMachin
       // (it is step 2 of the fixed finale sequence) — regardless of the
       // verdict, regardless of the attempt count, and without an rng roll.
       gacha = true;
+    } else if (config.gachaEffectMaxRank != null && standing.icpcRank <= config.gachaEffectMaxRank) {
+      // Top of the board (config): always the gacha, judged like
+      // focusBlinking on the CURRENTLY VISIBLE icpc rank — no rng roll.
+      gacha = true;
     } else if (runs.length >= config.gachaEffectRequirement) {
       // The gacha requirement counts the cell's FULL net attempts (spec §6),
       // which with full-cell masking is simply the replay length. Yes →

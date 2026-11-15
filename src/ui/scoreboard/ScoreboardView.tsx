@@ -57,6 +57,10 @@ export interface ScoreboardViewProps {
   followTeamId?: string | null;
   /** Badges cycle bottom→top instead of `+N` (see TeamRow). */
   badgeCarousel?: boolean;
+  /** Timeline selection: team id → chart color (desktop row tint). */
+  timelineSelection?: ReadonlyMap<string, string> | null;
+  /** Desktop row click toggles the team in the Timeline view. */
+  onToggleTimelineTeam?: (teamId: string) => void;
   className?: string;
 }
 
@@ -74,6 +78,8 @@ export function ScoreboardView({
   page = 0,
   followTeamId = null,
   badgeCarousel = false,
+  timelineSelection = null,
+  onToggleTimelineTeam,
   className,
 }: ScoreboardViewProps) {
   // Mobile compact layout (spec §14). Only spectator/publish render this
@@ -127,6 +133,8 @@ export function ScoreboardView({
         isMobile && 'scoreboard--mobile',
         valueSlot && !isMobile && 'scoreboard--has-value',
         hasLeading && 'scoreboard--has-leading',
+        // Desktop only: the ≤768px compact layout keeps its own row size.
+        config.magnify && !isMobile && 'scoreboard--magnify',
         className,
       )}
       data-page={currentPage}
@@ -156,6 +164,8 @@ export function ScoreboardView({
           }
           mobile={isMobile}
           onOpenDetail={isMobile ? setDetailTeamId : undefined}
+          selectColor={timelineSelection?.get(standing.team.id) ?? null}
+          onToggleSelect={isMobile ? undefined : onToggleTimelineTeam}
         />
       ))}
 

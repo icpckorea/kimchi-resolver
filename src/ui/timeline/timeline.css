@@ -1,0 +1,279 @@
+/* Timeline view (design 2026-11-15 §6.6). Light chart surface on the app's
+ * background; sizes in rem so the board's viewport-scaled font does not
+ * apply here. */
+.tl-view {
+  display: grid;
+  grid-template-columns: 300px 1fr;
+  gap: 12px;
+  height: calc(100vh - 4.15rem);
+  min-height: 420px;
+  font-size: 0.875rem;
+  color: #0b0b0b;
+}
+
+.tl-card {
+  background: #fcfcfb;
+  border-radius: 10px;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.12);
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  position: relative;
+}
+
+.tl-card-title {
+  font-size: 1rem;
+  margin: 12px 14px 8px;
+}
+
+.tl-hint {
+  font-size: 0.8rem;
+  color: #52514e;
+  margin: 0 14px 8px;
+}
+
+.tl-search {
+  margin: 0 14px 8px;
+  padding: 6px 9px;
+  border: 1px solid #c9c8c2;
+  border-radius: 6px;
+  font: inherit;
+}
+
+.tl-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin: 0 14px 8px;
+  min-height: 26px;
+}
+
+.tl-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 0.8rem;
+  border: 1px solid #d8d7d2;
+  border-radius: 13px;
+  padding: 2px 4px 2px 8px;
+  background: #fff;
+}
+
+.tl-chip i {
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  display: inline-block;
+}
+
+.tl-chip button {
+  border: 0;
+  background: none;
+  cursor: pointer;
+  color: #8a8984;
+  font-size: 1rem;
+  line-height: 1;
+}
+
+.tl-picker-list {
+  overflow-y: auto;
+  flex: 1;
+  border-top: 1px solid #e6e5e0;
+}
+
+.tl-picker-row {
+  display: grid;
+  grid-template-columns: 22px 34px 1fr;
+  align-items: center;
+  padding: 5px 14px;
+  cursor: pointer;
+  border-bottom: 1px solid #f3f2ee;
+}
+
+.tl-picker-row:hover {
+  background: #f4f7ff;
+}
+
+.tl-picker-row--disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+.tl-picker-rank {
+  color: #52514e;
+  font-variant-numeric: tabular-nums;
+  text-align: right;
+  padding-right: 8px;
+}
+
+.tl-picker-name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.tl-picker-school {
+  display: block;
+  font-size: 0.72rem;
+  color: #8a8984;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.tl-ctrl {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  margin: 0 14px 6px;
+  color: #52514e;
+}
+
+.tl-seg {
+  display: inline-flex;
+  border: 1px solid #c9c8c2;
+  border-radius: 6px;
+  overflow: hidden;
+}
+
+.tl-seg button {
+  border: 0;
+  background: #fff;
+  padding: 3px 10px;
+  font: inherit;
+  font-size: 0.8rem;
+  cursor: pointer;
+  color: #52514e;
+}
+
+.tl-seg button.on {
+  background: #1f2430;
+  color: #fff;
+}
+
+.tl-legend {
+  display: flex;
+  gap: 14px;
+  flex-wrap: wrap;
+  margin: 0 14px 4px;
+  font-size: 0.8rem;
+  color: #52514e;
+  align-items: center;
+  min-height: 1.2em;
+}
+
+.tl-sw {
+  display: inline-block;
+  width: 18px;
+  border-top: 2px solid;
+  vertical-align: middle;
+  margin-right: 5px;
+}
+
+.tl-dot,
+.tl-ring {
+  display: inline-block;
+  width: 9px;
+  height: 9px;
+  border-radius: 50%;
+  vertical-align: middle;
+  margin-right: 5px;
+  background: #555;
+}
+
+.tl-ring {
+  background: #fff;
+  border: 1.5px solid #555;
+  width: 8px;
+  height: 8px;
+}
+
+.tl-plot {
+  flex: 1;
+  min-height: 0;
+  position: relative;
+  overflow: hidden;
+}
+
+.tl-plot svg {
+  display: block;
+  position: absolute;
+  inset: 0;
+}
+
+.tl-axis-text {
+  font-size: 11px;
+  fill: #52514e;
+}
+
+.tl-now {
+  fill: #0b0b0b;
+}
+
+.tl-sub-label {
+  font-size: 11px;
+  font-weight: 600;
+}
+
+.tl-dot-label {
+  font-size: 10px;
+  font-weight: 700;
+  fill: #0b0b0b;
+}
+
+.tl-end-label {
+  font-size: 12px;
+  fill: #0b0b0b;
+}
+
+.tl-tip {
+  position: absolute;
+  pointer-events: none;
+  background: #fff;
+  border: 1px solid #d8d7d2;
+  border-radius: 8px;
+  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.14);
+  padding: 8px 10px;
+  font-size: 0.75rem;
+  min-width: 180px;
+  z-index: 5;
+}
+
+.tl-tip h4 {
+  margin: 0 0 4px;
+  font-size: 0.75rem;
+  color: #52514e;
+}
+
+.tl-tip-team {
+  display: grid;
+  grid-template-columns: 10px 1fr auto;
+  gap: 6px;
+  align-items: center;
+  margin: 2px 0;
+}
+
+.tl-tip-team i {
+  width: 9px;
+  height: 9px;
+  border-radius: 50%;
+  display: inline-block;
+}
+
+.tl-tip-ev {
+  color: #52514e;
+  margin: 1px 0 1px 16px;
+}
+
+.tl-empty {
+  position: absolute;
+  inset: 40% 0 auto 0;
+  text-align: center;
+  color: #8a8984;
+}
+
+.tl-foot {
+  font-size: 0.72rem;
+  color: #8a8984;
+  margin: 2px 14px 10px;
+}

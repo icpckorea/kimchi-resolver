@@ -44,10 +44,12 @@ Runtime configuration lives in `public/config.json` (served as `config.json` nex
 | `showTeamGroup` | `true` | show the school name under the team name |
 | `showFirstSolve` | `true` | first-solve cell highlight |
 | `showBalloons` | `true` | balloon row per solved problem |
+| `magnify` | `false` | larger board for a projector, live and award: taller rows, larger problem cells, numbers and team names (shorter rows on screens narrower than 16:9; not on mobile) |
 | `showSchoolLogos` | `false` | school logos from `orgs/logos/` |
 | `showEvents` | `false` | events dashboard initial visibility |
 | `lockMode` | `false` | ignore the URL params that switch to award or publish mode (public boards) |
 | `timeTravel` | `false` | header slider over the contest minutes, plus a time box (HH:MM or minutes, Enter); it reloads the board with `time=`, keeps the search as `q=`, and play continues from there |
+| `timeline.enabled` / `.freezeMinute` | `false` / `null` | spectator **Timeline** view: header switch `Board \| Timeline`, rank lines of 1–6 teams over the whole contest, picked on the board or in the view. It shows every run of the feed, so enable it only on a finished board (time-machine). `freezeMinute` shades the frozen part of the chart |
 | `maxNotifications` | `100` | dashboard event cap |
 | `pagination` / `paginationSize` | `false` / `50` | scoreboard pagination |
 | `useFollowedTeamSticky` | `true` | pin the followed team row |
@@ -57,7 +59,7 @@ Runtime configuration lives in `public/config.json` (served as `config.json` nex
 | `publish.enabled` | `false` | boot into publish mode |
 | `publish.mode` | `"off"` | `"off"` / `"preliminary"` / `"regional"` (URL `publish_mode=` wins) |
 | `publish.preliminary` | `{ totalTeams: null, topN: 30, k: null, ineligibleTeamIds: [] }` | start values of the preliminary selection |
-| `publish.regional` | `{ prelimSchools, prelimTeams, coefficients, wfMedalGroups }` | start values of the regional simulation (site score `S` is computed from them) |
+| `publish.regional` | `{ prelimSchools, prelimTeams, coefficients, wfMedalGroups }` | start values of the regional simulation (site score `S` is computed from them). The publish simulation ignores `wfMedalGroups` (Q = 2 for every school, rule C2 update of 2026-11-01); award mode still reads it |
 | `publish.invitedScoreCutoff` | `null` | invited score cutoff for the gold-star rule |
 | `publish.alreadyInvited.teamIds` / `.winnerGroups` / `.invitedGroups` | `[]` | teams/schools already invited at another regional (see APAC stars); the old `.groups` key is read as `invitedGroups` |
 | `award.mode` | `false` | boot into award mode |
@@ -69,13 +71,14 @@ Runtime configuration lives in `public/config.json` (served as `config.json` nex
 | `award.focusBlinking` | `{ "minSolved": 7, "maxRank": 10 }` | blink stage condition, or null |
 | `award.gachaEffectRequirement` | `8` | attempts that trigger the gacha effect |
 | `award.gachaEffectForNoRatio` | `30` | gacha probability (%) for a final "No" |
+| `award.gachaEffectMaxRank` | `null` | every reveal of a team at visible ICPC rank ≤ this plays the gacha effect (any verdict, any attempts); the finale is unchanged. null = off |
 | `award.finaleFlipSlowdown` | `3` | finale verdict flip = matched `slowFlip` × this |
 | `award.finaleIntermediateFlipSlowdown` | `2` | finale intermediate flips = `slowFlip` × this |
 | `award.animationSpeeds` | see spec §9 | flip/move speeds per solved count |
 
 ### APAC stars
 
-With `apac.enabled` (award mode) or `publish.mode = regional` (publish), the board marks APAC Championship advancement next to the rank (per the ICPC APAC 2026-27 rules: at most 2 teams per school, 3 for a school with a World Finals medal last year, listed in `publish.regional.wfMedalGroups`):
+With `apac.enabled` (award mode) or `publish.mode = regional` (publish), the board marks APAC Championship advancement next to the rank (per the ICPC APAC 2026-27 rules: at most 2 teams per school, 3 for a school with a World Finals medal last year, listed in `publish.regional.wfMedalGroups`. The 2026-11-01 update of rule C2 makes it 2 for every school this cycle, because no World Finals is held before the 2027 Championship: the publish simulation has no medal-school picker and always uses 2; keep `wfMedalGroups` empty so award mode agrees):
 
 - bronze star — In the APAC Championship list so far (ceremony only)
 - silver star — Likely invited to the APAC Championship
@@ -106,9 +109,11 @@ URL parameters override `config.json` (spec §9/§13):
 | `r=<run id>` | replay runs up to this run id without animation (award: the freeze cutoff). Compared against the run's `seq`: that is the run id for the spotboard source, but a 1-based ordinal in `/submissions` order for contest-api — on contest-api prefer `time=` |
 | `time=<minute>` | replay runs up to this contest minute; forces autoplay off |
 | `award=true` | award mode |
+| `magnify=true` | larger board, live and award (`magnify`) |
 | `award_rank_begin=<n>` | fast-forward the ceremony to rank n |
 | `animation=false` | disable animations |
 | `q=<text>` | initial team search (substring match over name + school) |
+| `view=timeline` / `teams=<id,…>` | open the Timeline view / the selected teams in order; a team whose color differs from its position is written `id:slot` (e.g. `teams=48,40:2`), so a reload keeps the colors; only with `timeline.enabled` |
 | `t=<team id>` | follow this team (highlight + sticky row) |
 | `publish=true` | publish mode (wins over award) |
 | `publish_mode=<mode>` | publish: `off` / `preliminary` / `regional` |

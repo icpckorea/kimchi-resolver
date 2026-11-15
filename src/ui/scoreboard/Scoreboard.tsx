@@ -43,6 +43,10 @@ export interface ScoreboardProps {
   leadingHeader?: ReactNode;
   /** Badge carousel (see TeamRow); defaults to on for the live board only. */
   badgeCarousel?: boolean;
+  /** Timeline selection: team id → chart color (desktop row tint). */
+  timelineSelection?: ReadonlyMap<string, string> | null;
+  /** Desktop row click toggles the team in the Timeline view. */
+  onToggleTimelineTeam?: (teamId: string) => void;
   className?: string;
 }
 
@@ -92,6 +96,8 @@ export function Scoreboard(props: ScoreboardProps) {
       page={props.page}
       followTeamId={followTeamId}
       badgeCarousel={props.badgeCarousel ?? mode === 'spectator'}
+      timelineSelection={props.timelineSelection}
+      onToggleTimelineTeam={props.onToggleTimelineTeam}
       className={props.className}
     />
   );

@@ -76,6 +76,11 @@ const awardSchema = z
     /** Percent [0, 100]. */
     gachaEffectForNoRatio: z.number().min(0).max(100).default(30),
     /**
+     * Every non-finale reveal of a team at visible icpc rank <= this plays
+     * the gacha effect, whatever the verdict or attempt count. null = off.
+     */
+    gachaEffectMaxRank: z.number().int().positive().nullable().default(null),
+    /**
      * Finale (spec §7 step 4): the last verdict flip of the whole ceremony
      * runs at the matched band's slowFlip × this factor.
      */
@@ -169,6 +174,13 @@ const configSchema = z.object({
   showSchoolLogos: z.boolean().default(false),
   showEvents: z.boolean().default(false),
   /**
+   * Larger board for a projector screen (scoreboard.css "Magnify"): taller
+   * rows, and larger problem cells, rank / solved / penalty numbers and team
+   * names. Applies to the live board (desktop widths only) and to the award
+   * ceremony board. OFF by default. URL: `magnify=true`.
+   */
+  magnify: z.boolean().default(false),
+  /**
    * Public deployment: the URL cannot switch the app into award or publish
    * mode (`award`, `award_rank_begin`, `publish`, `publish_mode` and
    * `invited_cutoff` are ignored, silently — a viewer sees no warning).
@@ -176,6 +188,19 @@ const configSchema = z.object({
   lockMode: z.boolean().default(false),
   /** Spectator header slider that reloads the board at a contest minute (`time=`). */
   timeTravel: z.boolean().default(false),
+  /**
+   * Spectator "Timeline" view (rank lines of 1–6 teams over the whole
+   * contest). Off by default; the time-machine deployment turns it on. It
+   * shows every run of the feed, so never enable it on a frozen live board.
+   * `freezeMinute` only shades the frozen part of the chart (the feed has
+   * no freeze minute). URL: `view=timeline`, `teams=<id,…>`.
+   */
+  timeline: z
+    .object({
+      enabled: z.boolean().default(false),
+      freezeMinute: z.number().int().nonnegative().nullable().default(null),
+    })
+    .default({}),
   maxNotifications: z.number().int().nonnegative().default(100),
   pagination: z.boolean().default(false),
   paginationSize: z.number().int().positive().default(50),
@@ -212,6 +237,10 @@ export interface ResolvedConfig extends AppConfig {
   searchQuery: string | null;
   /** `t=`: id of the team to follow (sticky row). */
   followTeamId: string | null;
+  /** `view=timeline`: open the Timeline view (only with `timeline.enabled`). */
+  timelineView: boolean;
+  /** `teams=`: timeline team ids in selection order, deduplicated, unvalidated. */
+  timelineTeams: string[];
 }
 
 // ---------------------------------------------------------------------------
@@ -365,7 +394,7 @@ function parseNumberParam(raw: string): number | null {
 /**
  * Applies URL parameter overrides (spec §9/§13) on top of a parsed config.
  * URL wins over config.json. Params: `r`, `time` (forces autoPlay=false),
- * `award`, `award_rank_begin`, `animation`, `q`, `t`, `publish`,
+ * `award`, `magnify`, `award_rank_begin`, `animation`, `q`, `t`, `publish`,
  * `publish_mode`, `invited_cutoff`. Invalid values are ignored and reported
  * in `warnings`. The input config is not mutated. (`site_score` was removed
  * with `publish.siteScore`: the regional mode computes S from its inputs.)
@@ -378,6 +407,8 @@ export function applyUrlOverrides(config: AppConfig, search: string): UrlOverrid
     replayTimeMinutes: null,
     searchQuery: null,
     followTeamId: null,
+    timelineView: false,
+    timelineTeams: [],
     ...base,
   };
   const warnings: string[] = [];
@@ -437,6 +468,10 @@ export function applyUrlOverrides(config: AppConfig, search: string): UrlOverrid
     out.award.mode = v;
   });
 
+  boolParam('magnify', (v) => {
+    out.magnify = v;
+  });
+
   numberParam(
     'award_rank_begin',
     (n) => Number.isInteger(n) && n >= 1,
@@ -451,6 +486,19 @@ export function applyUrlOverrides(config: AppConfig, search: string): UrlOverrid
 
   const q = params.get('q');
   if (q !== null && q !== '') out.searchQuery = q;
+
+  // view=board|timeline and teams=<id,…>: the store gates them by
+  // timeline.enabled and validates the ids against the contest.
+  const view = params.get('view');
+  if (view !== null) {
+    if (view === 'timeline') out.timelineView = true;
+    else if (view === 'board') out.timelineView = false;
+    else warn('view', view);
+  }
+  const teams = params.get('teams');
+  if (teams !== null) {
+    out.timelineTeams = [...new Set(teams.split(',').map((id) => id.trim()).filter((id) => id !== ''))];
+  }
 
   const t = params.get('t');
   if (t !== null && t !== '') out.followTeamId = t;

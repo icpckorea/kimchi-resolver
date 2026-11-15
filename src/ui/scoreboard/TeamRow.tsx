@@ -12,7 +12,7 @@
  * mimics the original move-up feel; config.animation=false renders with
  * layout={false} (no animation).
  */
-import { useEffect, useRef, useState, type ReactNode } from 'react';
+import { useEffect, useRef, useState, type CSSProperties, type ReactNode } from 'react';
 import { motion, type Transition } from 'framer-motion';
 
 import type { CellState, OrgsIndex, Problem, TeamStanding } from '@core/types';
@@ -195,6 +195,16 @@ export interface TeamRowProps {
    * sets it.
    */
   badgeCarousel?: boolean;
+  /**
+   * Timeline selection (desktop): the team's chart color as a row tint
+   * (`team-row--selected`, `--kr-select-color`); null/undefined = not selected.
+   */
+  selectColor?: string | null;
+  /**
+   * Desktop click/Enter/Space toggles the team in the Timeline view. Makes
+   * the row a toggle button (`aria-pressed`). Ignored on the mobile row.
+   */
+  onToggleSelect?: (teamId: string) => void;
 }
 
 export function TeamRow({
@@ -213,12 +223,16 @@ export function TeamRow({
   decor,
   valueSlot = false,
   badgeCarousel = false,
+  selectColor = null,
+  onToggleSelect,
 }: TeamRowProps) {
   const { team } = standing;
   const org = orgs[team.group];
   const logo = config.showSchoolLogos ? org?.logo : undefined;
   const animate = config.animation;
   const tappable = mobile && onOpenDetail !== undefined;
+  const selectable = !mobile && onToggleSelect !== undefined;
+  const selected = !mobile && selectColor !== null;
   const leading = decor?.leading;
   const stageIcon = decor?.stageIcon;
   const notice = decor?.notice;
@@ -237,19 +251,30 @@ export function TeamRow({
         decor?.advance === true && 'team-row--advance',
         decor?.dimmed === true && 'team-row--dimmed',
         notice !== undefined && notice !== '' && 'team-row--excluded',
+        selected && 'team-row--selected',
+        selectable && 'team-row--selectable',
       )}
+      style={selected ? ({ '--kr-select-color': selectColor } as CSSProperties) : undefined}
       data-team-id={team.id}
       data-solved={standing.solved}
-      role={tappable ? 'button' : undefined}
-      tabIndex={tappable ? 0 : undefined}
+      role={tappable || selectable ? 'button' : undefined}
+      tabIndex={tappable || selectable ? 0 : undefined}
       aria-haspopup={tappable ? 'dialog' : undefined}
-      onClick={tappable ? () => onOpenDetail(team.id) : undefined}
-      onKeyDown={
+      aria-pressed={selectable ? selected : undefined}
+      onClick={
         tappable
+          ? () => onOpenDetail(team.id)
+          : selectable
+            ? () => onToggleSelect(team.id)
+            : undefined
+      }
+      onKeyDown={
+        tappable || selectable
           ? (event) => {
               if (event.key === 'Enter' || event.key === ' ') {
                 event.preventDefault();
-                onOpenDetail(team.id);
+                if (tappable) onOpenDetail(team.id);
+                else onToggleSelect?.(team.id);
               }
             }
           : undefined

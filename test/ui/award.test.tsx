@@ -1312,6 +1312,19 @@ describe('ceremony board chrome', () => {
     expect(container.querySelector('.balloons')).not.toBeNull();
   });
 
+  it('uses the shared board size unless magnify is on', async () => {
+    const isMagnified = (view: ReturnType<typeof renderAward>) =>
+      view.getByTestId('award-view').classList.contains('award-view--magnify') &&
+      view.getByTestId('award-view').classList.contains('scoreboard--magnify');
+
+    const plain = renderAward(await bootAwardStore());
+    expect(isMagnified(plain)).toBe(false);
+    plain.unmount();
+
+    const magnified = renderAward(await bootAwardStore(() => 0.99, '?award=true&r=2&magnify=true'));
+    expect(isMagnified(magnified)).toBe(true);
+  });
+
   it('caps a yellow card at ?5+ however long the history is', async () => {
     // Team 3 cell B is masked with 8 net attempts (see the replay describe).
     const store = await bootAwardStore(() => 0.99, '?award=true&r=5');
@@ -1339,6 +1352,17 @@ describe('finale zoom', () => {
 
   it('zooms the finale card to the viewport center from --award-finale-zoom', () => {
     expect(css).toMatch(/--award-finale-zoom:\s*5\b/);
+    // Magnify: (10 / row) × the (0.3 × row)em cell = the same 5× card of the
+    // shared 0.6em cell.
+    const magnify = /\.award-view--magnify\s*\{([^}]*)\}/.exec(css);
+    expect(magnify).not.toBeNull();
+    const magnifyBody = (magnify as RegExpExecArray)[1];
+    expect(magnifyBody).toMatch(/--award-finale-zoom:\s*calc\(10 \/ var\(--kr-mag-row\)\)/);
+    // The cell font comes from the shared magnify board (scoreboard.css).
+    const sharedCss = readFileSync(resolve(__dirname, '../../src/ui/scoreboard/scoreboard.css'), 'utf8');
+    expect(sharedCss).toMatch(
+      /\.scoreboard--magnify \.team-row \.problem-result\s*\{[^}]*font-size:\s*calc\(0\.3em \* var\(--kr-mag-row\)\)/,
+    );
     const finale = /\.award-cell-finale\s*\{([^}]*)\}/.exec(css);
     expect(finale).not.toBeNull();
     const body = (finale as RegExpExecArray)[1];

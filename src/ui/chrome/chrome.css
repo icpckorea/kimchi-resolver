@@ -420,3 +420,35 @@
     display: none;
   }
 }
+
+/* ---- Board | Timeline switch (time-machine Timeline view) ----------------- */
+.kr-viewswitch {
+  display: inline-flex;
+  margin-right: 0.75em;
+  border: 1px solid #4a5368;
+  border-radius: 0.4em;
+  overflow: hidden;
+  flex: none;
+}
+
+.kr-viewswitch__btn {
+  padding: 0.25em 0.8em;
+  border: 0;
+  background: #2f3646;
+  color: #cfd5e2;
+  font: inherit;
+  font-size: 0.85em;
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.kr-viewswitch__btn:hover {
+  color: #fff;
+}
+
+.kr-viewswitch__btn--on,
+.kr-viewswitch__btn--on:hover {
+  background: #f5c400;
+  color: #1f2430;
+  font-weight: 700;
+}

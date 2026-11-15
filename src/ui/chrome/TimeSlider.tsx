@@ -43,6 +43,23 @@ export function parseContestMinute(text: string): number | null {
   return Number(match[1]) * 60 + Number(match[2]);
 }
 
+/**
+ * The minute the slider shows: the end once the queue is empty (the board
+ * shows every known run), else the replay cutoff or the last applied run.
+ * The Timeline view marks the same minute ("Now").
+ */
+export function currentSliderMinute(state: {
+  contestTimeSec: number | null;
+  pendingCount: number;
+  replayTimeMinutes: number | null;
+  lastAppliedMinute: number | null;
+}): number {
+  const maxMinute = state.contestTimeSec === null ? 0 : Math.ceil(state.contestTimeSec / 60);
+  return state.pendingCount === 0
+    ? maxMinute
+    : Math.min(Math.max(state.replayTimeMinutes ?? 0, state.lastAppliedMinute ?? 0), maxMinute);
+}
+
 export const navigateByReload: TimeNavigate = (minute, query) => {
   window.location.assign(timeTravelHref(window.location.href, minute, query));
 };
@@ -60,11 +77,7 @@ export function TimeSlider({ store, navigate = navigateByReload }: TimeSliderPro
   const lastAppliedMinute = useStore(store, (state) => state.lastAppliedMinute);
 
   const maxMinute = contestTimeSec === null ? 0 : Math.ceil(contestTimeSec / 60);
-  // The board shows every known run once the queue is empty.
-  const current =
-    pendingCount === 0
-      ? maxMinute
-      : Math.min(Math.max(replayTimeMinutes ?? 0, lastAppliedMinute ?? 0), maxMinute);
+  const current = currentSliderMinute({ contestTimeSec, pendingCount, replayTimeMinutes, lastAppliedMinute });
   const [draft, setDraft] = useState<number | null>(null);
   /** Text being typed in the time box; null shows the slider time. */
   const [typed, setTyped] = useState<string | null>(null);

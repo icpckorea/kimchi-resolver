@@ -216,3 +216,37 @@ it('award mode: schools of winnerGroups and invitedGroups have no stars', async 
   expect(tierOf('39')).toBe('silver');
   expect(tierOf('46')).toBeNull();
 });
+
+// ---------------------------------------------------------------------------
+// Timeline view (time-machine, design 2026-11-15)
+// ---------------------------------------------------------------------------
+
+it('timeline: ?view=timeline opens the Timeline view; board rows add teams and the URL follows', async () => {
+  files['config.json'] = { ...baseConfig, timeline: { enabled: true } };
+  const ids = (readJson('sample/contest.json') as { teams: { id: number | string }[] }).teams.map((t) =>
+    String(t.id),
+  );
+  await bootApp(`?view=timeline&teams=${ids[0]}`);
+  expect(document.querySelector('.tl-view')).not.toBeNull();
+  expect(document.querySelector('.board-wrap .team-row')).toBeNull();
+
+  act(() => {
+    screen.getByRole('button', { name: 'Timeline (1)' });
+    screen.getByRole('button', { name: 'Board' }).click();
+  });
+  expect(document.querySelector('.tl-view')).toBeNull();
+  act(() => {
+    appStore.getState().feedAllQueued();
+  });
+  const row = document.querySelector(`.board-wrap .team-row[data-team-id="${ids[1]}"]`) as HTMLElement;
+  act(() => row.click());
+  expect(appStore.getState().timelineTeams.map((t) => t.id)).toEqual([ids[0], ids[1]]);
+  await waitFor(() => expect(new URL(window.location.href).searchParams.get('teams')).toBe(`${ids[0]},${ids[1]}`));
+  expect(new URL(window.location.href).searchParams.has('view')).toBe(false);
+});
+
+it('timeline: view= and teams= do nothing when the timeline is disabled', async () => {
+  await bootApp('?view=timeline&teams=1');
+  expect(document.querySelector('.tl-view')).toBeNull();
+  expect(screen.queryByRole('button', { name: /^Timeline/ })).toBeNull();
+});

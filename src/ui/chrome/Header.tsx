@@ -25,6 +25,7 @@ import {
   StepForward,
 } from '@ui/icons';
 import { useChromeUi, useDashboardVisibility } from './chromeUiState';
+import { ViewSwitch } from '@ui/timeline/ViewSwitch';
 import { TimeSlider, type TimeNavigate } from './TimeSlider';
 import { useDesktopNotifications, type NotifyPermission } from './useDesktopNotifications';
 import './chrome.css';
@@ -225,6 +226,8 @@ export function Header({ store = appStore, navigate }: HeaderProps) {
       </div>
 
       <div className="kr-header__spacer" />
+
+      <ViewSwitch store={store} />
 
       {timeTravel ? <TimeSlider store={store} navigate={navigate} /> : null}
 

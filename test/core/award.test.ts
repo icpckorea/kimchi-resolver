@@ -153,6 +153,7 @@ function cfg(overrides: Partial<AwardConfigInput> = {}): AwardConfigInput {
     focusBlinking: null,
     gachaEffectRequirement: 8,
     gachaEffectForNoRatio: 30,
+    gachaEffectMaxRank: null,
     ...overrides,
   };
 }
@@ -949,6 +950,48 @@ describe('gacha effect', () => {
     });
     expect(advanceUntilRevealOf(noFinale, 't1').effect).toEqual({ gacha: true, finale: true });
     expect(rng).not.toHaveBeenCalled();
+  });
+});
+
+describe('gachaEffectMaxRank (every reveal at a top visible rank plays the gacha)', () => {
+  /**
+   * revealed → t1: A@10 Y (rank 1), t2: A@20 Y (rank 2), t3: — (rank 3)
+   * hidden   → one failed run each on B for t3 and t2 (1 attempt: far below
+   *            the requirement), t1: B@100 Y (the finale).
+   */
+  function topRankFixture(config: Partial<AwardConfigInput>, rng: () => number) {
+    return makeMachine({
+      contest: makeContest(['t1', 't2', 't3']),
+      revealed: [run(1, 't1', '0', 10, 'accepted'), run(2, 't2', '0', 20, 'accepted')],
+      hidden: [
+        run(10, 't3', '1', 100, 'failed'),
+        run(11, 't2', '1', 100, 'failed'),
+        run(12, 't1', '1', 100, 'accepted'),
+      ],
+      config: { gachaEffectRequirement: 8, gachaEffectForNoRatio: 30, ...config },
+      rng,
+    });
+  }
+
+  it('a team at visible rank <= maxRank always gets the gacha, even one failed attempt, with no rng roll', () => {
+    const rng = vi.fn(() => 0.99);
+    const reveals = revealsOf(collectToEnd(topRankFixture({ gachaEffectMaxRank: 2 }, rng)));
+    const byTeam = new Map(reveals.map((r) => [r.teamId, r.effect]));
+    expect(byTeam.get('t3')).toEqual({ gacha: false, finale: false }); // rank 3: normal rule
+    expect(byTeam.get('t2')).toEqual({ gacha: true, finale: false }); // rank 2: forced
+    expect(byTeam.get('t1')).toEqual({ gacha: true, finale: true }); // finale unchanged
+    expect(rng).not.toHaveBeenCalled();
+  });
+
+  it('null keeps the attempt-count rule only', () => {
+    const reveals = revealsOf(collectToEnd(topRankFixture({ gachaEffectMaxRank: null }, () => 0.99)));
+    expect(reveals.find((r) => r.teamId === 't2')!.effect).toEqual({ gacha: false, finale: false });
+  });
+
+  it('rankBegin fast-forward still plays no gacha', () => {
+    const machine = topRankFixture({ gachaEffectMaxRank: 3, rankBegin: 1 }, () => 0.99);
+    const reveals = revealsOf(collectToEnd(machine));
+    for (const reveal of reveals) expect(reveal.effect.gacha).toBe(reveal.effect.finale);
   });
 });
 

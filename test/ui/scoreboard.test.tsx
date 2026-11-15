@@ -417,7 +417,7 @@ describe('team names are never truncated', () => {
   function desktopFitBlock(): string {
     for (let at = css.indexOf('@media (min-width: 769px)'); at !== -1; ) {
       const body = blockAt(at);
-      if (body.includes('.team-name')) return body;
+      if (body.includes('.team-name') && body.includes('--kr-title-budget')) return body;
       at = css.indexOf('@media (min-width: 769px)', at + 1);
     }
     throw new Error('desktop .team-name fit block not found');

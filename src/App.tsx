@@ -28,12 +28,16 @@ import {
   type ApacStarTier,
   type SchoolQuota,
 } from '@core/apac';
-import { appStore, useAppStore } from '@store/appStore';
+import { appStore, timelineEnabled, useAppStore } from '@store/appStore';
 import { Dashboard, Header, SystemMessages, useChromeUi, useDashboardVisibility } from '@ui/chrome';
 import { Scoreboard, type ApacStarInfo } from '@ui/scoreboard';
 import { AwardView } from '@ui/award/AwardView';
 import { PublishView } from '@ui/publish/PublishView';
 import { parseAwardsJson, type AwardEntry } from '@ui/award/awardsData';
+import { useTimelineBoardSelection } from '@ui/timeline/useTimelineSelection';
+import { useTimelineUrlSync } from '@ui/timeline/timelineUrl';
+import { TimelineView } from '@ui/timeline/TimelineView';
+import { MOBILE_MEDIA_QUERY, useMediaQuery } from '@ui/scoreboard/useMediaQuery';
 
 // ---------------------------------------------------------------------------
 // awards.json (spectator only; award mode is loaded by the store, publish never)
@@ -175,6 +179,11 @@ export default function App() {
   const awards = useAwardsData();
   const manualLabels = useMemo(() => toManualLabels(awards), [awards]);
   const awardStars = useAwardApacStars();
+  const timelineSelection = useTimelineBoardSelection();
+  useTimelineUrlSync();
+  const isMobile = useMediaQuery(MOBILE_MEDIA_QUERY);
+  // Desktop only (design 2026-11-15 §9): a phone falls back to the board.
+  const showTimeline = useAppStore((s) => timelineEnabled(s) && s.view === 'timeline') && !isMobile;
 
   if (status === 'idle' || status === 'booting') {
     return (
@@ -229,10 +238,20 @@ export default function App() {
           dashboardVisible ? 'app-main app-main--with-dashboard' : 'app-main'
         }
       >
-        <div className="board-wrap">
-          {/* Spectator never shows APAC stars (spec §13: contest not over). */}
-          <Scoreboard page={page} apacStars={null} manualLabels={manualLabels} />
-        </div>
+        {showTimeline ? (
+          <TimelineView />
+        ) : (
+          <div className="board-wrap">
+            {/* Spectator never shows APAC stars (spec §13: contest not over). */}
+            <Scoreboard
+              page={page}
+              apacStars={null}
+              manualLabels={manualLabels}
+              timelineSelection={timelineSelection.selection}
+              onToggleTimelineTeam={timelineSelection.onToggle}
+            />
+          </div>
+        )}
       </main>
       <Dashboard />
       <SystemMessages />

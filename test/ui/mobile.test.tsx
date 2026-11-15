@@ -182,6 +182,25 @@ describe('mobile compact rows', () => {
   });
 });
 
+describe('magnify on the live board', () => {
+  it('magnifies the desktop board only when magnify is on', () => {
+    stubViewport(false);
+    const off = renderBoard(cfg());
+    expect(off.container.querySelector('.scoreboard--magnify')).toBeNull();
+    off.unmount();
+
+    const on = renderBoard(cfg({ magnify: true }));
+    expect(on.container.querySelector('.scoreboard--magnify')).not.toBeNull();
+  });
+
+  it('keeps the compact mobile size with magnify on', () => {
+    stubViewport(true);
+    const { container } = renderBoard(cfg({ magnify: true }));
+    expect(container.querySelector('.scoreboard--mobile')).not.toBeNull();
+    expect(container.querySelector('.scoreboard--magnify')).toBeNull();
+  });
+});
+
 describe('mobile row value (publish regional)', () => {
   const rowDecor = new Map([
     ['t1', { value: '0.1740' }],

@@ -9,6 +9,9 @@ import { motion } from 'framer-motion';
 import { AwardMedal, iconRegistry } from '@ui/icons';
 import { humanizeRank, type AwardEntry } from './awardsData';
 
+/** Rank lines longer than this use the smaller `award-slide-rank-long` font. */
+const LONG_RANK_CHARS = 16;
+
 export interface AwardSlideOther {
   name: string;
   group?: string;
@@ -25,6 +28,11 @@ export interface AwardSlideProps {
 
 export function AwardSlide({ entry, teamName, teamGroup, others, onClose }: AwardSlideProps) {
   const Icon = (entry.icon !== undefined ? iconRegistry[entry.icon] : undefined) ?? AwardMedal;
+  const rankText = humanizeRank(entry.rank);
+  // A long title (a sponsor award, or several awards joined with "\n") gets a
+  // smaller font, so that each line stays on one line inside the card.
+  const longestLine = Math.max(...rankText.split('\n').map((line) => line.length));
+  const rankClass = longestLine > LONG_RANK_CHARS ? 'award-slide-rank award-slide-rank-long' : 'award-slide-rank';
   return (
     <motion.div
       className="award-slide-backdrop"
@@ -46,8 +54,8 @@ export function AwardSlide({ entry, teamName, teamGroup, others, onClose }: Awar
         <div className="award-slide-icon">
           <Icon size="4.5em" />
         </div>
-        <div className="award-slide-rank" data-testid="award-slide-rank">
-          {humanizeRank(entry.rank)}
+        <div className={rankClass} data-testid="award-slide-rank">
+          {rankText}
         </div>
         <div className="award-slide-team" data-testid="award-slide-team">
           {teamName}

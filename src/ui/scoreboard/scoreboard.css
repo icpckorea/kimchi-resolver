@@ -40,7 +40,8 @@
  * Publish-mode boards can add a column (RowDecor): the value column
  * (`--kr-value-col`, 2.64 row-em) and the leading checkbox column
  * (`--kr-leading-col`, 1.2 row-em). Each adds 2 × its width to the divisor;
- * on every other board both are 0.
+ * on every other board both are 0. `--kr-extra-col` is the same kind of
+ * addition for a skin that widens a column ("Magnify" below: larger cells).
  *
  * 2.5rem covers .app-main's 0.75rem side padding plus a classic scrollbar.
  * The two tiers below re-derive the same sum where a column changes.
@@ -48,7 +49,7 @@
  * above. */
 @media (min-width: 769px) {
   .scoreboard {
-    font-size: clamp(6px, min((100vh - 4.15rem) / 72, (100vw - 2.5rem) / (102 + var(--kr-value-col, 0) + var(--kr-leading-col, 0))), 16px);
+    font-size: clamp(6px, min((100vh - 4.15rem) / 72, (100vw - 2.5rem) / (102 + var(--kr-value-col, 0) + var(--kr-leading-col, 0) + var(--kr-extra-col, 0))), 16px);
   }
 }
 
@@ -56,7 +57,7 @@
  * same row needs less width: 50.8 − 3.7 ≈ 47.1 row-em. */
 @media (min-width: 769px) and (max-width: 1000px) {
   .scoreboard {
-    font-size: clamp(6px, min((100vh - 4.15rem) / 72, (100vw - 2.5rem) / (95 + var(--kr-value-col, 0) + var(--kr-leading-col, 0))), 16px);
+    font-size: clamp(6px, min((100vh - 4.15rem) / 72, (100vw - 2.5rem) / (95 + var(--kr-value-col, 0) + var(--kr-leading-col, 0) + var(--kr-extra-col, 0))), 16px);
   }
 }
 
@@ -64,12 +65,103 @@
  * 5em floor: 50.8 + 7.3 + 1.5 ≈ 59.6 row-em. */
 @media (min-width: 1201px) {
   .scoreboard {
-    font-size: clamp(6px, min((100vh - 4.15rem) / 72, (100vw - 2.5rem) / (120 + var(--kr-value-col, 0) + var(--kr-leading-col, 0))), 16px);
+    font-size: clamp(6px, min((100vh - 4.15rem) / 72, (100vw - 2.5rem) / (120 + var(--kr-value-col, 0) + var(--kr-leading-col, 0) + var(--kr-extra-col, 0))), 16px);
   }
 }
 
 .scoreboard--empty {
   min-height: 4em;
+}
+
+/* ---- magnify (config magnify / ?magnify=true) ----------------------------- */
+
+/* A larger board for a projector screen: taller rows, and larger cells,
+ * numbers and team names. Off by default. ScoreboardView adds the class on
+ * desktop widths only (the ≤768px compact layout keeps its own size);
+ * AwardView adds it on the ceremony board, and award.css adds the award
+ * parts (finale zoom, the balloon room it can take back). */
+.scoreboard--magnify {
+  /* Row height, unitless, in row em (normal board: 2). Taller rows give
+   * larger cells and numbers: about 14 rows per screen, not 18. The other
+   * sizes below follow from it. */
+  --kr-mag-row: 2.5;
+  /* Width guard (above), in base units (2 per row-em):
+   * - the larger cells add 13 × 0.84 × (row − 2) row-em
+   *   = 21.84 × (row − 2) units (10.9 at row 2.5);
+   * - the larger numbers add 0.25 × (4.15 ranks + 2.0 solved + 3.5
+   *   penalty) ≈ 2.4 row-em = 4.8 units. */
+  --kr-mag-cells-extra: calc(21.84 * (var(--kr-mag-row) - 2));
+  --kr-extra-col: calc(var(--kr-mag-cells-extra) + 4.8 + var(--kr-mag-logo) + var(--kr-mag-breathe));
+  /* School logo column (1.4em + 0.25em margin = 1.65 row-em = 3.3 units),
+   * set below when the rows show logos. The sum above does not count it:
+   * the normal board has spare width in the badge column, but the magnified
+   * board packs the badge column to its 5em floor, and without this term the
+   * row overflowed by ~22px at 1920×1080 (penalty cut at the right edge). */
+  --kr-mag-logo: 0;
+  /* Extra width-guard units on 16:10 screens (see the aspect-ratio block
+   * below): a smaller board, so the columns get more space between them. */
+  --kr-mag-breathe: 0;
+  /* Team name size cap, in row em (normal board: 1em). */
+  --kr-mag-name-max: 1.3em;
+  /* Rank, solved-count and penalty numbers, scaled with the row
+   * (2.5em / 2em). */
+  --kr-mag-number-scale: 1.25;
+}
+
+.scoreboard--magnify:has(.team-row .team-logo) {
+  --kr-mag-logo: 3.3;
+}
+
+.scoreboard--magnify .team-row {
+  height: calc(var(--kr-mag-row) * 1em);
+}
+
+/* Problem cell font, in row em. The normal board uses 0.6em in a 2em row;
+ * 0.3 × row keeps that cell shape (width 0.84 × height), so the cells grow
+ * with the row and not more in width. Scoped to .team-row, so the team
+ * detail grid keeps its size. */
+.scoreboard--magnify .team-row .problem-result {
+  font-size: calc(0.3em * var(--kr-mag-row));
+}
+
+/* Rank, solved-count and penalty columns: their widths are in their own em,
+ * so the columns grow with the numbers. */
+.scoreboard--magnify .team-row .team-ranks {
+  font-size: calc(var(--kr-mag-number-scale) * 1em);
+}
+
+.scoreboard--magnify .team-row .solved-count {
+  font-size: calc(var(--kr-mag-number-scale) * 1.05em);
+}
+
+.scoreboard--magnify .team-row .team-penalty {
+  font-size: calc(var(--kr-mag-number-scale) * 1em);
+}
+
+/* Larger team name: the cap goes from 1em to 1.3em of the row. The taller
+ * row has room for it: 1.3 × 1.25 + 0.55 × 1.2 ≈ 2.29em of the 2.5em row.
+ * The width budget is unchanged, so a long name still shrinks to fit
+ * ("text fit" below); only names that fit get the larger size. */
+@media (min-width: 769px) {
+  .scoreboard--magnify .team-row .team-name {
+    font-size: clamp(0.5em, calc(var(--kr-name-budget) / var(--kr-name-em, 12)), var(--kr-mag-name-max));
+  }
+}
+
+/* Screens narrower than 16:9 (16:10 laptops). The sizes above are tuned for
+ * a 16:9 projector; here the board is limited by the width, so the columns
+ * are packed at their minimum widths. Two changes:
+ * - shorter rows (2.3em), so more rows fit on the taller screen;
+ * - a board about 8% smaller (+11 units in the width guard), so the badge
+ *   column and the name get more space.
+ * The name cap goes down with the row: 1.25 × 1.25 + 0.55 × 1.2 ≈ 2.22em of
+ * the 2.3em row. */
+@media (min-width: 769px) and (max-aspect-ratio: 17/10) {
+  .scoreboard--magnify {
+    --kr-mag-row: 2.3;
+    --kr-mag-breathe: 11;
+    --kr-mag-name-max: 1.25em;
+  }
 }
 
 /* ---- row ------------------------------------------------------------------ */
@@ -107,6 +199,17 @@
   top: 0;
   bottom: 0;
   z-index: 30;
+}
+
+/* Timeline selection (time-machine Timeline view): the team's chart color as
+ * a hover-like tint. Wins over the followed highlight and the hover color. */
+.team-row.team-row--selectable {
+  cursor: pointer;
+}
+
+.team-row.team-row--selected,
+.team-row.team-row--selected:hover {
+  background-color: color-mix(in srgb, var(--kr-select-color) 22%, #fff);
 }
 
 /* ---- publish-mode row decoration (RowDecor) ------------------------------- */

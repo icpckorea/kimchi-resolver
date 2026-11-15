@@ -264,7 +264,14 @@ export function AwardView({ store = appStore, apacStars = null }: AwardViewProps
     finaleStep.runs[finaleStep.runs.length - 1].verdict === 'accepted';
 
   return (
-    <div className="scoreboard award-view" data-testid="award-view">
+    <div
+      className={cls(
+        'scoreboard award-view',
+        config.award.showBalloons && 'award-view--balloons',
+        config.magnify && 'scoreboard--magnify award-view--magnify',
+      )}
+      data-testid="award-view"
+    >
       <div className="award-board">
         {snapshot.standings.map((standing, index) => (
           <AwardRow

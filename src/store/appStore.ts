@@ -47,6 +47,7 @@ import {
   type ResolvedConfig,
 } from '@core/config';
 import { createRunFeeder } from '@core/feeder';
+import { mergeRuns, TIMELINE_MAX_TEAMS } from '@core/timeline';
 import { computeStandings, withoutLastSolve } from '@core/standings';
 import { createAwardMachine } from '@core/award';
 import { parseAwardsJson, type AwardEntry } from '@core/awards';
@@ -136,6 +137,59 @@ export interface StoreDeps {
 
 export type BootStatus = 'idle' | 'booting' | 'ready' | 'error';
 
+export type TimelineViewMode = 'board' | 'timeline';
+
+export interface TimelineTeam {
+  id: string;
+  slot: number;
+}
+
+/** True when the Timeline view is available (spectator + config.timeline.enabled). */
+export function timelineEnabled(state: Pick<AppState, 'mode' | 'config'>): boolean {
+  return state.mode === 'spectator' && state.config.timeline.enabled;
+}
+
+/**
+ * Timeline teams from the `teams=` tokens (`id` or `id:slot`): unknown and
+ * repeated ids dropped, at most 6. A token's slot is kept when it is valid
+ * and free; a plain id takes its position when free; the rest get the
+ * lowest free slot (so a reload reproduces the colors `timelineHref` wrote).
+ */
+export function seedTimelineTeams(tokens: readonly string[], contest: Contest): TimelineTeam[] {
+  const picked: { id: string; want: number }[] = [];
+  for (const token of tokens) {
+    const [id, slotText] = token.split(':');
+    if (!contest.teams.has(id) || picked.some((p) => p.id === id)) continue;
+    if (picked.length >= TIMELINE_MAX_TEAMS) break;
+    const slot = slotText === undefined ? picked.length : /^\d+$/.test(slotText) ? Number(slotText) : -1;
+    picked.push({ id, want: slot });
+  }
+  const out: (TimelineTeam | null)[] = picked.map(() => null);
+  const used = new Set<number>();
+  picked.forEach((p, i) => {
+    if (p.want >= 0 && p.want < TIMELINE_MAX_TEAMS && !used.has(p.want)) {
+      used.add(p.want);
+      out[i] = { id: p.id, slot: p.want };
+    }
+  });
+  picked.forEach((p, i) => {
+    if (out[i] !== null) return;
+    let slot = 0;
+    while (used.has(slot)) slot += 1;
+    used.add(slot);
+    out[i] = { id: p.id, slot };
+  });
+  return out as TimelineTeam[];
+}
+
+/** The lowest color slot no selected team uses. */
+function freeSlot(teams: readonly TimelineTeam[]): number {
+  const used = new Set(teams.map((t) => t.slot));
+  let slot = 0;
+  while (used.has(slot)) slot += 1;
+  return slot;
+}
+
 export interface AppState {
   status: BootStatus;
   mode: AppMode;
@@ -187,6 +241,16 @@ export interface AppState {
    * shows "저장된 값을 사용 중" with a reset button.
    */
   publishInputsFromStorage: boolean;
+  /**
+   * Timeline view (design 2026-11-15), spectator with `timeline.enabled`
+   * only. Every run of the feed merged by id — including the runs the feeder
+   * drops after a solved cell — independent of `time=`. Empty when disabled.
+   */
+  timelineRuns: readonly Run[];
+  /** Board or the Timeline view (`view=`). */
+  view: TimelineViewMode;
+  /** Selected teams in selection order; `slot` fixes the color. */
+  timelineTeams: readonly TimelineTeam[];
 
   // -- actions --------------------------------------------------------------
   /** Full boot sequence. `search` is window.location.search (injected for tests). */
@@ -210,6 +274,11 @@ export interface AppState {
    */
   awardCommitSnapshot(): void;
   addSystemMessage(level: SystemMessageLevel, text: string): void;
+  /** Switch between the board and the Timeline view (no-op when disabled). */
+  setView(view: TimelineViewMode): void;
+  /** Add or remove a timeline team; 'full' when 6 are already selected. */
+  toggleTimelineTeam(teamId: string): 'added' | 'removed' | 'full';
+  removeTimelineTeam(teamId: string): void;
   dismissSystemMessage(id: number): void;
   /** Merge a patch into prelimInputs; saved in preliminary publish mode. */
   setPrelimInputs(patch: Partial<PrelimInputs>): void;
@@ -244,6 +313,8 @@ function initialResolvedConfig(): ResolvedConfig {
     replayTimeMinutes: null,
     searchQuery: null,
     followTeamId: null,
+    timelineView: false,
+    timelineTeams: [],
   };
 }
 
@@ -314,6 +385,8 @@ export function createAppStore(deps: StoreDeps = {}): AppStore {
   let wsErrorReported = false;
   let pollErrorReported = false;
   let pollPromise: Promise<void> | null = null;
+  /** Raw runs by id for the Timeline view (kept only when it is enabled). */
+  let timelineRunsById = new Map<string, Run>();
   let nextMessageId = 1;
   let nextEventId = 1;
   let nextFlipId = 1;
@@ -455,6 +528,13 @@ export function createAppStore(deps: StoreDeps = {}): AppStore {
       closeWs();
     }
 
+    /** Merge a fetch result into the Timeline's raw run list (when enabled). */
+    function recordTimelineRuns(runs: readonly Run[]): void {
+      if (!timelineEnabled(get()) || runs.length === 0) return;
+      timelineRunsById = mergeRuns(timelineRunsById, runs);
+      set({ timelineRuns: [...timelineRunsById.values()] });
+    }
+
     // -- polling --------------------------------------------------------------
     /** One poll at a time; concurrent callers join the in-flight promise. */
     function pollOnce(): Promise<void> {
@@ -466,6 +546,7 @@ export function createAppStore(deps: StoreDeps = {}): AppStore {
         try {
           const result = await activeSource.fetchRuns(activeFeeder.cursor);
           activeFeeder.ingest(result);
+          recordTimelineRuns(result.runs);
           pollErrorReported = false;
           syncFeederMeta();
         } catch (err) {
@@ -699,6 +780,9 @@ export function createAppStore(deps: StoreDeps = {}): AppStore {
       prelimInputs: prelimInputsFromConfig(defaultConfig()),
       regionalInputs: regionalInputsFromConfig(defaultConfig()),
       publishInputsFromStorage: false,
+      timelineRuns: [],
+      view: 'board',
+      timelineTeams: [],
 
       async boot(search: string): Promise<void> {
         if (get().status !== 'idle') return;
@@ -736,13 +820,22 @@ export function createAppStore(deps: StoreDeps = {}): AppStore {
         }
         set({ contest });
         checkAssets(contest, orgs, config);
+        // Timeline: seed view/teams from the URL (ignored silently when off).
+        if (timelineEnabled({ mode, config })) {
+          set({
+            view: config.timelineView ? 'timeline' : 'board',
+            timelineTeams: seedTimelineTeams(config.timelineTeams, contest),
+          });
+        }
         // The storage key needs the contest title, so stored inputs load here.
         if (mode === 'publish') loadStoredPublishInputs(config, contest);
 
         // 5. Initial fetch + ingest (non-fatal; spectator retries by polling).
         feeder = createRunFeeder(contest);
         try {
-          feeder.ingest(await source.fetchRuns(feeder.cursor));
+          const first = await source.fetchRuns(feeder.cursor);
+          feeder.ingest(first);
+          recordTimelineRuns(first.runs);
         } catch (err) {
           addMessage('warning', `Initial run fetch failed: ${errorText(err)}`);
         }
@@ -779,6 +872,7 @@ export function createAppStore(deps: StoreDeps = {}): AppStore {
               focusBlinking: award.focusBlinking,
               gachaEffectRequirement: award.gachaEffectRequirement,
               gachaEffectForNoRatio: award.gachaEffectForNoRatio,
+              gachaEffectMaxRank: award.gachaEffectMaxRank,
             },
             rng,
             computeStandings,
@@ -907,6 +1001,26 @@ export function createAppStore(deps: StoreDeps = {}): AppStore {
           regionalInputs: regionalInputsFromConfig(config),
           publishInputsFromStorage: false,
         });
+      },
+
+      setView(view: TimelineViewMode): void {
+        if (!timelineEnabled(get())) return;
+        set({ view });
+      },
+
+      toggleTimelineTeam(teamId: string): 'added' | 'removed' | 'full' {
+        const teams = get().timelineTeams;
+        if (teams.some((t) => t.id === teamId)) {
+          set({ timelineTeams: teams.filter((t) => t.id !== teamId) });
+          return 'removed';
+        }
+        if (teams.length >= TIMELINE_MAX_TEAMS) return 'full';
+        set({ timelineTeams: [...teams, { id: teamId, slot: freeSlot(teams) }] });
+        return 'added';
+      },
+
+      removeTimelineTeam(teamId: string): void {
+        set({ timelineTeams: get().timelineTeams.filter((t) => t.id !== teamId) });
       },
 
       subscribeTeamUpdated(listener: TeamUpdatedListener): () => void {

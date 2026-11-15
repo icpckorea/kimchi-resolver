@@ -514,7 +514,10 @@ the public page):
   counted from the standings (only teams with 1 or more solved problems); you can
   overwrite them. The coefficients are in the "고급" fold. `publish.siteScore` and
   the URL `site_score` are **gone**.
-- **WF medal schools** (3 teams per school). Every other school has 2 teams.
+- **No WF medal schools.** Rule C2 (update of 2026-11-01, https://icpc.jp/apac/2026-27/rulenew/)
+  makes Q = 2 for every school, because no World Finals is held before the 2027
+  Championship. The page shows a note instead of a picker, and the simulation
+  ignores `publish.regional.wfMedalGroups`.
 - **Other regionals' winner schools** and **schools invited by another path**.
   Their whole school drops out of the scored list. This site's champion is handled
   automatically. `publish.alreadyInvited.teamIds` (config only) names invited teams
@@ -533,6 +536,23 @@ teams in standings order up to T. The page warns when the selection is more than
 and when teams tie at the N or T boundary. It never breaks a tie for you. Mark a team
 "미자격" to remove it from the selection; it stays on the board at 50% opacity, with
 no label, on the public page.
+
+### Step 5 — time-machine board (after the results are public)
+
+Folder layout per contest: `<contest>/scoreboard/` holds the publish page (Step 4)
+and `<contest>/scoreboard/time-machine/` holds a spectator board with the **full,
+unfrozen** feed. Build it only after the ceremony, when the freeze may be public.
+
+1. `npm run build`, copy `dist/` (without `sample/`) to a folder, and put the
+   feed in `contest/` (`contest.json`, `runs.json`, `noMoreUpdate: true`, no
+   `kimchiUnfrozen` marker).
+2. `config.json`: `source: {type: "spotboard", apiBase: "./contest/"}`,
+   `timeTravel: true`, `lockMode: true`, `award.awardsUrl: ""`, and
+   `timeline: {enabled: true, freezeMinute: <freeze minute>}` (2026 Regional: 210).
+   The Timeline view shows every run of the feed, so never enable it on a live
+   frozen board.
+3. Check it locally (slider, `Board | Timeline`, a team on the timeline), then
+   upload. Links can carry the view: `?view=timeline&teams=<id>,<id>&time=<minute>`.
 
 ---
 

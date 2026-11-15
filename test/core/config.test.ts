@@ -30,8 +30,10 @@ describe('parseConfig — defaults', () => {
       showBalloons: true,
       showSchoolLogos: false,
       showEvents: false,
+      magnify: false,
       lockMode: false,
       timeTravel: false,
+      timeline: { enabled: false, freezeMinute: null },
       maxNotifications: 100,
       pagination: false,
       paginationSize: 50,
@@ -68,6 +70,7 @@ describe('parseConfig — defaults', () => {
         focusBlinking: { minSolved: 7, maxRank: 10 },
         gachaEffectRequirement: 8,
         gachaEffectForNoRatio: 30,
+        gachaEffectMaxRank: null,
         finaleFlipSlowdown: 3,
         finaleIntermediateFlipSlowdown: 2,
         animationSpeeds: [
@@ -133,6 +136,7 @@ describe('parseConfig — defaults', () => {
       showBalloons: true,
       showSchoolLogos: false,
       showEvents: false,
+      magnify: false,
       maxNotifications: 100,
       pagination: false,
       paginationSize: 50,
@@ -169,6 +173,7 @@ describe('parseConfig — defaults', () => {
         focusBlinking: { minSolved: 7, maxRank: 10 },
         gachaEffectRequirement: 8,
         gachaEffectForNoRatio: 30,
+        gachaEffectMaxRank: null,
         finaleFlipSlowdown: 3,
         finaleIntermediateFlipSlowdown: 2,
         animationSpeeds: [
@@ -398,6 +403,13 @@ describe('parseConfig — bad values collected as errors, never thrown', () => {
     expect(config.award.animationSpeeds).toEqual(DEFAULT_ANIMATION_SPEEDS);
   });
 
+  it('gachaEffectMaxRank accepts a positive integer and rejects 0 to default null', () => {
+    expect(parseConfig({ award: { gachaEffectMaxRank: 5 } }).config.award.gachaEffectMaxRank).toBe(5);
+    const { config, errors } = parseConfig({ award: { gachaEffectMaxRank: 0 } });
+    expect(errors.some((e) => e.includes('gachaEffectMaxRank'))).toBe(true);
+    expect(config.award.gachaEffectMaxRank).toBeNull();
+  });
+
   it('gachaEffectForNoRatio outside [0, 100] is rejected to default 30', () => {
     const { config, errors } = parseConfig({ award: { gachaEffectForNoRatio: 150 } });
     expect(errors.some((e) => e.includes('gachaEffectForNoRatio'))).toBe(true);
@@ -461,6 +473,32 @@ describe('applyUrlOverrides', () => {
     expect(config.searchQuery).toBe('kaist');
   });
 
+  it('timeline defaults to off and validates freezeMinute', () => {
+    expect(defaultConfig().timeline).toEqual({ enabled: false, freezeMinute: null });
+    const ok = parseConfig({ timeline: { enabled: true, freezeMinute: 210 } });
+    expect(ok.errors).toEqual([]);
+    expect(ok.config.timeline).toEqual({ enabled: true, freezeMinute: 210 });
+    const bad = parseConfig({ timeline: { enabled: true, freezeMinute: -1 } });
+    expect(bad.errors.some((e) => e.startsWith('config.timeline.freezeMinute'))).toBe(true);
+    expect(bad.config.timeline).toEqual({ enabled: true, freezeMinute: null });
+  });
+
+  it('view= and teams= fill the timeline URL fields', () => {
+    const none = applyUrlOverrides(base(), '');
+    expect(none.config.timelineView).toBe(false);
+    expect(none.config.timelineTeams).toEqual([]);
+    const set = applyUrlOverrides(base(), '?view=timeline&teams=3,1,3,,x');
+    expect(set.warnings).toEqual([]);
+    expect(set.config.timelineView).toBe(true);
+    expect(set.config.timelineTeams).toEqual(['3', '1', 'x']);
+    const board = applyUrlOverrides(base(), '?view=board');
+    expect(board.warnings).toEqual([]);
+    expect(board.config.timelineView).toBe(false);
+    const junk = applyUrlOverrides(base(), '?view=foo');
+    expect(junk.warnings).toHaveLength(1);
+    expect(junk.config.timelineView).toBe(false);
+  });
+
   it('timeTravel defaults to false and is read from config.json', () => {
     expect(defaultConfig().timeTravel).toBe(false);
     expect(parseConfig({ timeTravel: true }).config.timeTravel).toBe(true);
@@ -515,6 +553,20 @@ describe('applyUrlOverrides', () => {
     expect(warnings).toEqual([]);
     expect(config.award.mode).toBe(true);
     expect(config.award.rankBegin).toBe(3);
+  });
+
+  it('magnify parses and overrides magnify', () => {
+    expect(base().magnify).toBe(false);
+    const { config, warnings } = applyUrlOverrides(base(), '?award=true&magnify=true');
+    expect(warnings).toEqual([]);
+    expect(config.magnify).toBe(true);
+
+    const off = applyUrlOverrides(config, '?magnify=false');
+    expect(off.config.magnify).toBe(false);
+
+    const bad = applyUrlOverrides(base(), '?magnify=big');
+    expect(bad.warnings).toHaveLength(1);
+    expect(bad.config.magnify).toBe(false);
   });
 
   it('award_rank_begin=0 and non-numeric values are ignored with warnings', () => {
