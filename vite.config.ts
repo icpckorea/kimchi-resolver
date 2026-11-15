@@ -59,11 +59,44 @@ function judgeProxy(env: Record<string, string>): Record<string, ProxyOptions> {
   };
 }
 
+/**
+ * Dev server only: `/frozen-feed` → KIMCHI_FROZEN_FEED_URL, a spotboard feed
+ * folder (contest.json + runs.json) made by `scripts/live-scoreboard.sh`,
+ * e.g. https://static.icpckorea.net/2026/regional/scoreboard/contest. The
+ * proxy makes it same-origin (S3 sends no CORS headers). Point the
+ * `config.local.json` source at it: `{ "type": "spotboard", "apiBase":
+ * "/frozen-feed/" }`. Read-only: GET and HEAD.
+ */
+function frozenFeedProxy(feedUrl: string): Record<string, ProxyOptions> {
+  const url = new URL(feedUrl);
+  const base = url.pathname.replace(/\/+$/, '');
+  return {
+    '/frozen-feed': {
+      target: url.origin,
+      changeOrigin: true,
+      rewrite: (p) => p.replace(/^\/frozen-feed/, base),
+      configure: (proxy) => {
+        proxy.on('proxyReq', (_proxyReq, req, res) => {
+          if (req.method !== 'GET' && req.method !== 'HEAD') {
+            res.statusCode = 405;
+            res.end();
+          }
+        });
+      },
+    },
+  };
+}
+
 export default defineConfig(({ mode }) => {
   const env = loadEnv(mode, process.cwd(), 'KIMCHI_');
+  // With a frozen feed set, the credentialed judge proxy is OFF: anyone who
+  // can open this page could otherwise read real verdicts at /judge-api.
+  const proxy = env.KIMCHI_FROZEN_FEED_URL
+    ? frozenFeedProxy(env.KIMCHI_FROZEN_FEED_URL)
+    : judgeProxy(env);
   return {
     plugins: [react(), localConfig()],
-    server: { proxy: judgeProxy(env) },
+    server: { proxy },
     base: './',
     resolve: {
       alias: {
