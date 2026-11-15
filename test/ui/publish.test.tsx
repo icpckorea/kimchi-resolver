@@ -155,6 +155,10 @@ function starFill(teamId: string): string | undefined {
   return starOf(teamId)?.querySelector('polygon')?.getAttribute('fill') ?? undefined;
 }
 
+function starTier(teamId: string): string | null {
+  return starOf(teamId)?.getAttribute('data-tier') ?? null;
+}
+
 function valueOf(teamId: string): string | undefined {
   return rowOf(teamId).querySelector('.team-row-value')?.textContent ?? undefined;
 }
@@ -483,10 +487,10 @@ describe('PublishView regional mode', () => {
 // ---------------------------------------------------------------------------
 
 describe('PublishView APAC stars', () => {
-  it("renders a gold champion, no star for champion schoolmates and silver for every other school", () => {
+  it("renders a rainbow champion, no star for champion schoolmates and silver for every other school", () => {
     seedStore({ siteScore: 5 });
     render(<PublishView />);
-    expect(starFill('x1')).toBe(FILL.gold); // champion — World Finals direct entry
+    expect(starTier('x1')).toBe('rainbow'); // champion — Championship invitation (D1) + World Finals (B1)
     // x2 shares school X with the champion, whose school leaves the scored
     // list entirely (spec §13 rule 3.1) → no star, and never promoted.
     expect(starOf('x2')).toBeNull();
@@ -504,9 +508,9 @@ describe('PublishView APAC stars', () => {
     expect(starFill('y1')).toBe(FILL.gold); // fr 1 → 0 ≤ 0.5
     expect(starFill('y2')).toBe(FILL.gold); // fr 2 → 0.5 — exactly the cutoff
     expect(starFill('z1')).toBe(FILL.silver); // fr 3 → 1 > 0.5
-    // Out-of-running teams are never promoted, and the champion is gold either way.
+    // Out-of-running teams are never promoted, and the champion is rainbow either way.
     expect(starOf('x2')).toBeNull();
-    expect(starFill('x1')).toBe(FILL.gold);
+    expect(starTier('x1')).toBe('rainbow');
   });
 
   it('does not promote when the cutoff box is empty', () => {
@@ -528,7 +532,7 @@ describe('PublishView APAC stars', () => {
     expect(starOf('y1')).toBeNull(); // out of the running…
     expect(starOf('y2')).toBeNull(); // …both of them
     expect(starFill('z1')).toBe(FILL.gold); // fr 1 → 0 ≤ 0
-    expect(starFill('x1')).toBe(FILL.gold); // champion
+    expect(starTier('x1')).toBe('rainbow'); // champion
   });
 
   it('shows an already-invited team itself as gold and its schoolmates without a star', () => {
@@ -557,7 +561,7 @@ describe('PublishView APAC stars', () => {
     ]);
     seedStore({ siteScore: 5, contest: capContest, snapshot: capSnapshot });
     render(<PublishView />);
-    expect(starFill('w1')).toBe(FILL.gold); // champion
+    expect(starTier('w1')).toBe('rainbow'); // champion
     expect(starOf('w2')).toBeNull(); // champion schoolmate
     expect(starOf('w3')).toBeNull(); // champion schoolmate
     expect(starOf('w4')).toBeNull(); // schoolRank 4 → no star at all
@@ -567,7 +571,7 @@ describe('PublishView APAC stars', () => {
   it('the publish mode decides the stars, not config.apac.enabled (spec §3)', () => {
     seedStore({ mode: 'regional', siteScore: 5, apacEnabled: false });
     render(<PublishView />);
-    expect(starFill('x1')).toBe(FILL.gold);
+    expect(starTier('x1')).toBe('rainbow');
     cleanup();
 
     seedStore({ mode: 'preliminary', siteScore: 5, apacEnabled: true });

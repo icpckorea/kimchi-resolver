@@ -111,8 +111,8 @@ export const REGIONAL_SIM_MESSAGES_KO: RegionalSimMessages = {
     '다른 리저널에서 이미 초청된 학교를 하나도 고르지 않았습니다. 이 정보는 대회 데이터에 없으므로 직접 골라야 합니다. 비워 두면 그 학교 팀들이 순위 슬롯을 차지해 아래 팀들이 밀리고, 진출 가능한 팀이 실제보다 적게 표시됩니다.',
   cutoffLegend: '초청 기준',
   cutoffLabel: '가정 cutoff',
-  cutoffPlaceholder: '예: 2.5',
-  cutoffHint: 'value가 이 값 이하인 팀을 금색으로 표시합니다. 비워 두면 1위 팀만 금색입니다.',
+  cutoffPlaceholder: '예: 0.18',
+  cutoffHint: 'value가 이 값 이하인 팀을 금색으로 표시합니다. 비워 두면 value로 금색이 되는 팀은 없습니다. 이 regional의 winner는 항상 무지개색입니다.',
   advanced: '고급',
   coefficients: {
     regionalSchools: '본선 학교 수 계수',

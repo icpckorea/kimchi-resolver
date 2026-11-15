@@ -237,9 +237,9 @@ describe('PublishedApp', () => {
     expect(screen.queryByText(/동색/)).toBeNull(); // no bronze in the legend
     expect(container.querySelector('.regional-sim-score')?.textContent).toContain('S = 2');
 
-    // Seed: the winner x1 is gold; school X leaves the list; no cutoff.
+    // Seed: the winner x1 is rainbow; school X leaves the list; no cutoff.
     // Values (R - 1) / S with S = 2: y1 0, y2 0.5, z1 1.
-    expect(starFill('x1')).toBe(FILL.gold);
+    expect(document.querySelector('[data-team-id="x1"] svg.kr-apac-star')?.getAttribute('data-tier')).toBe('rainbow');
     expect(valueOf('y1')).toBe('0.0000');
     expect(valueOf('y2')).toBe('0.5000');
     expect(valueOf('z1')).toBe('1.0000');

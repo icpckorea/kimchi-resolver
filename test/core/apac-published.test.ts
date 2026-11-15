@@ -198,7 +198,7 @@ describe('APAC filtered list reproduces the published 2025-26 Seoul list', () =>
       siteScore: SITE_SCORE,
       invitedScoreCutoff: INVITED_SCORE_CUTOFF,
     });
-    expect(stars.get(championTeamId)).toBe('gold');
+    expect(stars.get(championTeamId)).toBe('rainbow');
   });
 
   it('every other Seoul National University team is off the list entirely', () => {
@@ -237,7 +237,7 @@ describe('APAC filtered list reproduces the published 2025-26 Seoul list', () =>
     expect(last?.solved).toBe(1);
   });
 
-  it('the cutoff promotes exactly filteredRank 1..13 to gold (plus the champion)', () => {
+  it('the cutoff promotes exactly filteredRank 1..13 to gold (the champion is rainbow)', () => {
     const ranks = computeApacFilteredRanks(snapshot, {
       quota: QUOTA_2025_26,
       championTeamId,
@@ -266,6 +266,7 @@ describe('APAC filtered list reproduces the published 2025-26 Seoul list', () =>
     expect(stars.get((pusan as NonNullable<typeof pusan>).team.id)).toBe('gold');
 
     const goldCount = [...stars.values()].filter((tier) => tier === 'gold').length;
-    expect(goldCount).toBe(14);
+    expect(goldCount).toBe(13);
+    expect(stars.get(championTeamId)).toBe('rainbow');
   });
 });

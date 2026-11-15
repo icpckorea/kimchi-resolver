@@ -67,7 +67,7 @@ export const MESSAGES: Record<Lang, PublishedMessages> = {
     teamCount: (count) => `${count}팀`,
     advanceSummary: (teams, schools) => `진출 ${teams}팀 · ${schools}개 학교`,
     starLegend:
-      '별의 의미: 은색 = APAC championship 초대 가능, 금색 = APAC championship 진출.',
+      '별의 의미: 은색 = APAC championship 초대 가능, 금색 = APAC championship 진출, 무지개색 = APAC championship 초청 / World Finals 진출.',
     errorTitle: '순위표를 표시할 수 없습니다',
     errorBody: '공개 데이터를 읽지 못했습니다. 운영자에게 알려 주세요.',
     langToggle: { label: 'English', ariaLabel: '영어로 보기' },
@@ -96,7 +96,7 @@ export const MESSAGES: Record<Lang, PublishedMessages> = {
     advanceSummary: (teams, schools) =>
       `${teams} ${plural(teams, 'team', 'teams')} from ${schools} ${plural(schools, 'school', 'schools')} ` +
       plural(teams, 'advances', 'advance'),
-    starLegend: `Star colors: silver = ${APAC_STAR_TITLES.silver}, gold = ${APAC_STAR_TITLES.gold}.`,
+    starLegend: `Star colors: silver = ${APAC_STAR_TITLES.silver}, gold = ${APAC_STAR_TITLES.gold}, rainbow = ${APAC_STAR_TITLES.rainbow}.`,
     errorTitle: 'Cannot show the standings',
     errorBody: 'The public data could not be read. Please tell the operator.',
     // The label is the name of Korean in Korean script, as usual for a language switch.
@@ -126,9 +126,9 @@ export const MESSAGES: Record<Lang, PublishedMessages> = {
         'You have not picked any school that is already invited by another regional. The contest data does not have this, so you must pick them. If you leave it empty, the teams of those schools take ranking slots, the teams below move down, and fewer teams are shown as able to advance than in reality.',
       cutoffLegend: 'Invitation rule',
       cutoffLabel: 'Assumed cutoff',
-      cutoffPlaceholder: 'e.g. 2.5',
+      cutoffPlaceholder: 'e.g. 0.18',
       cutoffHint:
-        'Teams with a value at or below this are gold. If empty, only the first-place team is gold.',
+        'Teams with a value at or below this are gold. If empty, no team becomes gold by its value. The winner of this regional is always rainbow.',
       advanced: 'Advanced',
       coefficients: {
         regionalSchools: 'Regional schools coefficient',

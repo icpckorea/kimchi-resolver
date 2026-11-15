@@ -448,17 +448,17 @@ describe('computeApacFilteredRanks — scored list construction', () => {
 });
 
 // ---------------------------------------------------------------------------
-// Final phase — gold invited, silver scored list, no star for the rest
+// Final phase — rainbow winner, gold invited, silver scored list, no star for the rest
 // ---------------------------------------------------------------------------
 
 describe('computeApacStars — final phase', () => {
-  it("champion gold, champion's schoolmates no star, the scored list silver", () => {
+  it("champion rainbow, champion's schoolmates no star, the scored list silver", () => {
     const stars = computeApacStars(
       fixtureSnapshot(),
       opts({ phase: 'final', championTeamId: 'x1' }),
     );
     expect(asObject(stars)).toEqual({
-      x1: 'gold', // champion — World Finals direct entry
+      x1: 'rainbow', // champion — Championship invitation (D1) + World Finals (B1)
       y1: 'silver',
       y2: 'silver',
       y3: 'silver',
@@ -476,7 +476,7 @@ describe('computeApacStars — final phase', () => {
       opts({ phase: 'final', championTeamId: 'x1', alreadyInvited: { teamIds: ['y2'] } }),
     );
     expect(asObject(stars)).toEqual({
-      x1: 'gold',
+      x1: 'rainbow',
       y2: 'gold', // the invited team itself
     });
     // School Y already has an invited team → its schoolmates are out of the running.
@@ -523,7 +523,7 @@ describe('computeApacStars — invited-score promotion (filteredRank)', () => {
     // School X is out (champion), z1 has 0 solves → the list is y1,y2,y3.
     // siteScore 2, cutoff 1 → invited iff (filteredRank − 1)/2 ≤ 1 ⇔ fr ≤ 3.
     const stars = computeApacStars(fixtureSnapshot(), finalOpts(2, 1));
-    expect(stars.get('x1')).toBe('gold'); // champion, no slot
+    expect(stars.get('x1')).toBe('rainbow'); // champion, no slot
     expect(stars.get('y1')).toBe('gold'); // fr 1 → 0
     expect(stars.get('y2')).toBe('gold'); // fr 2 → 0.5
     expect(stars.get('y3')).toBe('gold'); // fr 3 → 1 — exactly the cutoff
@@ -561,7 +561,7 @@ describe('computeApacStars — invited-score promotion (filteredRank)', () => {
   it('does not promote when siteScore is missing', () => {
     const stars = computeApacStars(fixtureSnapshot(), finalOpts(null, 100));
     expect(stars.get('y1')).toBe('silver');
-    expect(stars.get('x1')).toBe('gold'); // champion gold does not need the cutoff
+    expect(stars.get('x1')).toBe('rainbow'); // the champion's star does not need the cutoff
   });
 
   it('does not promote when invitedScoreCutoff is missing', () => {
@@ -616,7 +616,7 @@ describe('computeApacStars — invited-score promotion (filteredRank)', () => {
       snap,
       opts({ phase: 'final', championTeamId: 'x1', siteScore: 1, invitedScoreCutoff: 1 }),
     );
-    expect(stars.get('x1')).toBe('gold'); // champion
+    expect(stars.get('x1')).toBe('rainbow'); // champion
     expect(stars.get('b1')).toBe('gold'); // position 1: 0 ≤ 1
     expect(stars.get('c1')).toBe('gold'); // position 2: (2−1)/1 = 1 ≤ 1
     expect(stars.get('d1')).toBe('silver'); // position 3: 2 > 1
@@ -715,9 +715,9 @@ describe('computeApacStars — 2025-26 Seoul regression (siteScore 68.98, cutoff
     expect(stars.get('next')).toBe('silver');
   });
 
-  it('both invited teams are gold and their schoolmates have no star, never promoted', () => {
+  it('the champion is rainbow, the other invited team gold, their schoolmates have no star', () => {
     const stars = computeApacStars(seoulSnapshot(), seoulOpts());
-    expect(stars.get('snu1')).toBe('gold'); // champion
+    expect(stars.get('snu1')).toBe('rainbow'); // champion
     expect(stars.get('ntu1')).toBe('gold'); // invited at another regional
     expect(stars.has('snu2')).toBe(false);
     expect(stars.has('snu3')).toBe(false);
@@ -848,7 +848,7 @@ describe('computeApacFilteredRanks — published 2025-26 Seoul list', () => {
       alreadyInvited: { groups: [NTU] },
     });
     expect(stars.get(target.team.id)).toBe('gold');
-    expect(stars.get(champion.team.id)).toBe('gold');
+    expect(stars.get(champion.team.id)).toBe('rainbow');
     // filteredRank 14 is the first team past the cutoff (0.1885 > 0.1838).
     const next = [...ranks.entries()].find(([, r]) => r === 14)![0];
     expect(stars.get(next)).toBe('silver');

@@ -198,8 +198,8 @@ it('award mode: a WF-medal school keeps three silver slots, a normal school two'
   expect(tierOf('29')).toBe('silver');
   expect(tierOf('18')).toBe('silver');
   expect(tierOf('26')).toBeNull();
-  // The champion is gold.
-  expect(tierOf('28')).toBe('gold');
+  // The champion is rainbow (Championship invitation + World Finals).
+  expect(tierOf('28')).toBe('rainbow');
 });
 
 it('award mode: schools of winnerGroups and invitedGroups have no stars', async () => {

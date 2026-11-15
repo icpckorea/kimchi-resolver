@@ -11,7 +11,8 @@
  * 2. Teams with 0 solved problems are excluded.
  * 3. A school that ALREADY HAS AN INVITED TEAM drops out of this site's scored
  *    list ENTIRELY — every one of its teams. The invitation route does not
- *    matter: this regional's champion (auto-qualified by rule B1), winners of
+ *    matter: this regional's champion (the regional winner: invited to the
+ *    Championship by rule D1, World Finals by rule B1), winners of
  *    other regionals, and teams invited by any other route count the same
  *    (operator decision "B": D3(3) names only winner schools, but this keeps
  *    the published 2025-26 Seoul list reproducible). The invited team itself
@@ -37,7 +38,8 @@
  * empty only the champion's school drops out, and ranks may be optimistic.
  *
  * Star tiers (semantics: bronze = APAC 리스트에 들어가는 팀 (지금까지),
- * silver = APAC championship 초대 가능, gold = APAC championship 진출):
+ * silver = APAC championship 초대 가능, gold = APAC championship 진출,
+ * rainbow = APAC championship 초청 / World Finals 진출):
  * - `ceremony` phase (award mode, final standings not fully revealed yet):
  *   the `alreadyInvited` teams are GOLD (settled at another site, so not a
  *   spoiler); every team in the scored list of the CURRENT snapshot is
@@ -45,8 +47,11 @@
  *   follows the school quota (2, or 3 for a WF medal school), not a fixed
  *   학내 N등.
  * - `final` phase (award fully revealed, or publish mode):
- *   - every INVITED team (the champion, plus `alreadyInvited` teams) is GOLD —
- *     their advancement is settled, and they take no slot;
+ *   - the champion (this regional's winner, see {@link findRegionalWinner}) is
+ *     RAINBOW: it is invited to the Championship (rule D1) AND directly
+ *     qualified for the World Finals (rule B1). It takes no slot;
+ *   - every other INVITED team (`alreadyInvited`) is GOLD — its advancement
+ *     is settled, and it takes no slot;
  *   - teams in the scored list are SILVER, promoted to GOLD when their value
  *     clears the cutoff (publish mode; needs BOTH siteScore and cutoff);
  *   - every other team gets no star: the other teams of an invited school,
@@ -74,8 +79,9 @@ export interface AlreadyInvited {
 
 export interface ApacFilterOptions {
   /**
-   * Team id of the overall champion (standings[0] of the FINAL snapshot).
-   * Auto-qualified (rule B1), so the champion's school drops out of the list.
+   * Team id of this regional's winner (see {@link findRegionalWinner}, over
+   * the FINAL snapshot). Invited to the Championship (rule D1) and qualified
+   * for the World Finals (rule B1), so the winner's school drops out of the list.
    */
   championTeamId: string | null;
   /** Cross-site invitations; empty when unknown. */
@@ -178,6 +184,24 @@ function resolveInvitations(
   return { teamIds, groups };
 }
 
+/**
+ * The regional winner (rule B1): "the team with the highest rank after
+ * excluding teams from South Pacific or other super-regions". Null when no
+ * team is left. Use the FINAL snapshot.
+ */
+export function findRegionalWinner(
+  snapshot: Snapshot,
+  superRegionCountries: readonly string[] = SUPER_REGION_COUNTRIES,
+): string | null {
+  const superRegion = new Set(superRegionCountries);
+  for (const standing of snapshot.standings) {
+    const country = standing.team.countryCode;
+    if (country !== undefined && superRegion.has(country)) continue;
+    return standing.team.id;
+  }
+  return null;
+}
+
 /** True when this team is out of the scored list because it is invited. */
 function isInvited(teamId: string, group: string, invitations: InvitationSet): boolean {
   return invitations.teamIds.has(teamId) || (group !== '' && invitations.groups.has(group));
@@ -258,7 +282,12 @@ export function computeApacStars(
   for (const standing of snapshot.standings) {
     const teamId = standing.team.id;
 
-    // Invited already (champion or cross-site): advancement settled → gold.
+    // This regional's winner: Championship invitation (D1) + World Finals (B1).
+    if (teamId === opts.championTeamId) {
+      stars.set(teamId, 'rainbow');
+      continue;
+    }
+    // Invited already at another site: advancement settled → gold.
     if (invitations.teamIds.has(teamId)) {
       stars.set(teamId, 'gold');
       continue;
@@ -325,7 +354,8 @@ export interface RegionalSimulation {
 }
 
 /**
- * The regional-mode simulation over FINAL standings: champion = standings[0].
+ * The regional-mode simulation over FINAL standings: champion = the regional
+ * winner ({@link findRegionalWinner}).
  * A site score that is not a finite number > 0 yields no values and promotes
  * nobody (no division by zero, no Infinity shown).
  */
@@ -340,7 +370,7 @@ export function simulateRegional(
 ): RegionalSimulation {
   const usable = Number.isFinite(opts.siteScore) && opts.siteScore > 0;
   const filter: ApacFilterOptions = {
-    championTeamId: snapshot.standings[0]?.team.id ?? null,
+    championTeamId: findRegionalWinner(snapshot),
     alreadyInvited: opts.alreadyInvited,
     quota: opts.quota,
   };

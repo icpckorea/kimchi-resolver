@@ -30,3 +30,42 @@
     transform: rotate(360deg) scale(1);
   }
 }
+
+/* Rainbow star (regional winner: APAC Championship invitation + World Finals).
+   The rainbow bands move by SMIL in ApacStar.tsx; CSS adds the glow and the
+   twinkle. The sparkles sit at the viewBox corners, so let them overflow. */
+.kr-apac-star--rainbow {
+  overflow: visible;
+}
+
+.kr-apac-star__glow {
+  filter: drop-shadow(0 0 1.6px rgba(255, 79, 216, 0.75));
+}
+
+.kr-apac-star__sparkle {
+  transform-box: fill-box;
+  transform-origin: center;
+  animation: kr-apac-star-twinkle 1.8s ease-in-out infinite;
+}
+
+.kr-apac-star__sparkle--late {
+  animation-delay: -0.9s;
+}
+
+@keyframes kr-apac-star-twinkle {
+  0%,
+  100% {
+    opacity: 0.15;
+    transform: scale(0.4) rotate(0deg);
+  }
+  50% {
+    opacity: 1;
+    transform: scale(1.15) rotate(45deg);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .kr-apac-star__sparkle {
+    animation: none;
+  }
+}

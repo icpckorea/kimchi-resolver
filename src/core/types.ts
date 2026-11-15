@@ -259,7 +259,7 @@ export interface OrgEntry {
 /** group name → entry. Loaded from public/orgs/orgs.json. */
 export type OrgsIndex = Record<string, OrgEntry>;
 
-export type ApacStar = 'bronze' | 'silver' | 'gold' | null;
+export type ApacStar = 'bronze' | 'silver' | 'gold' | 'rainbow' | null;
 
 // ---------------------------------------------------------------------------
 // App modes

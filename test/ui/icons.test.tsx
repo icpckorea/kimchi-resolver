@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { render } from '@testing-library/react';
+import { cleanup, render } from '@testing-library/react';
 import {
   Activity,
   ApacStar,
@@ -81,6 +81,50 @@ describe('ApacStar', () => {
     expect(polygon?.getAttribute('fill')).toBe(fill);
     // 5-point star = 10 vertices
     expect(polygon?.getAttribute('points')?.split(' ')).toHaveLength(10);
+  });
+
+  it('renders the rainbow tier with a gradient that is unique per star', () => {
+    const { container } = render(
+      <>
+        <ApacStar tier="rainbow" title="winner" />
+        <ApacStar tier="rainbow" />
+      </>,
+    );
+    const svgs = [...container.querySelectorAll('svg')];
+    expect(svgs).toHaveLength(2);
+    const ids = svgs.map((svg) => {
+      expect(svg.getAttribute('data-tier')).toBe('rainbow');
+      expect(svg.classList.contains('kr-apac-star--rainbow')).toBe(true);
+      const id = svg.querySelector('linearGradient')?.getAttribute('id');
+      expect(id).toBeTruthy();
+      // The star body points at its own gradient.
+      expect(svg.querySelector('polygon')?.getAttribute('fill')).toBe(`url(#${id})`);
+      return id;
+    });
+    expect(ids[0]).not.toBe(ids[1]);
+    expect(svgs[0].querySelector('title')?.textContent).toBe('winner');
+  });
+
+  it('moves the rainbow bands, unless the user asks for reduced motion', () => {
+    const moving = getSvg(render(<ApacStar tier="rainbow" />).container);
+    const transforms = [...moving.querySelectorAll('animateTransform')].map((a) => a.getAttribute('type'));
+    expect(transforms).toEqual(['rotate', 'translate']);
+    cleanup();
+
+    const original = window.matchMedia;
+    window.matchMedia = ((query: string) => ({
+      matches: query === '(prefers-reduced-motion: reduce)',
+      media: query,
+      addEventListener: () => {},
+      removeEventListener: () => {},
+    })) as unknown as typeof window.matchMedia;
+    try {
+      const still = getSvg(render(<ApacStar tier="rainbow" />).container);
+      expect(still.querySelector('animateTransform')).toBeNull();
+      expect(still.querySelector('linearGradient')).not.toBeNull();
+    } finally {
+      window.matchMedia = original;
+    }
   });
 
   it('adds the spin class only when spinning', () => {

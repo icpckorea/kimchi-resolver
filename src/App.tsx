@@ -24,6 +24,7 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import {
   computeApacStars,
   DEFAULT_SCHOOL_QUOTA,
+  findRegionalWinner,
   type AlreadyInvited,
   type ApacStarTier,
   type SchoolQuota,
@@ -130,7 +131,7 @@ function useAwardApacStars(): ReadonlyMap<string, ApacStarInfo> | null {
     if (mode !== 'award' || !enabled || snapshot === null) return null;
     return computeApacStars(snapshot, {
       phase: finished ? 'final' : 'ceremony',
-      championTeamId: finished ? (snapshot.standings[0]?.team.id ?? null) : null,
+      championTeamId: finished ? findRegionalWinner(snapshot) : null,
       siteScore: null, // invited-cutoff promotion is publish-only (spec §13.3)
       invitedScoreCutoff: null,
       alreadyInvited,

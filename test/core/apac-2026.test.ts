@@ -5,6 +5,7 @@ import {
   computeApacFilteredRanks,
   computeSiteScore,
   countSiteInputs,
+  findRegionalWinner,
   simulateRegional,
   DEFAULT_SCHOOL_QUOTA,
   DEFAULT_SITE_SCORE_COEFFICIENTS,
@@ -289,16 +290,16 @@ describe('simulateRegional', () => {
       alreadyInvited: null,
     });
     expect(sim.siteScore).toBe(10);
-    // The champion (standings[0]) and its school take no slot.
+    // The champion (the regional winner) and its school take no slot.
     expect(asObject(sim.values)).toEqual({ t1: 0, t2: 0.1, t3: 0.2, t4: 0.3, t5: 0.4 });
-    expect(sim.stars.get('champ')).toBe('gold');
+    expect(sim.stars.get('champ')).toBe('rainbow');
     expect(sim.stars.has('c2')).toBe(false); // champion's schoolmate: out of the running
     expect(sim.stars.get('t3')).toBe('gold'); // 0.2 ≤ 0.2
     expect(sim.stars.get('t4')).toBe('silver'); // 0.3 > 0.2
     expect(sim.stars.has('zero')).toBe(false); // 0 solved
   });
 
-  it('a null cutoff leaves gold to the champion only', () => {
+  it('a null cutoff makes nobody gold; the champion is rainbow', () => {
     const sim = simulateRegional(simSnapshot(), {
       siteScore: 10,
       cutoff: null,
@@ -306,7 +307,8 @@ describe('simulateRegional', () => {
       alreadyInvited: null,
     });
     const gold = [...sim.stars.entries()].filter(([, t]) => t === 'gold').map(([id]) => id);
-    expect(gold).toEqual(['champ']);
+    expect(gold).toEqual([]);
+    expect(sim.stars.get('champ')).toBe('rainbow');
     expect(sim.values.size).toBe(5);
   });
 
@@ -343,8 +345,8 @@ describe('simulateRegional', () => {
     expect(sim.siteScore).toBe(0);
     expect(sim.values.size).toBe(0);
     for (const value of sim.values.values()) expect(Number.isFinite(value)).toBe(true);
-    // Only the champion is gold (settled by rule); the scored list stays silver.
-    expect(sim.stars.get('champ')).toBe('gold');
+    // Only the champion has a settled star (rainbow, by rule); the scored list stays silver.
+    expect(sim.stars.get('champ')).toBe('rainbow');
     for (const id of ['t1', 't2', 't3', 't4', 't5']) expect(sim.stars.get(id)).toBe('silver');
   });
 
@@ -408,5 +410,52 @@ describe('simulateRegional', () => {
     });
     expect(asObject(sim.values)).toEqual({ k1: 0 });
     expect(sim.stars.has('au1')).toBe(false); // super-region: out of the list, no star
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Regional winner (rule B1) and the rainbow star
+// ---------------------------------------------------------------------------
+
+describe('findRegionalWinner (rule B1)', () => {
+  it('is the top team when it is not from a super-region', () => {
+    const snap = snapshotOf([
+      { id: 'kr1', group: 'K', countryCode: 'KR' },
+      { id: 'kr2', group: 'L', countryCode: 'KR' },
+    ]);
+    expect(findRegionalWinner(snap)).toBe('kr1');
+  });
+
+  it('skips South Pacific teams above it', () => {
+    const snap = snapshotOf([
+      { id: 'au1', group: 'A', countryCode: 'AU', solved: 3 },
+      { id: 'nz1', group: 'N', countryCode: 'NZ', solved: 2 },
+      { id: 'kr1', group: 'K', countryCode: 'KR' },
+    ]);
+    expect(findRegionalWinner(snap)).toBe('kr1');
+  });
+
+  it('is null when every team is from a super-region', () => {
+    const snap = snapshotOf([{ id: 'au1', group: 'A', countryCode: 'AU' }]);
+    expect(findRegionalWinner(snap)).toBeNull();
+  });
+
+  it('simulateRegional gives the B1 winner the rainbow star, not the super-region top team', () => {
+    const snap = snapshotOf([
+      { id: 'au1', group: 'A', countryCode: 'AU', solved: 3 },
+      { id: 'kr1', group: 'K', countryCode: 'KR', solved: 2 },
+      { id: 'kr2', group: 'K', countryCode: 'KR' },
+      { id: 'kr3', group: 'L', countryCode: 'KR' },
+    ]);
+    const sim = simulateRegional(snap, {
+      siteScore: 4,
+      cutoff: null,
+      quota: DEFAULT_QUOTA,
+      alreadyInvited: null,
+    });
+    expect(asObject(sim.stars)).toEqual({
+      kr1: 'rainbow', // the winner: Championship invitation (D1) + World Finals (B1)
+      kr3: 'silver', // kr2 shares the winner's school → no star; au1 is super-region → no star
+    });
   });
 });

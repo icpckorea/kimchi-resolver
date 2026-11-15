@@ -1034,6 +1034,7 @@ describe('APAC star tooltip', () => {
       bronze: 'In the APAC Championship list so far',
       silver: 'Likely invited to the APAC Championship',
       gold: 'Invited to the APAC Championship',
+      rainbow: 'Invited to the APAC Championship / Advances to the World Finals',
     });
   });
 });
