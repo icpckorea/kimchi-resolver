@@ -48,6 +48,7 @@
     "focusBlinking": { "minSolved": 7, "maxRank": 10 },
     "gachaEffectRequirement": 8,
     "gachaEffectForNoRatio": 30,
+    "finaleType": "gacha-ssr",
     "finaleFlipSlowdown": 3,
     "finaleIntermediateFlipSlowdown": 2,
     "animationSpeeds": [

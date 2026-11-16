@@ -1,0 +1,170 @@
+<div id="mahjong-finale-prototype">
+  <div class="mf-controls">
+    <button type="button" data-play>연출 재생</button>
+    <label>마지막 문제 <select data-problem aria-label="마지막 문제"></select></label>
+    <label>결과 <select data-verdict><option value="accepted">Yes</option><option value="failed">No</option></select></label>
+    <label>속도 <select data-speed><option value="1">1×</option><option value="0.5">0.5×</option></select></label>
+  </div>
+  <div class="mf-stage" role="img" aria-label="샘플 팀의 finale 연출. 문제 카드가 수직 상승한 뒤 A부터 M까지의 한 줄 격자 빈자리에 착지합니다.">
+    <div class="mf-board">
+      <div class="mf-heading"><span>KIMCHI RESOLVER</span><span>AWARD CEREMONY · SAMPLE</span></div>
+      <div class="mf-board-rows"></div>
+    </div>
+    <div class="mf-veil"></div>
+    <div class="mf-team">Team Kimchi <span>Sample University</span></div>
+    <div class="mf-lineup"></div>
+    <div class="mf-ring"></div>
+    <div class="mf-particles" aria-hidden="true"></div>
+    <div class="mf-fly"><div class="mf-face"><span data-letter>H</span><small data-count>?4</small></div><div class="mf-rainbow"></div></div>
+    <div class="mf-flash"></div>
+    <div class="mf-caption"><span data-phase>READY</span><span data-cue>Sample data · H is the final reveal</span></div>
+  </div>
+  <label class="mf-scrub"><span data-time>0.0 s</span><input type="range" min="0" max="10000" value="0" step="10" aria-label="연출 시점"></label>
+  <div class="mf-steps"><span>중앙 확대 · 회전</span><span>수직 발사</span><span>전체 격자 · 빈자리</span><span>착지 · 결과 공개</span></div>
+</div>
+<style>
+#mahjong-finale-prototype { --mf-ink:light-dark(#172033,#e5e9f0); --mf-bg:light-dark(#f5f7fa,#171d28); --mf-paper:light-dark(#ffffff,#242d3c); --mf-line:light-dark(#d8dfe8,#404c60); --mf-muted:light-dark(#657086,#a8b3c5); color:var(--mf-ink); font:14px/1.5 system-ui,sans-serif; }
+#mahjong-finale-prototype * { box-sizing:border-box; }
+#mahjong-finale-prototype .mf-controls { display:flex;flex-wrap:wrap;gap:12px;align-items:center;margin-bottom:14px; }
+#mahjong-finale-prototype button,#mahjong-finale-prototype select { font:inherit;border:1px solid var(--mf-line);border-radius:6px;padding:7px 10px;background:var(--mf-paper);color:var(--mf-ink);min-height:38px; }
+#mahjong-finale-prototype button { background:var(--mf-ink);color:var(--mf-bg); }
+#mahjong-finale-prototype label { display:flex;align-items:center;gap:6px; }
+#mahjong-finale-prototype .mf-stage { height:400px;position:relative;overflow:hidden;background:var(--mf-bg);isolation:isolate; }
+#mahjong-finale-prototype .mf-board { position:absolute;inset:22px 20px;transform-origin:center; }
+#mahjong-finale-prototype .mf-heading { display:flex;justify-content:space-between;gap:10px;font-size:11px;color:var(--mf-muted);letter-spacing:.08em;margin-bottom:36px; }
+#mahjong-finale-prototype .mf-board-row { display:grid;grid-template-columns:30px 110px 1fr;gap:12px;align-items:center;height:58px;border-bottom:1px solid var(--mf-line); }
+#mahjong-finale-prototype .mf-board-name { font-weight:500; }
+#mahjong-finale-prototype .mf-board-name small { display:block;font-size:11px;color:var(--mf-muted); }
+#mahjong-finale-prototype .mf-board-cells { display:grid;grid-template-columns:repeat(13,minmax(0,1fr));gap:3px;width:100%;max-width:750px;justify-self:end; }
+#mahjong-finale-prototype .mf-tile { display:flex;min-width:0;flex-direction:column;align-items:center;justify-content:center;aspect-ratio:1 / 1.13;border-radius:3px;background:var(--mf-paper);color:var(--mf-ink);font-weight:500;position:relative; }
+#mahjong-finale-prototype .mf-tile small { font-size:11px; }
+#mahjong-finale-prototype .mf-board-cells .mf-tile { height:40px;aspect-ratio:auto; }
+#mahjong-finale-prototype .mf-tile[data-state="accepted"] { background:light-dark(#a8dd73,#386636); }
+#mahjong-finale-prototype .mf-tile[data-state="failed"] { background:light-dark(#edb0a9,#783f3e); }
+#mahjong-finale-prototype .mf-tile[data-state="pending"] { background:light-dark(#f8d478,#775d29); }
+#mahjong-finale-prototype .mf-tile[data-state="empty"] { background:#121720;border:1px dashed #697387; }
+#mahjong-finale-prototype .mf-veil { position:absolute;inset:0;background:radial-gradient(ellipse var(--mf-spot-width,180px) 110px at center,rgba(0,0,0,.12),rgba(0,0,0,.88) 70%,rgba(0,0,0,.98));opacity:0; }
+#mahjong-finale-prototype .mf-team { position:absolute;top:calc(50% - 120px);left:0;right:0;text-align:center;font-size:22px;font-weight:500;opacity:0;color:#eef2f8; }
+#mahjong-finale-prototype .mf-team span { display:block;font-size:12px;color:#acb7c9;font-weight:400; }
+#mahjong-finale-prototype .mf-lineup { position:absolute;display:grid;grid-template-columns:repeat(13,minmax(0,1fr));gap:4px;left:50%;width:calc(100% - 40px);max-width:1120px;top:50%;translate:-50% -50%;opacity:0; }
+#mahjong-finale-prototype .mf-fly { position:absolute;left:0;top:0;width:80px;height:90px;transform-origin:center;will-change:transform; }
+#mahjong-finale-prototype .mf-face { display:flex;align-items:center;justify-content:center;flex-direction:column;width:100%;height:100%;border-radius:5px;background:light-dark(#f8d478,#775d29);color:var(--mf-ink);font-size:26px;font-weight:500;box-shadow:0 8px 25px light-dark(#17203325,#00000050); }
+#mahjong-finale-prototype .mf-face small { font-size:14px; }
+#mahjong-finale-prototype .mf-rainbow { position:absolute;inset:0;border-radius:5px;background:linear-gradient(115deg,#ff6969,#f8d478,#a8dd73,#71bbdd,#b28ad9,#ff6969);background-size:300% 100%;mix-blend-mode:soft-light;opacity:.65;pointer-events:none; }
+#mahjong-finale-prototype .mf-ring { position:absolute;width:40px;height:40px;border:2px solid light-dark(#d5a542,#ffe1a0);border-radius:50%;pointer-events:none;opacity:0; }
+#mahjong-finale-prototype .mf-particles { position:absolute;inset:0;pointer-events:none; }
+#mahjong-finale-prototype .mf-particles i { position:absolute;width:4px;height:4px;background:light-dark(#9e6c18,#ffe1a0); }
+#mahjong-finale-prototype .mf-flash { position:absolute;inset:0;background:light-dark(#fff9de,#fff0ba);opacity:0;pointer-events:none; }
+#mahjong-finale-prototype .mf-caption { position:absolute;left:20px;right:20px;bottom:20px;display:flex;justify-content:space-between;gap:12px;align-items:end;font-size:11px;color:var(--mf-muted); }
+#mahjong-finale-prototype [data-phase] { color:var(--mf-ink);letter-spacing:.1em;font-weight:500; }
+#mahjong-finale-prototype[data-spotlight="true"] .mf-caption,#mahjong-finale-prototype[data-spotlight="true"] [data-phase] { color:#b9c3d2; }
+#mahjong-finale-prototype .mf-scrub { display:grid;grid-template-columns:48px 1fr;gap:10px;margin-top:14px;font-variant-numeric:tabular-nums; }
+#mahjong-finale-prototype input { width:100%;min-width:0;margin:0;accent-color:var(--mf-ink); }
+#mahjong-finale-prototype .mf-steps { display:flex;justify-content:space-between;gap:10px;flex-wrap:wrap;margin-top:10px;font-size:12px;color:var(--mf-muted); }
+@media(max-width:480px) { #mahjong-finale-prototype .mf-board-row { grid-template-columns:18px 65px 1fr;gap:5px; } #mahjong-finale-prototype .mf-board { inset:20px 12px; } #mahjong-finale-prototype .mf-board-name { font-size:11px; } #mahjong-finale-prototype .mf-board-name small { display:none; } #mahjong-finale-prototype .mf-board-cells .mf-tile small { display:none; } #mahjong-finale-prototype .mf-lineup { width:calc(100% - 20px);gap:2px; } #mahjong-finale-prototype .mf-caption { left:12px;right:12px; } #mahjong-finale-prototype .mf-heading { letter-spacing:0; } }
+</style>
+<script>
+(() => {
+  const root = document.getElementById('mahjong-finale-prototype');
+  const q = s => root.querySelector(s);
+  const letters = 'ABCDEFGHIJKLM'.split('');
+  const problem = q('[data-problem]'), verdict = q('[data-verdict]'), speed = q('[data-speed]');
+  problem.innerHTML = letters.map(x => `<option${x === 'H' ? ' selected' : ''}>${x}</option>`).join('');
+  const stage = q('.mf-stage'), fly = q('.mf-fly'), face = q('.mf-face');
+  const lineup = q('.mf-lineup'), board = q('.mf-board'), veil = q('.mf-veil');
+  const particles = q('.mf-particles'), ring = q('.mf-ring'), flash = q('.mf-flash');
+  const play = q('[data-play]'), scrub = q('input'), timeLabel = q('[data-time]');
+  let time = 0, playing = false, lastFrame = 0, frame = 0;
+  const clamp = x => Math.min(1, Math.max(0, x));
+  const mix = (a,b,t) => a+(b-a)*t;
+  const ease = x => 1-Math.pow(1-clamp(x),3);
+  function tile(letter, state, count='') {
+    return `<div class="mf-tile" data-state="${state}"><span>${letter}</span><small>${count}</small></div>`;
+  }
+  function setup() {
+    const names = ['Team Kimchi','Binary Stars','Hello World','Stack Overflow'];
+    q('.mf-board-rows').innerHTML = names.map((name,r) => `<div class="mf-board-row"><span>${r+1}</span><div class="mf-board-name">${name}<small>Sample University</small></div><div class="mf-board-cells">${letters.map((l,i) => tile(l,r===0&&l===problem.value?'pending':i%5===4?'failed':'accepted',r===0&&l===problem.value?'?4':i%5===4?'−2':i%3===0?'+1':'')).join('')}</div></div>`).join('');
+    lineup.innerHTML = letters.map((l,i) => tile(l,l===problem.value?'empty':i%5===4?'failed':'accepted',l===problem.value?'':i%5===4?'−2':i%3===0?'+1':'')).join('');
+    particles.innerHTML = Array.from({length:22},()=>'<i></i>').join('');
+    render(time);
+  }
+  function render(t) {
+    time = Math.max(0,Math.min(10000,t));
+    scrub.value = time;
+    timeLabel.textContent = `${(time/1000).toFixed(1)} s`;
+    const w = stage.clientWidth || 736, h = stage.clientHeight || 400, target = letters.indexOf(problem.value);
+    const narrow = w<=480, pad=narrow?10:20, gap=narrow?2:4;
+    const lineW=Math.min(1120,w-pad*2), lineLeft=(w-lineW)/2;
+    const cellW=(lineW-gap*12)/13, cellH=cellW*1.13;
+    const targetX=lineLeft+target*(cellW+gap)+cellW/2, targetY=h/2;
+    const zoom=ease((time-700)/900), tail=time>=4100;
+    const source=q('.mf-board-cells').children[target];
+    board.style.transform='none';
+    const sourceRect=source.getBoundingClientRect(), stageRect=stage.getBoundingClientRect();
+    const sourceW=sourceRect.width||40, sourceH=sourceRect.height||40;
+    const sourceX=sourceRect.width?sourceRect.left-stageRect.left+sourceW/2:w/2;
+    const sourceY=sourceRect.height?sourceRect.top-stageRect.top+sourceH/2:118;
+    const focusScale=Math.min(160/sourceW,180/sourceH), scale=mix(1,focusScale,zoom);
+    let cardW=sourceW*scale, cardH=sourceH*scale;
+    let x=mix(sourceX,w/2,zoom), y=mix(sourceY,h/2,zoom), rotation=0;
+    let shown=true, reveal=false, shake=0, lineupOpacity=0;
+    let phase='PREHEAT', cue='Sample data · '+problem.value+' is the final reveal';
+    if(time<700) { shown=false; }
+    else if(time<1700) { phase='SPOTLIGHT';cue='Center · rainbow · shake';shake=1; }
+    else if(time<4100) { phase='INTERMEDIATE FLIPS';cue='Same lead-in as the gacha finale';shake=1; rotation=Math.sin(((time-1700)%800)/800*Math.PI)*180; }
+    else if(time<4550) { phase='LAUNCH';cue='Straight up · viewport Y only';const p=clamp((time-4100)/450);y=mix(h/2,-130,p*p); }
+    else if(time<5050) { phase='LINEUP';cue='A–M · '+problem.value+' stays empty';shown=false;lineupOpacity=ease((time-4550)/500); }
+    else if(time<5230) { phase='ANTICIPATION';cue='Hold the empty slot';shown=false;lineupOpacity=1; }
+    else if(time<5350) { phase='STRIKE';cue='Drop into '+problem.value;const p=clamp((time-5230)/120);x=targetX;y=mix(-80,targetY,p*p);cardW=cellW;cardH=cellH;lineupOpacity=1; }
+    else { phase=time<5770?'IMPACT':'RESULT';cue=problem.value+' · '+(verdict.value==='accepted'?'Yes':'No');x=targetX;y=targetY;cardW=cellW;cardH=cellH;shown=false;reveal=true;lineupOpacity=1; }
+    const dt=time-5350, hit=dt>=0&&dt<420;
+    const shock=hit?Math.sin(Math.max(0,dt-55)*.12)*Math.exp(-Math.max(0,dt-55)/85)*8:0;
+    const sceneShift=`translate(${shock}px,${-shock*.65}px)`;
+    board.style.transform=sceneShift;lineup.style.transform=sceneShift;
+    board.style.opacity=tail?Math.max(.12,1-(time-4100)/450*.88):1;
+    veil.style.opacity=time<700?0:zoom;
+    veil.style.setProperty('--mf-spot-width',(tail?lineW*.6:180)+'px');
+    root.dataset.spotlight=String(time>=700);
+    lineup.style.opacity=lineupOpacity;
+    q('.mf-team').style.opacity=lineupOpacity;
+    const active=lineup.children[target];
+    active.dataset.state=reveal?verdict.value:'empty';
+    active.querySelector('span').textContent=reveal?problem.value:'';
+    active.querySelector('small').textContent=reveal?(verdict.value==='accepted'?'+3':'−4'):'';
+    active.style.transform=hit?`scale(${1+.22*Math.exp(-dt/110)*Math.cos(dt*.02)})`:'none';
+    fly.style.opacity=shown?1:0;
+    source.style.visibility=time>=700?'hidden':'visible';
+    source.style.filter=time<700?`brightness(${1+.18*Math.sin(time*.02)})`:'none';
+    const sx=shake?Math.sin(time*.09)*2*zoom:0, sy=shake?Math.cos(time*.07)*2*zoom:0;
+    fly.style.width=cardW+'px';fly.style.height=cardH+'px';
+    fly.style.transform=`translate(${x-cardW/2+sx}px,${y-cardH/2+sy}px)`;
+    face.style.fontSize=mix(14,32,zoom)+'px';
+    q('[data-count]').style.fontSize=mix(11,18,zoom)+'px';
+    face.style.boxShadow=zoom===0?'none':'';
+    face.style.transform=`rotateX(${rotation}deg)`;
+    q('[data-letter]').textContent=problem.value;
+    q('[data-count]').textContent=time<1700?'?4':time<2500?'−1':time<3300?'−2':'−3';
+    q('.mf-rainbow').style.opacity=time>=700&&time<4100?.65:0;
+    q('.mf-rainbow').style.backgroundPosition=`${time*.06}% 0`;
+    const rp=clamp(dt/420);
+    ring.style.left=(targetX-20)+'px';ring.style.top=(targetY-20)+'px';
+    ring.style.transform=`scale(${1+rp*6})`;ring.style.opacity=hit?(1-rp)*.85:0;
+    flash.style.opacity=dt>=0&&dt<80?.28*(1-dt/80):0;
+    Array.from(particles.children).forEach((el,i)=>{const a=i*Math.PI*2/22,d=rp*(55+(i%4)*18);el.style.left=(targetX+Math.cos(a)*d)+'px';el.style.top=(targetY+Math.sin(a)*d*.7+rp*rp*25)+'px';el.style.opacity=hit&&verdict.value==='accepted'?1-rp:0;el.style.transform=`rotate(${i*37+rp*100}deg)`;});
+    q('[data-phase]').textContent=phase;q('[data-cue]').textContent=cue;
+    root.dataset.phase=phase;root.dataset.revealed=String(reveal);
+  }
+  function tick(now) {
+    if(!playing)return;
+    const dt=lastFrame?Math.min(now-lastFrame,80):0;lastFrame=now;
+    render(time+dt*Number(speed.value));
+    if(time>=10000){playing=false;play.textContent='다시 재생';return;}
+    frame=requestAnimationFrame(tick);
+  }
+  play.addEventListener('click',()=>{if(playing){playing=false;cancelAnimationFrame(frame);play.textContent='계속 재생';return;}if(time===0||time>=10000)render(0);playing=true;lastFrame=0;play.textContent='일시 정지';frame=requestAnimationFrame(tick);});
+  scrub.addEventListener('input',()=>{playing=false;cancelAnimationFrame(frame);play.textContent='계속 재생';render(Number(scrub.value));});
+  [problem,verdict].forEach(el=>el.addEventListener('change',setup));
+  if(typeof ResizeObserver!=='undefined')new ResizeObserver(()=>render(time)).observe(stage);
+  setup();
+})();
+</script>

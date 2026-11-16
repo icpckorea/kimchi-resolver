@@ -64,6 +64,8 @@ import {
   type RevealDisplay,
 } from './revealDriver';
 import { ConfettiBurst, FinaleDim, RainbowOverlay, SparkleOverlay } from './effects';
+import { MahjongFinaleStage } from './MahjongFinaleStage';
+import { buildMahjongFinaleModel, MAHJONG_FINALE_STEPS, type FinaleOriginRect, type MahjongFinalePhase } from './mahjongFinale';
 import './award.css';
 
 const ADVANCE_KEYS = new Set(['Enter', 'ArrowRight', ';', 'PageDown']);
@@ -119,7 +121,7 @@ export function AwardView({ store = appStore, apacStars = null }: AwardViewProps
   const driver = useRevealDriver(config.award.animationSpeeds, {
     flip: config.award.finaleFlipSlowdown,
     intermediateFlip: config.award.finaleIntermediateFlipSlowdown,
-  });
+  }, config.award.finaleType);
 
   // -- ceremony step handling ----------------------------------------------
   /** Cell in its one-keypress blink stage (cleared on the next transition). */
@@ -144,7 +146,13 @@ export function AwardView({ store = appStore, apacStars = null }: AwardViewProps
       } else if (step.type === 'reveal') {
         const solved =
           store.getState().awardMachine?.snapshot.byTeam.get(step.teamId)?.solved ?? 0;
-        driver.play(step, solved);
+        const state = store.getState();
+        const before = state.snapshot?.byTeam.get(step.teamId);
+        const after = state.awardMachine?.snapshot.byTeam.get(step.teamId);
+        const model = step.effect.finale && state.config.award.finaleType === 'mahjong-soul-like' && before && after && state.contest
+          ? buildMahjongFinaleModel(state.contest.problems, before, after, step.problemId)
+          : undefined;
+        driver.play(step, solved, model);
       }
     },
     [driver, store],
@@ -257,9 +265,12 @@ export function AwardView({ store = appStore, apacStars = null }: AwardViewProps
     : null;
   // Step 2 onward: zoom + spotlight + dim (the pre-heat keeps the board plain).
   const finaleZoomed = finaleStep !== null && finalePhase !== null && finalePhase !== 'preheat';
+  const mahjongTail = driver.active?.finaleType === 'mahjong-soul-like' && finaleZoomed &&
+    finalePhase !== 'spotlight' && finalePhase !== 'flip';
   // Step 5: confetti burst, Yes verdict only.
   const finaleConfetti =
     finaleStep !== null &&
+    driver.active?.finaleType === 'gacha-ssr' &&
     finalePhase === 'settled' &&
     finaleStep.runs[finaleStep.runs.length - 1].verdict === 'accepted';
 
@@ -322,7 +333,7 @@ export function AwardView({ store = appStore, apacStars = null }: AwardViewProps
           />
         ))}
       </div>
-      {finaleZoomed ? <FinaleDim /> : null}
+      {finaleZoomed && !mahjongTail ? <FinaleDim /> : null}
       {finaleConfetti ? <ConfettiBurst /> : null}
       {slideTeamId !== null && slideEntry !== undefined && slideTeam !== undefined ? (
         <AwardSlide
@@ -574,10 +585,6 @@ interface RevealingCellProps {
   testId: string;
 }
 
-function delay(ms: number): Promise<void> {
-  return new Promise((resolve) => setTimeout(resolve, ms));
-}
-
 function RevealingCell({
   problem,
   baseCell,
@@ -590,6 +597,14 @@ function RevealingCell({
 }: RevealingCellProps) {
   const { step, flip } = active;
   const finale = step.effect.finale;
+  const mahjong = finale && active.finaleType === 'mahjong-soul-like' && active.mahjongModel !== undefined;
+  const cellRef = useRef<HTMLSpanElement | null>(null);
+  const setCellRef = useCallback((el: HTMLSpanElement | null) => {
+    cellRef.current = el;
+    if (finale) finaleCellRef(el);
+  }, [finale, finaleCellRef]);
+  const [originRect, setOriginRect] = useState<FinaleOriginRect | null>(null);
+  const [flightCell, setFlightCell] = useState<CellState | null>(null);
   const [display, setDisplay] = useState<RevealDisplay>(() => ({
     // Until the first flip midpoint the cell still shows its frozen pending
     // state — exactly what the board displayed before the keypress ('?N'
@@ -624,6 +639,12 @@ function RevealingCell({
   // The playback sequence — mount-only; the component is keyed per reveal.
   useEffect(() => {
     let cancelled = false;
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    let releaseWait: (() => void) | undefined;
+    const delay = (ms: number): Promise<void> => new Promise((resolve) => {
+      releaseWait = resolve;
+      timer = setTimeout(() => { timer = undefined; releaseWait = undefined; resolve(); }, ms);
+    });
     /** Set locally AND report upward (dim/confetti live outside the cell). */
     const goto = (next: FinalePhase): void => {
       setPhase(next);
@@ -648,6 +669,26 @@ function RevealingCell({
       for (let i = 0; i <= lastIndex; i++) {
         if (cancelled) return;
         const isFinal = i === lastIndex;
+        if (isFinal && mahjong) {
+          const rect = cellRef.current?.getBoundingClientRect();
+          setOriginRect(rect ? { left: rect.left, top: rect.top, width: rect.width, height: rect.height }
+            : { left: 0, top: 0, width: 0, height: 0 });
+          // Capture only the history that has already been displayed. The
+          // actual last run is not sent to the flying card, even as a title.
+          const history = i > 0 ? accumulateDisplay(runs, i - 1, step.preFreeze) : {
+            verdict: 'pending' as const, attempts: baseCell.attempts, failedAttempts: 0, solvedMinute: null,
+          };
+          setFlightCell({ ...baseCell, ...history, isFirstSolve: false, isLastSolve: false,
+            isContestFirstSolve: false, isContestLastSolve: false });
+          setShaking(false);
+          setActiveFlip(null);
+          for (const [next, duration] of MAHJONG_FINALE_STEPS) {
+            goto(next);
+            await delay(duration);
+            if (cancelled) return;
+          }
+          break;
+        }
         // Non-finale gacha: the shake leads into the last flip. The finale is
         // already shaking since step 2 — flips run WHILE it shakes (step 3).
         if (isFinal && step.effect.gacha && !finale) {
@@ -679,6 +720,8 @@ function RevealingCell({
     })();
     return () => {
       cancelled = true;
+      if (timer !== undefined) clearTimeout(timer);
+      releaseWait?.();
       phaseRef.current(null);
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -714,18 +757,22 @@ function RevealingCell({
         };
 
   const preheating = phase === 'preheat';
+  const mahjongTail = mahjong && originRect !== null && flightCell !== null;
 
   return (
+    <>
     <span
       className={cls(
         'award-cell-fx',
         shaking && 'award-cell-gacha',
+        mahjongTail && 'award-cell-mahjong-hidden',
         // Step 1 blinks in place; the zoom only arrives with step 2.
         preheating && 'award-cell-preheat',
         finale && !preheating && 'award-cell-finale',
       )}
       data-testid={testId}
-      ref={finale ? finaleCellRef : undefined}
+      ref={setCellRef}
+      aria-hidden={mahjongTail || undefined}
     >
       <ProblemCell
         problem={problem}
@@ -741,5 +788,9 @@ function RevealingCell({
           ("진동이 멈출 때까지"), overlaid on the spotlight. */}
       {shaking && finale ? <RainbowOverlay /> : null}
     </span>
+    {mahjongTail && active.mahjongModel ? <MahjongFinaleStage model={active.mahjongModel}
+      phase={phase as MahjongFinalePhase} showFirstSolve={showFirstSolve} originRect={originRect}
+      flightCell={flightCell} /> : null}
+    </>
   );
 }

@@ -71,6 +71,7 @@ describe('parseConfig — defaults', () => {
         gachaEffectRequirement: 8,
         gachaEffectForNoRatio: 30,
         gachaEffectMaxRank: null,
+        finaleType: 'gacha-ssr',
         finaleFlipSlowdown: 3,
         finaleIntermediateFlipSlowdown: 2,
         animationSpeeds: [
@@ -174,6 +175,7 @@ describe('parseConfig — defaults', () => {
         gachaEffectRequirement: 8,
         gachaEffectForNoRatio: 30,
         gachaEffectMaxRank: null,
+        finaleType: 'gacha-ssr',
         finaleFlipSlowdown: 3,
         finaleIntermediateFlipSlowdown: 2,
         animationSpeeds: [
@@ -414,6 +416,19 @@ describe('parseConfig — bad values collected as errors, never thrown', () => {
     const { config, errors } = parseConfig({ award: { gachaEffectForNoRatio: 150 } });
     expect(errors.some((e) => e.includes('gachaEffectForNoRatio'))).toBe(true);
     expect(config.award.gachaEffectForNoRatio).toBe(30);
+  });
+
+  it('defaults to the existing finale and validates selectable finale types', () => {
+    expect(parseConfig({}).config.award.finaleType).toBe('gacha-ssr');
+    expect(parseConfig({ award: {} }).config.award.finaleType).toBe('gacha-ssr');
+    for (const finaleType of ['gacha-ssr', 'mahjong-soul-like']) {
+      const result = parseConfig({ award: { finaleType } });
+      expect(result.errors).toEqual([]);
+      expect(result.config.award.finaleType).toBe(finaleType);
+    }
+    const invalid = parseConfig({ award: { finaleType: 'unknown' } });
+    expect(invalid.errors.some((e) => e.includes('finaleType'))).toBe(true);
+    expect(invalid.config.award.finaleType).toBe('gacha-ssr');
   });
 
   it('accepts custom finale flip slowdowns (spec §7)', () => {

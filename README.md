@@ -72,8 +72,13 @@ Runtime configuration lives in `public/config.json` (served as `config.json` nex
 | `award.gachaEffectRequirement` | `8` | attempts that trigger the gacha effect |
 | `award.gachaEffectForNoRatio` | `30` | gacha probability (%) for a final "No" |
 | `award.gachaEffectMaxRank` | `null` | every reveal of a team at visible ICPC rank ≤ this plays the gacha effect (any verdict, any attempts); the finale is unchanged. null = off |
-| `award.finaleFlipSlowdown` | `3` | finale verdict flip = matched `slowFlip` × this |
+| `award.finaleType` | `"gacha-ssr"` | finale presentation: `gacha-ssr` (existing) or `mahjong-soul-like` (vertical launch, full problem row, impact reveal) |
+| `award.finaleFlipSlowdown` | `3` | gacha finale verdict flip = matched `slowFlip` × this; mahjong finale replaces this last flip with an impact reveal |
 | `award.finaleIntermediateFlipSlowdown` | `2` | finale intermediate flips = `slowFlip` × this |
+
+To preview either finale with sample A–M data and the production renderer, run
+`npm run dev` and open `/docs/prototypes/finale-demo.html`. Choose the finale,
+last problem, verdict and magnify setting, then press **Play finale**.
 | `award.animationSpeeds` | see spec §9 | flip/move speeds per solved count |
 
 ### APAC stars
