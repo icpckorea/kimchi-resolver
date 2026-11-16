@@ -83,6 +83,7 @@ describe('mahjong finale presentation', () => {
     expect(first.targetX).toBeCloseTo(first.rowLeft + first.cellWidth / 2);
     expect(last.targetX).toBeCloseTo(width - first.rowLeft - first.cellWidth / 2);
     expect(first.cellWidth).toBeGreaterThan(0);
+    expect(first.cellHeight).toBeGreaterThanOrEqual(44);
   });
 
   it('recomputes viewport positions on resize while preserving the empty last slot', () => {
@@ -101,5 +102,14 @@ describe('mahjong finale presentation', () => {
     } finally {
       Object.defineProperty(window, 'innerWidth', { configurable: true, value: originalWidth });
     }
+  });
+
+  it('respects the group visibility setting in the portal', () => {
+    const f = fixture();
+    const model = buildMahjongFinaleModel(f.problems, f.before, f.after, f.finalId);
+    render(<MahjongFinaleStage model={model} phase="settled" showFirstSolve showTeamGroup={false}
+      originRect={{ left: 400, top: 300, width: 160, height: 100 }} flightCell={model.slots[7].cell} />);
+    expect(screen.getByText('Team Kimchi')).toBeTruthy();
+    expect(screen.queryByText('Sample University')).toBeNull();
   });
 });

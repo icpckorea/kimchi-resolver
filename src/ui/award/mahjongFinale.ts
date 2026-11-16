@@ -37,7 +37,9 @@ export function mahjongFinaleLayout(width: number, height: number, count: number
   const gap = width <= 480 ? 2 : 4;
   const rowWidth = Math.min(1120, Math.max(1, width - (width <= 480 ? 20 : 40)));
   const cellWidth = Math.max(1, (rowWidth - gap * (count - 1)) / count);
-  const cellHeight = Math.min(120, cellWidth * 1.13);
+  // Both the letter and the attempts must fit without grid min-content
+  // expanding the actual cell beyond the calculated landing geometry.
+  const cellHeight = Math.max(44, Math.min(120, cellWidth * 1.13));
   const rowLeft = (width - rowWidth) / 2;
   return {
     gap, rowWidth, rowLeft, cellWidth, cellHeight, rowTop: height / 2 - cellHeight / 2,

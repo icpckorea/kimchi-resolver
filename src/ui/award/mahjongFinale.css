@@ -23,7 +23,8 @@
 .mahjong-row {
   position: absolute; left: var(--mahjong-row-left); top: var(--mahjong-row-top);
   width: var(--mahjong-row-width); height: var(--mahjong-cell-height);
-  display: grid; grid-template-columns: repeat(var(--mahjong-count), minmax(0, 1fr)); gap: var(--mahjong-gap);
+  display: grid; grid-template-columns: repeat(var(--mahjong-count), minmax(0, 1fr));
+  grid-template-rows: minmax(0, 1fr); gap: var(--mahjong-gap);
 }
 .mahjong-slot { min-width: 0; height: 100%; }
 .mahjong-stage .problem-result {
@@ -31,7 +32,7 @@
   border: 0; border-radius: 3px; flex-direction: column; letter-spacing: 0; gap: 3px;
 }
 .mahjong-stage .problem-label { font-size: 1.3em; }
-.mahjong-stage .problem-attempts { font-size: .72em; }
+.mahjong-stage .problem-attempts { font-size: max(11px, .72em); }
 .mahjong-slot--final:empty { border: 1px dashed #677184; border-radius: 3px; background: #10131c; }
 .mahjong-stage--launch .mahjong-row, .mahjong-stage--launch .mahjong-team { visibility: hidden; }
 .mahjong-stage--lineup .mahjong-row { animation: mahjong-lineup 500ms cubic-bezier(.22,1,.36,1) both; }

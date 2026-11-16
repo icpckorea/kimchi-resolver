@@ -11,12 +11,13 @@ interface MahjongFinaleStageProps {
   model: MahjongFinaleModel;
   phase: MahjongFinalePhase;
   showFirstSolve: boolean;
+  showTeamGroup?: boolean;
   originRect: FinaleOriginRect;
   /** Only the already displayed history, never the unrevealed final verdict. */
   flightCell: CellState;
 }
 
-export function MahjongFinaleStage({ model, phase, showFirstSolve, originRect, flightCell }: MahjongFinaleStageProps) {
+export function MahjongFinaleStage({ model, phase, showFirstSolve, showTeamGroup = true, originRect, flightCell }: MahjongFinaleStageProps) {
   const [viewport, setViewport] = useState(() => ({ width: window.innerWidth, height: window.innerHeight }));
   useEffect(() => {
     const resize = () => setViewport({ width: window.innerWidth, height: window.innerHeight });
@@ -48,7 +49,7 @@ export function MahjongFinaleStage({ model, phase, showFirstSolve, originRect, f
       data-testid="mahjong-finale" data-phase={phase}>
       <div className="mahjong-blackout" />
       <div className="mahjong-scene">
-        <div className="mahjong-team">{model.teamName}<span>{model.teamGroup}</span></div>
+        <div className="mahjong-team">{model.teamName}{showTeamGroup ? <span>{model.teamGroup}</span> : null}</div>
         <div className="mahjong-row" data-testid="mahjong-finale-row">
           {model.slots.map(({ problem, cell }, index) => (
             <div key={problem.id} className={`mahjong-slot${index === model.finalIndex ? ' mahjong-slot--final' : ''}`}

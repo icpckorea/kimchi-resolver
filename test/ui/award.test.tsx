@@ -69,7 +69,7 @@ describe('mahjong soul finale playback', () => {
     runsOverride = makeRunsJson(accepted ? 'Yes' : 'No - Wrong Answer');
     if (singleRun) runsOverride.runs = runsOverride.runs.filter((r) => r.id !== 11);
     const store = await bootAwardStore();
-    store.setState((state) => ({ config: { ...state.config, award: { ...state.config.award, finaleType: 'mahjong-soul-like' } } }));
+    store.setState((state) => ({ config: { ...state.config, showTeamGroup: false, award: { ...state.config.award, finaleType: 'mahjong-soul-like' } } }));
     const view = strict ? render(<StrictMode><AwardView store={store} /></StrictMode>) : renderAward(store);
     await pressKey('Enter'); // focus team 3
     await pressKey('Enter'); // normal gacha, still the original effect
@@ -90,6 +90,7 @@ describe('mahjong soul finale playback', () => {
     expect(screen.getByTestId('award-cell-2-1').querySelector('.flip-run')).not.toBeNull();
     await advanceMs(1600); // the single intermediate flip at its 2x fallback
     expect(screen.getByTestId('mahjong-finale').getAttribute('data-phase')).toBe('launch');
+    expect(within(screen.getByTestId('mahjong-finale')).queryByText('Univ Two')).toBeNull();
     expect(screen.getByTestId('award-cell-2-1').className).toContain('award-cell-mahjong-hidden');
     expect(screen.getByTestId('award-cell-2-1').querySelector('.flip-run')).toBeNull();
     expect(store.getState().snapshot).toBe(frozen);

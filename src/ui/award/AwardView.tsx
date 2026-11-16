@@ -531,6 +531,7 @@ function AwardRow({
                 problem={problem}
                 baseCell={cell}
                 showFirstSolve={showFirstSolve}
+                showTeamGroup={showTeamGroup}
                 active={active}
                 onSequenceEnd={onSequenceEnd}
                 onFinalePhase={onFinalePhase}
@@ -577,6 +578,7 @@ interface RevealingCellProps {
   /** Snapshot cell — already carries the FINAL revealed state. */
   baseCell: CellState;
   showFirstSolve: boolean;
+  showTeamGroup: boolean;
   active: ActiveReveal;
   onSequenceEnd: () => void;
   /** Reports the finale phase upward (null for a normal reveal / teardown). */
@@ -589,6 +591,7 @@ function RevealingCell({
   problem,
   baseCell,
   showFirstSolve,
+  showTeamGroup,
   active,
   onSequenceEnd,
   onFinalePhase,
@@ -789,7 +792,7 @@ function RevealingCell({
       {shaking && finale ? <RainbowOverlay /> : null}
     </span>
     {mahjongTail && active.mahjongModel ? <MahjongFinaleStage model={active.mahjongModel}
-      phase={phase as MahjongFinalePhase} showFirstSolve={showFirstSolve} originRect={originRect}
+      phase={phase as MahjongFinalePhase} showFirstSolve={showFirstSolve} showTeamGroup={showTeamGroup} originRect={originRect}
       flightCell={flightCell} /> : null}
     </>
   );

@@ -121,3 +121,13 @@
 - [x] `prefers-reduced-motion`에서는 큰 이동/진동/flash를 줄이되 빈자리 → 결과 공개 순서와 완료 처리는 유지합니다.
 - [x] `npm run typecheck`, `npm test`, `npm run build`를 실행하고 결과를 기록합니다.
 - [x] 제품 구현 확인도 샘플 데이터의 재생 가능한 시각화를 사용자에게 제시합니다. 승인 이후 커밋/통합 방법은 해당 시점 요청 범위에 따릅니다.
+
+## 구현 및 검증 기록
+
+- 작업 브랜치: `feat/mahjong-soul-finale`, 별도 `.worktrees/mahjong-soul-finale`.
+- 구현 선택: 기존 RevealingCell이 후반부 portal의 재생 단계도 소유하도록 하여 중복 타이머와 오래된 부모 콜백 경로를 줄였습니다. 부모의 기존 dim/confetti는 새 후반부 동안 표시하지 않습니다.
+- 워크트리 제외는 추적되는 `.gitignore` 대신 로컬 `.git/info/exclude`에 기록하여 원래 체크아웃의 제품 파일을 변경하지 않았습니다. 제품 동작 영향은 없습니다.
+- `npm test`: 34개 파일, 880개 테스트 통과. `npm run typecheck`, `npm run build` 통과.
+- 실제 Chromium에서 중앙 확대, 수직 발사 X 고정, 전체 슬롯의 빈자리, 접촉 후 결과, 보드 복귀를 확인했습니다. 1280×720 / 1920×1080 / 3840×2160 / 320×720, A/H/M, Yes/No, magnify, reduced motion, 기존 gacha를 확인했습니다.
+- 독립 리뷰에서 발견한 두 표시 회귀를 수정했습니다: 작은 화면의 grid 최소 콘텐츠 높이로 인한 착지 위치 불일치, `showTeamGroup=false` 누락. 두 회귀는 실패→통과 테스트로 검증했고, 320px 실제 셀/행 높이 44px 및 중심 일치도 브라우저에서 확인했습니다. 미해결 리뷰 항목은 없습니다.
+- 실제 제품 렌더러를 사용하는 샘플 미리보기: 개발 서버의 `/docs/prototypes/finale-demo.html`.
