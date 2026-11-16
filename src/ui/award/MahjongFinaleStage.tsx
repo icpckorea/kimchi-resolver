@@ -1,9 +1,9 @@
-import { useEffect, useState, type CSSProperties } from 'react';
+import { useEffect, useLayoutEffect, useRef, useState, type CSSProperties } from 'react';
 import { createPortal } from 'react-dom';
 import type { CellState } from '@core/types';
 import { ProblemCell } from '@ui/scoreboard/ProblemCell';
 import {
-  mahjongFinaleLayout, type FinaleOriginRect, type MahjongFinaleModel, type MahjongFinalePhase,
+  mahjongFinaleLayout, type FinaleCardSnapshot, type FinaleOriginRect, type MahjongFinaleModel, type MahjongFinalePhase,
 } from './mahjongFinale';
 import './mahjongFinale.css';
 
@@ -15,9 +15,21 @@ interface MahjongFinaleStageProps {
   originRect: FinaleOriginRect;
   /** Only the already displayed history, never the unrevealed final verdict. */
   flightCell: CellState;
+  flightAppearance?: FinaleCardSnapshot;
 }
 
-export function MahjongFinaleStage({ model, phase, showFirstSolve, showTeamGroup = true, originRect, flightCell }: MahjongFinaleStageProps) {
+function CapturedCard({ snapshot, width, height }: { snapshot: FinaleCardSnapshot; width: number; height: number }) {
+  const ref = useRef<HTMLDivElement>(null);
+  useLayoutEffect(() => {
+    const host = ref.current;
+    host?.replaceChildren(snapshot.element.cloneNode(true));
+    return () => { host?.replaceChildren(); };
+  }, [snapshot]);
+  return <div ref={ref} style={{ width: snapshot.width, height: snapshot.height, transformOrigin: '0 0',
+    transform: `scale(${width / snapshot.width}, ${height / snapshot.height})` }} />;
+}
+
+export function MahjongFinaleStage({ model, phase, showFirstSolve, showTeamGroup = true, originRect, flightCell, flightAppearance }: MahjongFinaleStageProps) {
   const [viewport, setViewport] = useState(() => ({ width: window.innerWidth, height: window.innerHeight }));
   useEffect(() => {
     const resize = () => setViewport({ width: window.innerWidth, height: window.innerHeight });
@@ -40,8 +52,7 @@ export function MahjongFinaleStage({ model, phase, showFirstSolve, showTeamGroup
     '--mahjong-origin-width': `${origin.width}px`, '--mahjong-origin-height': `${origin.height}px`,
     '--mahjong-launch-y': `${-origin.top - origin.height - 32}px`,
     '--mahjong-strike-y': `${layout.targetY + layout.cellHeight / 2}px`,
-    '--mahjong-type-size': `${Math.max(11, Math.min(26, layout.cellWidth * .3))}px`,
-    '--mahjong-flight-type-size': `${Math.max(14, origin.height * .2)}px`,
+    '--mahjong-type-size': `${Math.min(26, layout.cellWidth / 2.8)}px`,
     '--mahjong-spot-width': `${layout.rowWidth * .62}px`,
   } as CSSProperties;
   return createPortal(
@@ -73,7 +84,10 @@ export function MahjongFinaleStage({ model, phase, showFirstSolve, showTeamGroup
       </div>
       {phase === 'launch' || phase === 'strike' ? (
         <div key={phase} className={`mahjong-flight mahjong-flight--${phase}`} aria-hidden="true">
-          <ProblemCell problem={finalProblem} cell={flightCell} showFirstSolve={false} pendingCap={5} />
+          {flightAppearance ? <CapturedCard snapshot={flightAppearance}
+            width={phase === 'launch' ? origin.width : layout.cellWidth}
+            height={phase === 'launch' ? origin.height : layout.cellHeight} /> :
+            <ProblemCell problem={finalProblem} cell={flightCell} showFirstSolve={false} pendingCap={5} />}
         </div>
       ) : null}
       {phase === 'impact' ? <div className="mahjong-flash" aria-hidden="true" /> : null}

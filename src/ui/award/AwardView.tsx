@@ -65,7 +65,8 @@ import {
 } from './revealDriver';
 import { ConfettiBurst, FinaleDim, RainbowOverlay, SparkleOverlay } from './effects';
 import { MahjongFinaleStage } from './MahjongFinaleStage';
-import { buildMahjongFinaleModel, MAHJONG_FINALE_STEPS, type FinaleOriginRect, type MahjongFinalePhase } from './mahjongFinale';
+import { buildMahjongFinaleModel, captureFinaleCard, MAHJONG_FINALE_STEPS, MAHJONG_WINDUP_MS,
+  type FinaleCardSnapshot, type FinaleOriginRect, type MahjongFinalePhase } from './mahjongFinale';
 import './award.css';
 
 const ADVANCE_KEYS = new Set(['Enter', 'ArrowRight', ';', 'PageDown']);
@@ -266,7 +267,7 @@ export function AwardView({ store = appStore, apacStars = null }: AwardViewProps
   // Step 2 onward: zoom + spotlight + dim (the pre-heat keeps the board plain).
   const finaleZoomed = finaleStep !== null && finalePhase !== null && finalePhase !== 'preheat';
   const mahjongTail = driver.active?.finaleType === 'mahjong-soul-like' && finaleZoomed &&
-    finalePhase !== 'spotlight' && finalePhase !== 'flip';
+    finalePhase !== 'spotlight' && finalePhase !== 'flip' && finalePhase !== 'windup';
   // Step 5: confetti burst, Yes verdict only.
   const finaleConfetti =
     finaleStep !== null &&
@@ -608,6 +609,7 @@ function RevealingCell({
   }, [finale, finaleCellRef]);
   const [originRect, setOriginRect] = useState<FinaleOriginRect | null>(null);
   const [flightCell, setFlightCell] = useState<CellState | null>(null);
+  const [flightAppearance, setFlightAppearance] = useState<FinaleCardSnapshot | null>(null);
   const [display, setDisplay] = useState<RevealDisplay>(() => ({
     // Until the first flip midpoint the cell still shows its frozen pending
     // state — exactly what the board displayed before the keypress ('?N'
@@ -673,7 +675,14 @@ function RevealingCell({
         if (cancelled) return;
         const isFinal = i === lastIndex;
         if (isFinal && mahjong) {
-          const rect = cellRef.current?.getBoundingClientRect();
+          setShaking(false);
+          setActiveFlip(null);
+          goto('windup');
+          await delay(MAHJONG_WINDUP_MS);
+          if (cancelled) return;
+          const source = cellRef.current?.querySelector<HTMLElement>('.problem-result');
+          const rect = source?.getBoundingClientRect();
+          if (source) setFlightAppearance(captureFinaleCard(source));
           setOriginRect(rect ? { left: rect.left, top: rect.top, width: rect.width, height: rect.height }
             : { left: 0, top: 0, width: 0, height: 0 });
           // Capture only the history that has already been displayed. The
@@ -683,8 +692,6 @@ function RevealingCell({
           };
           setFlightCell({ ...baseCell, ...history, isFirstSolve: false, isLastSolve: false,
             isContestFirstSolve: false, isContestLastSolve: false });
-          setShaking(false);
-          setActiveFlip(null);
           for (const [next, duration] of MAHJONG_FINALE_STEPS) {
             goto(next);
             await delay(duration);
@@ -793,7 +800,7 @@ function RevealingCell({
     </span>
     {mahjongTail && active.mahjongModel ? <MahjongFinaleStage model={active.mahjongModel}
       phase={phase as MahjongFinalePhase} showFirstSolve={showFirstSolve} showTeamGroup={showTeamGroup} originRect={originRect}
-      flightCell={flightCell} /> : null}
+      flightCell={flightCell} flightAppearance={flightAppearance ?? undefined} /> : null}
     </>
   );
 }

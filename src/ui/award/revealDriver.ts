@@ -47,7 +47,7 @@ export const FINALE_HOLD_MS = 5000;
  *  5 `settled`   — shake/rainbow stopped, confetti on a Yes;
  *  6 (phase ends when the driver clears `active` FINALE_HOLD_MS later).
  */
-export type FinalePhase = 'preheat' | 'spotlight' | 'flip' | MahjongFinalePhase;
+export type FinalePhase = 'preheat' | 'spotlight' | 'flip' | 'windup' | MahjongFinalePhase;
 
 /** Finale flip slowdown factors (config: award.finale*Slowdown, spec §7). */
 export interface FinaleSlowdowns {

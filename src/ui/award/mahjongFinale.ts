@@ -4,12 +4,43 @@ import type { AwardConfig } from '@core/config';
 export type FinaleType = AwardConfig['finaleType'];
 export type MahjongFinalePhase = 'launch' | 'lineup' | 'anticipation' | 'strike' | 'impact' | 'settled';
 export type FinaleOriginRect = Pick<DOMRect, 'left' | 'top' | 'width' | 'height'>;
+export const MAHJONG_WINDUP_MS = 350;
+
+export interface FinaleCardSnapshot {
+  element: HTMLElement;
+  width: number;
+  height: number;
+}
+
+/** Freeze resolved styles before leaving the board's font/scale context. */
+export function captureFinaleCard(source: HTMLElement): FinaleCardSnapshot {
+  const element = source.cloneNode(true) as HTMLElement;
+  const copyStyles = (from: HTMLElement, to: HTMLElement) => {
+    const computed = getComputedStyle(from);
+    for (let i = 0; i < computed.length; i++) {
+      const property = computed.item(i);
+      to.style.setProperty(property, computed.getPropertyValue(property));
+    }
+    to.style.animation = 'none';
+    to.style.transition = 'none';
+    Array.from(from.children).forEach((child, i) => {
+      if (child instanceof HTMLElement) copyStyles(child, to.children[i] as HTMLElement);
+    });
+  };
+  copyStyles(source, element);
+  const computed = getComputedStyle(source);
+  return {
+    element,
+    width: parseFloat(computed.width) || source.offsetWidth || 1,
+    height: parseFloat(computed.height) || source.offsetHeight || 1,
+  };
+}
 
 /** One clock in RevealingCell owns these phases; CSS only interpolates them. */
 export const MAHJONG_FINALE_STEPS = [
   ['launch', 450], ['lineup', 500], ['anticipation', 180], ['strike', 120], ['impact', 420],
 ] as const;
-export const MAHJONG_FINALE_MS = MAHJONG_FINALE_STEPS.reduce((sum, [, ms]) => sum + ms, 0);
+export const MAHJONG_FINALE_MS = MAHJONG_WINDUP_MS + MAHJONG_FINALE_STEPS.reduce((sum, [, ms]) => sum + ms, 0);
 
 export interface MahjongFinaleModel {
   teamName: string;

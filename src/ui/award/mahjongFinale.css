@@ -29,10 +29,7 @@
 .mahjong-slot { min-width: 0; height: 100%; }
 .mahjong-stage .problem-result {
   width: 100%; height: 100%; font-size: var(--mahjong-type-size);
-  border: 0; border-radius: 3px; flex-direction: column; letter-spacing: 0; gap: 3px;
 }
-.mahjong-stage .problem-label { font-size: 1.3em; }
-.mahjong-stage .problem-attempts { font-size: max(11px, .72em); }
 .mahjong-slot--final:empty { border: 1px dashed #677184; border-radius: 3px; background: #10131c; }
 .mahjong-stage--launch .mahjong-row, .mahjong-stage--launch .mahjong-team { visibility: hidden; }
 .mahjong-stage--lineup .mahjong-row { animation: mahjong-lineup 500ms cubic-bezier(.22,1,.36,1) both; }
@@ -43,7 +40,6 @@
   width: var(--mahjong-origin-width); height: var(--mahjong-origin-height);
   animation: mahjong-launch 450ms cubic-bezier(.65,0,1,1) both;
 }
-.mahjong-flight--launch .problem-result { font-size: var(--mahjong-flight-type-size); }
 .mahjong-flight--strike {
   left: calc(var(--mahjong-target-x) - var(--mahjong-cell-width) / 2);
   top: calc(0px - var(--mahjong-cell-height)); width: var(--mahjong-cell-width); height: var(--mahjong-cell-height);

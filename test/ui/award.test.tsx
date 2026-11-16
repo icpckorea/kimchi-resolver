@@ -89,6 +89,13 @@ describe('mahjong soul finale playback', () => {
     expect(screen.queryByTestId('mahjong-finale')).toBeNull();
     expect(screen.getByTestId('award-cell-2-1').querySelector('.flip-run')).not.toBeNull();
     await advanceMs(1600); // the single intermediate flip at its 2x fallback
+    expect(screen.queryByTestId('mahjong-finale')).toBeNull();
+    expect(screen.getByTestId('award-cell-2-1').className).not.toContain('award-cell-gacha');
+    expect(screen.queryByTestId('finale-dim')).not.toBeNull();
+    await advanceMs(349);
+    expect(screen.queryByTestId('mahjong-finale')).toBeNull();
+    expect(store.getState().snapshot).toBe(frozen);
+    await advanceMs(1);
     expect(screen.getByTestId('mahjong-finale').getAttribute('data-phase')).toBe('launch');
     expect(within(screen.getByTestId('mahjong-finale')).queryByText('Univ Two')).toBeNull();
     expect(screen.getByTestId('award-cell-2-1').className).toContain('award-cell-mahjong-hidden');
@@ -120,10 +127,12 @@ describe('mahjong soul finale playback', () => {
     expect(store.getState().awardTick).toBeGreaterThan(tick + 1);
   });
 
-  it('starts a single-run finale directly after the common lead-in under StrictMode', async () => {
+  it('pauses a single-run finale before launch under StrictMode', async () => {
     const { store } = await start(true, true);
     const tick = store.getState().awardTick;
     await advanceMs(2200);
+    expect(screen.queryByTestId('mahjong-finale')).toBeNull();
+    await advanceMs(350);
     expect(screen.getByTestId('mahjong-finale').getAttribute('data-phase')).toBe('launch');
     await advanceMs(1670);
     expect(store.getState().awardTick).toBe(tick + 1);
@@ -132,8 +141,19 @@ describe('mahjong soul finale playback', () => {
 
   it('cancels the portal and pending phase timers on unmount', async () => {
     const { store, view } = await start(true, true);
-    await advanceMs(2200);
+    await advanceMs(2550);
     expect(screen.getByTestId('mahjong-finale').getAttribute('data-phase')).toBe('launch');
+    const tick = store.getState().awardTick;
+    view.unmount();
+    await advanceMs(20000);
+    expect(screen.queryByTestId('mahjong-finale')).toBeNull();
+    expect(store.getState().awardTick).toBe(tick);
+  });
+
+  it('cancels an unmounted sequence during the pre-launch pause', async () => {
+    const { store, view } = await start(true, true);
+    await advanceMs(2300);
+    expect(screen.queryByTestId('mahjong-finale')).toBeNull();
     const tick = store.getState().awardTick;
     view.unmount();
     await advanceMs(20000);

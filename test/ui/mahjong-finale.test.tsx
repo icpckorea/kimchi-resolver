@@ -1,7 +1,7 @@
 import { cleanup, fireEvent, render, screen, within } from '@testing-library/react';
 import { afterEach, describe, expect, it } from 'vitest';
 import type { CellState, Problem, TeamStanding } from '@core/types';
-import { buildMahjongFinaleModel, mahjongFinaleLayout } from '@ui/award/mahjongFinale';
+import { buildMahjongFinaleModel, captureFinaleCard, mahjongFinaleLayout } from '@ui/award/mahjongFinale';
 import { MahjongFinaleStage } from '@ui/award/MahjongFinaleStage';
 
 afterEach(cleanup);
@@ -30,6 +30,27 @@ function fixture(labels = 'ABCDEFGHIJKLM', finalLabel = 'H', accepted = true) {
 }
 
 describe('mahjong finale presentation', () => {
+  it('captures the actual card typography and border without moving the source DOM', () => {
+    const card = document.createElement('div');
+    card.style.cssText = 'display:flex;flex-direction:row;font-size:31px;letter-spacing:-1px;border:4px solid white;border-radius:0px;width:80px;height:50px';
+    const label = document.createElement('span');
+    label.textContent = 'H';
+    label.style.fontSize = '43px';
+    card.append(label);
+    document.body.append(card);
+    const snapshot = captureFinaleCard(card);
+    expect(card.isConnected).toBe(true);
+    expect(snapshot.element.isConnected).toBe(false);
+    expect(snapshot.element.style.flexDirection).toBe('row');
+    expect(snapshot.element.style.fontSize).toBe('31px');
+    expect(snapshot.element.style.borderTopWidth).toBe('4px');
+    expect(snapshot.element.style.letterSpacing).toBe('-1px');
+    expect((snapshot.element.firstElementChild as HTMLElement).style.fontSize).toBe('43px');
+    expect(snapshot.element.textContent).toBe('H');
+    expect(snapshot.width).toBe(80);
+    expect(snapshot.height).toBe(50);
+    card.remove();
+  });
   it('copies the whole row in contest order without mutating either snapshot', () => {
     const f = fixture();
     const model = buildMahjongFinaleModel(f.problems, f.before, f.after, f.finalId);
