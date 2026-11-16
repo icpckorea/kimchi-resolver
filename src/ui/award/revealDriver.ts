@@ -26,6 +26,7 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 
 import type { AwardStepResult, Run, Verdict } from '@core/types';
 import { DEFAULT_ANIMATION_SPEEDS, type AnimationSpeed } from '@core/config';
+import { MAHJONG_FINALE_MS, type FinaleType, type MahjongFinaleModel, type MahjongFinalePhase } from './mahjongFinale';
 
 export type RevealStep = Extract<AwardStepResult, { type: 'reveal' }>;
 
@@ -46,7 +47,7 @@ export const FINALE_HOLD_MS = 5000;
  *  5 `settled`   — shake/rainbow stopped, confetti on a Yes;
  *  6 (phase ends when the driver clears `active` FINALE_HOLD_MS later).
  */
-export type FinalePhase = 'preheat' | 'spotlight' | 'flip' | 'settled';
+export type FinalePhase = 'preheat' | 'spotlight' | 'flip' | 'windup' | MahjongFinalePhase;
 
 /** Finale flip slowdown factors (config: award.finale*Slowdown, spec §7). */
 export interface FinaleSlowdowns {
@@ -225,6 +226,8 @@ export function accumulateDisplay(
 }
 
 export interface ActiveReveal {
+  finaleType: FinaleType;
+  mahjongModel?: MahjongFinaleModel;
   step: RevealStep;
   speed: AnimationSpeed;
   /** Flip durations for this reveal (finale slowdowns already applied). */
@@ -239,7 +242,7 @@ export interface RevealDriver {
   /** True while a reveal sequence is playing (keyboard must be ignored). */
   isBusy(): boolean;
   /** Start a sequence for a reveal step. `solved` picks the speed row. */
-  play(step: RevealStep, solved: number): void;
+  play(step: RevealStep, solved: number, mahjongModel?: MahjongFinaleModel): void;
   /** Called by RevealingCell when its playback finished. */
   handleSequenceEnd(): void;
 }
@@ -250,7 +253,7 @@ export interface RevealDriver {
  * fallback timer is still bound to it, so this stays an upper bound however
  * much the ease-in-out curve (spec §6) shortens the real playback.
  */
-function estimateDurationMs(step: RevealStep, flip: FlipDurations): number {
+function estimateDurationMs(step: RevealStep, flip: FlipDurations, finaleType: FinaleType): number {
   // Finale: pre-heat + zoom settle (spec §7 steps 1-2). Otherwise the gacha
   // shake, when it fires.
   const leadIn = step.effect.finale
@@ -258,6 +261,9 @@ function estimateDurationMs(step: RevealStep, flip: FlipDurations): number {
     : step.effect.gacha
       ? GACHA_SHAKE_MS
       : 0;
+  if (step.effect.finale && finaleType === 'mahjong-soul-like') {
+    return leadIn + (step.runs.length - 1) * flip.fast * 2 + MAHJONG_FINALE_MS;
+  }
   const flips = (step.runs.length - 1) * flip.fast + flip.slow;
   return leadIn + flips * 2;
 }
@@ -265,6 +271,7 @@ function estimateDurationMs(step: RevealStep, flip: FlipDurations): number {
 export function useRevealDriver(
   animationSpeeds: readonly AnimationSpeed[],
   slowdowns: FinaleSlowdowns = DEFAULT_FINALE_SLOWDOWNS,
+  finaleType: FinaleType = 'gacha-ssr',
 ): RevealDriver {
   // Destructured to primitives so a fresh config object per render does not
   // rebuild the api (and with it every keyboard callback).
@@ -297,7 +304,7 @@ export function useRevealDriver(
       setActive(next);
     }
 
-    function play(step: RevealStep, solved: number): void {
+    function play(step: RevealStep, solved: number, mahjongModel?: MahjongFinaleModel): void {
       if (step.runs.length === 0) return; // defensive; the machine never emits this
       clearHoldTimer();
       const speed = matchAnimationSpeed(animationSpeeds, solved);
@@ -307,8 +314,8 @@ export function useRevealDriver(
       });
       seqRef.current += 1;
       playingRef.current = true;
-      busyDeadlineRef.current = Date.now() + estimateDurationMs(step, flip) + BUSY_HARD_TIMEOUT_MS;
-      setActiveBoth({ step, speed, flip, seq: seqRef.current });
+      busyDeadlineRef.current = Date.now() + estimateDurationMs(step, flip, finaleType) + BUSY_HARD_TIMEOUT_MS;
+      setActiveBoth({ step, speed, flip, seq: seqRef.current, finaleType, mahjongModel });
     }
 
     function handleSequenceEnd(): void {
@@ -335,7 +342,7 @@ export function useRevealDriver(
     }
 
     return { play, handleSequenceEnd, isBusy };
-  }, [animationSpeeds, finaleFlipSlowdown, finaleIntermediateFlipSlowdown]);
+  }, [animationSpeeds, finaleFlipSlowdown, finaleIntermediateFlipSlowdown, finaleType]);
 
   return { active, isBusy: api.isBusy, play: api.play, handleSequenceEnd: api.handleSequenceEnd };
 }

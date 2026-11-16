@@ -80,6 +80,8 @@ const awardSchema = z
      * the gacha effect, whatever the verdict or attempt count. null = off.
      */
     gachaEffectMaxRank: z.number().int().positive().nullable().default(null),
+    /** Finale presentation; omitted configs retain the original sequence. */
+    finaleType: z.enum(['gacha-ssr', 'mahjong-soul-like']).default('gacha-ssr'),
     /**
      * Finale (spec §7 step 4): the last verdict flip of the whole ceremony
      * runs at the matched band's slowFlip × this factor.

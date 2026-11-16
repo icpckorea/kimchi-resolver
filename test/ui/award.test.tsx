@@ -62,6 +62,106 @@ const configJson = {
   },
 };
 
+// These integration cases catch a last-flip branch that fires too early,
+// leaks the result, commits twice, or leaves the keyboard locked.
+describe('mahjong soul finale playback', () => {
+  async function start(strict = false, singleRun = false, accepted = true) {
+    runsOverride = makeRunsJson(accepted ? 'Yes' : 'No - Wrong Answer');
+    if (singleRun) runsOverride.runs = runsOverride.runs.filter((r) => r.id !== 11);
+    const store = await bootAwardStore();
+    store.setState((state) => ({ config: { ...state.config, showTeamGroup: false, award: { ...state.config.award, finaleType: 'mahjong-soul-like' } } }));
+    const view = strict ? render(<StrictMode><AwardView store={store} /></StrictMode>) : renderAward(store);
+    await pressKey('Enter'); // focus team 3
+    await pressKey('Enter'); // normal gacha, still the original effect
+    expect(screen.queryByTestId('mahjong-finale')).toBeNull();
+    await finishSequence();
+    await pressKey('Enter');
+    await pressKey('Escape');
+    await pressKey('Enter'); // focus team 2
+    const frozen = store.getState().snapshot;
+    await pressKey('Enter');
+    return { store, view, frozen };
+  }
+
+  it.each([true, false])('replaces only the final flip and commits after impact (Yes=%s)', async (accepted) => {
+    const { store, frozen } = await start(false, false, accepted);
+    await advanceMs(2200); // shared preheat + zoom
+    expect(screen.queryByTestId('mahjong-finale')).toBeNull();
+    expect(screen.getByTestId('award-cell-2-1').querySelector('.flip-run')).not.toBeNull();
+    await advanceMs(1600); // the single intermediate flip at its 2x fallback
+    expect(screen.queryByTestId('mahjong-finale')).toBeNull();
+    expect(screen.getByTestId('award-cell-2-1').className).not.toContain('award-cell-gacha');
+    expect(screen.queryByTestId('finale-dim')).not.toBeNull();
+    await advanceMs(349);
+    expect(screen.queryByTestId('mahjong-finale')).toBeNull();
+    expect(store.getState().snapshot).toBe(frozen);
+    await advanceMs(1);
+    expect(screen.getByTestId('mahjong-finale').getAttribute('data-phase')).toBe('launch');
+    expect(within(screen.getByTestId('mahjong-finale')).queryByText('Univ Two')).toBeNull();
+    expect(screen.getByTestId('award-cell-2-1').className).toContain('award-cell-mahjong-hidden');
+    expect(screen.getByTestId('award-cell-2-1').querySelector('.flip-run')).toBeNull();
+    expect(store.getState().snapshot).toBe(frozen);
+    expect(screen.queryByTestId('finale-dim')).toBeNull();
+    const tick = store.getState().awardTick;
+    await pressKey('Enter');
+    expect(store.getState().awardTick).toBe(tick);
+    await advanceMs(450 + 500 + 180); // before the strike
+    expect(screen.getByTestId('mahjong-finale').getAttribute('data-phase')).toBe('strike');
+    const row = screen.getByTestId('mahjong-finale-row');
+    expect(row.children[1].querySelector('.problem-result')).toBeNull();
+    expect(document.querySelector('[title*="61 min"]')).toBeNull();
+    await advanceMs(120); // contact reveals the result
+    expect(screen.getByTestId('mahjong-finale').getAttribute('data-phase')).toBe('impact');
+    expect(row.children[1].querySelector('.problem-result')!.getAttribute('data-verdict')).toBe(accepted ? 'accepted' : 'failed');
+    expect(store.getState().snapshot).toBe(frozen);
+    expect(screen.queryByTestId('finale-confetti')).toBeNull();
+    await advanceMs(420);
+    expect(store.getState().snapshot).toBe(store.getState().awardMachine!.snapshot);
+    expect(store.getState().awardTick).toBe(tick + 1);
+    expect(screen.getByTestId('mahjong-finale').getAttribute('data-phase')).toBe('settled');
+    await advanceMs(4999);
+    expect(screen.queryByTestId('mahjong-finale')).not.toBeNull();
+    await advanceMs(1);
+    expect(screen.queryByTestId('mahjong-finale')).toBeNull();
+    await pressKey('Enter'); // busy is released; the machine may focus the newly overtaken team
+    expect(store.getState().awardTick).toBeGreaterThan(tick + 1);
+  });
+
+  it('pauses a single-run finale before launch under StrictMode', async () => {
+    const { store } = await start(true, true);
+    const tick = store.getState().awardTick;
+    await advanceMs(2200);
+    expect(screen.queryByTestId('mahjong-finale')).toBeNull();
+    await advanceMs(350);
+    expect(screen.getByTestId('mahjong-finale').getAttribute('data-phase')).toBe('launch');
+    await advanceMs(1670);
+    expect(store.getState().awardTick).toBe(tick + 1);
+    expect(screen.getByTestId('mahjong-finale').getAttribute('data-phase')).toBe('settled');
+  });
+
+  it('cancels the portal and pending phase timers on unmount', async () => {
+    const { store, view } = await start(true, true);
+    await advanceMs(2550);
+    expect(screen.getByTestId('mahjong-finale').getAttribute('data-phase')).toBe('launch');
+    const tick = store.getState().awardTick;
+    view.unmount();
+    await advanceMs(20000);
+    expect(screen.queryByTestId('mahjong-finale')).toBeNull();
+    expect(store.getState().awardTick).toBe(tick);
+  });
+
+  it('cancels an unmounted sequence during the pre-launch pause', async () => {
+    const { store, view } = await start(true, true);
+    await advanceMs(2300);
+    expect(screen.queryByTestId('mahjong-finale')).toBeNull();
+    const tick = store.getState().awardTick;
+    view.unmount();
+    await advanceMs(20000);
+    expect(screen.queryByTestId('mahjong-finale')).toBeNull();
+    expect(store.getState().awardTick).toBe(tick);
+  });
+});
+
 const contestJson = {
   title: 'Fixture Contest',
   systemName: 'test',
